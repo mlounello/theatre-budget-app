@@ -29,11 +29,13 @@ export function ProcurementTable({
   purchases,
   receipts,
   vendors,
+  budgetLineOptions,
   canManageProcurement
 }: {
   purchases: ProcurementRow[];
   receipts: ProcurementReceiptRow[];
   vendors: VendorOption[];
+  budgetLineOptions: Array<{ id: string; projectId: string; label: string }>;
   canManageProcurement: boolean;
 }) {
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -74,7 +76,9 @@ export function ProcurementTable({
                     {purchase.season ? <div>{purchase.season}</div> : null}
                   </td>
                   <td>
-                    {purchase.budgetCode} | {purchase.category}
+                    {purchase.budgetTracked
+                      ? `${purchase.budgetCode ?? "-"} | ${purchase.category ?? "-"}`
+                      : "Off-budget procurement"}
                   </td>
                   <td>{purchase.title}</td>
                   <td>{purchase.requisitionNumber ?? "-"}</td>
@@ -110,6 +114,23 @@ export function ProcurementTable({
             <h2>Edit Procurement Record</h2>
             <form action={updateProcurementAction} className="requestForm">
               <input type="hidden" name="id" value={editingPurchase.id} />
+              <label>
+                <input name="budgetTracked" type="checkbox" defaultChecked={editingPurchase.budgetTracked} />
+                Track in budget
+              </label>
+              <label>
+                Budget Line
+                <select name="budgetLineId" defaultValue={editingPurchase.budgetLineId ?? ""}>
+                  <option value="">No budget line</option>
+                  {budgetLineOptions
+                    .filter((line) => line.projectId === editingPurchase.projectId)
+                    .map((line) => (
+                      <option key={line.id} value={line.id}>
+                        {line.label}
+                      </option>
+                    ))}
+                </select>
+              </label>
               <label>
                 Procurement Status
                 <select name="procurementStatus" defaultValue={editingPurchase.procurementStatus}>

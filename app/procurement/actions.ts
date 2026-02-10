@@ -67,7 +67,9 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
     } = await supabase.auth.getUser();
     if (!user) throw new Error("You must be signed in.");
 
+    const projectId = String(formData.get("projectId") ?? "").trim();
     const budgetLineId = String(formData.get("budgetLineId") ?? "").trim();
+    const budgetTracked = formData.get("budgetTracked") === "on";
     const title = String(formData.get("title") ?? "").trim();
     const orderValue = parseMoney(formData.get("orderValue"));
     const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
@@ -75,21 +77,32 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
     const poNumber = String(formData.get("poNumber") ?? "").trim();
     const vendorId = String(formData.get("vendorId") ?? "").trim();
 
-    if (!budgetLineId || !title) throw new Error("Budget line and title are required.");
+    if (!projectId || !title) throw new Error("Project and title are required.");
     if (orderValue <= 0) throw new Error("Order value must be greater than 0.");
 
-    const { data: line, error: lineError } = await supabase
-      .from("project_budget_lines")
-      .select("id, project_id, account_code_id")
-      .eq("id", budgetLineId)
-      .single();
-    if (lineError || !line) throw new Error("Invalid budget line.");
+    let line: { id: string; project_id: string; account_code_id: string | null } | null = null;
+    if (budgetTracked) {
+      if (!budgetLineId) throw new Error("Budget line is required when budget tracking is enabled.");
+      const { data: lineData, error: lineError } = await supabase
+        .from("project_budget_lines")
+        .select("id, project_id, account_code_id")
+        .eq("id", budgetLineId)
+        .single();
+      if (lineError || !lineData) throw new Error("Invalid budget line.");
+      if ((lineData.project_id as string) !== projectId) throw new Error("Budget line must belong to the selected project.");
+      line = {
+        id: lineData.id as string,
+        project_id: lineData.project_id as string,
+        account_code_id: (lineData.account_code_id as string | null) ?? null
+      };
+    }
 
     const { data: purchase, error: insertError } = await supabase
       .from("purchases")
       .insert({
-        project_id: line.project_id,
-        budget_line_id: line.id,
+        project_id: projectId,
+        budget_line_id: line?.id ?? null,
+        budget_tracked: budgetTracked,
         entered_by_user_id: user.id,
         title,
         reference_number: referenceNumber || null,
@@ -108,14 +121,16 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
       throw new Error(insertError?.message ?? "Unable to create procurement order.");
     }
 
-    const { error: allocationError } = await supabase.from("purchase_allocations").insert({
-      purchase_id: purchase.id,
-      reporting_budget_line_id: line.id,
-      account_code_id: line.account_code_id,
-      amount: orderValue,
-      reporting_bucket: "direct"
-    });
-    if (allocationError) throw new Error(allocationError.message);
+    if (budgetTracked && line) {
+      const { error: allocationError } = await supabase.from("purchase_allocations").insert({
+        purchase_id: purchase.id,
+        reporting_budget_line_id: line.id,
+        account_code_id: line.account_code_id,
+        amount: orderValue,
+        reporting_bucket: "direct"
+      });
+      if (allocationError) throw new Error(allocationError.message);
+    }
 
     const { error: eventError } = await supabase.from("purchase_events").insert({
       purchase_id: purchase.id,
@@ -147,6 +162,8 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
     const supabase = await getSupabaseServerClient();
     const id = String(formData.get("id") ?? "").trim();
     const procurementStatus = parseStatus(formData.get("procurementStatus"));
+    const budgetTracked = formData.get("budgetTracked") === "on";
+    const budgetLineId = String(formData.get("budgetLineId") ?? "").trim();
     const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
     const requisitionNumber = String(formData.get("requisitionNumber") ?? "").trim();
     const poNumber = String(formData.get("poNumber") ?? "").trim();
@@ -162,16 +179,33 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
 
     const { data: existing, error: existingError } = await supabase
       .from("purchases")
-      .select("id, project_id, requested_amount")
+      .select("id, project_id, requested_amount, budget_tracked, budget_line_id")
       .eq("id", id)
       .single();
     if (existingError || !existing) throw new Error("Purchase not found.");
 
     const nextRequested = orderValue > 0 ? orderValue : Number(existing.requested_amount ?? 0);
 
+    let verifiedBudgetLine: { id: string; account_code_id: string | null } | null = null;
+    if (budgetTracked) {
+      if (!budgetLineId) throw new Error("Budget line is required when budget tracking is enabled.");
+      const { data: line, error: lineError } = await supabase
+        .from("project_budget_lines")
+        .select("id, project_id, account_code_id")
+        .eq("id", budgetLineId)
+        .single();
+      if (lineError || !line) throw new Error("Invalid budget line.");
+      if ((line.project_id as string) !== (existing.project_id as string)) {
+        throw new Error("Budget line must belong to the same project.");
+      }
+      verifiedBudgetLine = { id: line.id as string, account_code_id: (line.account_code_id as string | null) ?? null };
+    }
+
     const { error } = await supabase
       .from("purchases")
       .update({
+        budget_tracked: budgetTracked,
+        budget_line_id: budgetTracked ? verifiedBudgetLine?.id ?? budgetLineId : null,
         procurement_status: procurementStatus,
         reference_number: referenceNumber || null,
         requisition_number: requisitionNumber || null,
@@ -187,6 +221,28 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
       })
       .eq("id", id);
     if (error) throw new Error(error.message);
+
+    if (!budgetTracked) {
+      const { error: deleteAllocationsError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", id);
+      if (deleteAllocationsError) throw new Error(deleteAllocationsError.message);
+    } else {
+      const { data: currentAllocations, error: currentAllocationsError } = await supabase
+        .from("purchase_allocations")
+        .select("id")
+        .eq("purchase_id", id);
+      if (currentAllocationsError) throw new Error(currentAllocationsError.message);
+
+      if ((currentAllocations ?? []).length === 0 && verifiedBudgetLine) {
+        const { error: createAllocationError } = await supabase.from("purchase_allocations").insert({
+          purchase_id: id,
+          reporting_budget_line_id: verifiedBudgetLine.id,
+          account_code_id: verifiedBudgetLine.account_code_id,
+          amount: nextRequested,
+          reporting_bucket: "direct"
+        });
+        if (createAllocationError) throw new Error(createAllocationError.message);
+      }
+    }
 
     revalidatePath("/procurement");
     revalidatePath("/requests");

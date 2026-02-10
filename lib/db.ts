@@ -42,7 +42,7 @@ export type PurchaseRow = {
   id: string;
   projectId: string;
   projectName: string;
-  budgetLineId: string;
+  budgetLineId: string | null;
   budgetCode: string;
   category: string;
   title: string;
@@ -61,10 +61,11 @@ export type ProcurementRow = {
   projectId: string;
   projectName: string;
   season: string | null;
-  budgetLineId: string;
-  budgetCode: string;
-  category: string;
-  lineName: string;
+  budgetLineId: string | null;
+  budgetCode: string | null;
+  category: string | null;
+  lineName: string | null;
+  budgetTracked: boolean;
   title: string;
   referenceNumber: string | null;
   requisitionNumber: string | null;
@@ -104,6 +105,11 @@ export type VendorOption = {
 export type ProcurementBudgetLineOption = {
   id: string;
   projectId: string;
+  label: string;
+};
+
+export type ProcurementProjectOption = {
+  id: string;
   label: string;
 };
 
@@ -426,9 +432,9 @@ export async function getRequestsData(): Promise<{
       id: row.id as string,
       projectId: row.project_id as string,
       projectName: project?.name ?? "Unknown Project",
-      budgetLineId: row.budget_line_id as string,
-      budgetCode: budgetLine?.budget_code ?? "",
-      category: budgetLine?.category ?? "",
+      budgetLineId: (row.budget_line_id as string | null) ?? null,
+      budgetCode: budgetLine?.budget_code ?? "OFF-BUDGET",
+      category: budgetLine?.category ?? "-",
       title: row.title as string,
       referenceNumber: (row.reference_number as string | null) ?? null,
       estimatedAmount: asNumber(row.estimated_amount as string | number | null),
@@ -498,16 +504,17 @@ export async function getProcurementData(): Promise<{
   purchases: ProcurementRow[];
   receipts: ProcurementReceiptRow[];
   budgetLineOptions: ProcurementBudgetLineOption[];
+  projectOptions: ProcurementProjectOption[];
   vendors: VendorOption[];
   canManageProcurement: boolean;
 }> {
   const supabase = await getSupabaseServerClient();
 
-  const [purchasesResponse, linesResponse, vendorsResponse, receiptsResponse] = await Promise.all([
+  const [purchasesResponse, linesResponse, vendorsResponse, receiptsResponse, projectsResponse] = await Promise.all([
     supabase
       .from("purchases")
       .select(
-        "id, project_id, budget_line_id, title, reference_number, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, procurement_status, ordered_on, received_on, paid_on, vendor_id, notes, created_at, projects(name, season), project_budget_lines(budget_code, category, line_name), vendors(id, name)"
+        "id, project_id, budget_line_id, budget_tracked, title, reference_number, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, procurement_status, ordered_on, received_on, paid_on, vendor_id, notes, created_at, projects(name, season), project_budget_lines(budget_code, category, line_name), vendors(id, name)"
       )
       .order("created_at", { ascending: false })
       .limit(200),
@@ -520,13 +527,15 @@ export async function getProcurementData(): Promise<{
     supabase
       .from("purchase_receipts")
       .select("id, purchase_id, note, amount_received, fully_received, attachment_url, created_at")
-      .order("created_at", { ascending: false })
+      .order("created_at", { ascending: false }),
+    supabase.from("projects").select("id, name, season").order("name", { ascending: true })
   ]);
 
   if (purchasesResponse.error) throw purchasesResponse.error;
   if (linesResponse.error) throw linesResponse.error;
   if (vendorsResponse.error) throw vendorsResponse.error;
   if (receiptsResponse.error) throw receiptsResponse.error;
+  if (projectsResponse.error) throw projectsResponse.error;
 
   const {
     data: { user }
@@ -553,9 +562,10 @@ export async function getProcurementData(): Promise<{
       projectName: project?.name ?? "Unknown Project",
       season: project?.season ?? null,
       budgetLineId: row.budget_line_id as string,
-      budgetCode: budgetLine?.budget_code ?? "",
-      category: budgetLine?.category ?? "",
-      lineName: budgetLine?.line_name ?? "",
+      budgetCode: budgetLine?.budget_code ?? null,
+      category: budgetLine?.category ?? null,
+      lineName: budgetLine?.line_name ?? null,
+      budgetTracked: Boolean(row.budget_tracked as boolean | null),
       title: row.title as string,
       referenceNumber: (row.reference_number as string | null) ?? null,
       requisitionNumber: (row.requisition_number as string | null) ?? null,
@@ -587,6 +597,11 @@ export async function getProcurementData(): Promise<{
     };
   });
 
+  const projectOptions: ProcurementProjectOption[] = (projectsResponse.data ?? []).map((row) => ({
+    id: row.id as string,
+    label: `${row.name as string}${(row.season as string | null) ? ` (${row.season as string})` : ""}`
+  }));
+
   const vendors: VendorOption[] = (vendorsResponse.data ?? []).map((row) => ({
     id: row.id as string,
     name: row.name as string
@@ -602,7 +617,7 @@ export async function getProcurementData(): Promise<{
     createdAt: row.created_at as string
   }));
 
-  return { purchases, receipts, budgetLineOptions, vendors, canManageProcurement };
+  return { purchases, receipts, budgetLineOptions, projectOptions, vendors, canManageProcurement };
 }
 
 export async function getCcPendingRows(): Promise<
