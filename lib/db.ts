@@ -108,6 +108,18 @@ export type OrganizationOverviewRow = {
   incomeTotal: number;
 };
 
+export type IncomeRow = {
+  id: string;
+  projectId: string;
+  projectName: string;
+  incomeType: "starting_budget" | "donation" | "ticket_sales" | "other";
+  lineName: string;
+  referenceNumber: string | null;
+  amount: number;
+  receivedOn: string | null;
+  createdAt: string;
+};
+
 export type HierarchyRow = {
   fiscalYearId: string | null;
   fiscalYearName: string | null;
@@ -537,4 +549,62 @@ export async function getHierarchyRows(): Promise<HierarchyRow[]> {
   }
 
   return rows;
+}
+
+export async function getIncomeRows(): Promise<IncomeRow[]> {
+  const supabase = await getSupabaseServerClient();
+
+  const withType = await supabase
+    .from("income_lines")
+    .select("id, project_id, line_name, reference_number, amount, received_on, created_at, income_type, projects(name)")
+    .order("created_at", { ascending: false })
+    .limit(500);
+
+  if (withType.error) {
+    const fallback = await supabase
+      .from("income_lines")
+      .select("id, project_id, line_name, reference_number, amount, received_on, created_at, projects(name)")
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (fallback.error) throw fallback.error;
+
+    return (fallback.data ?? []).map((row) => {
+      const project = row.projects as { name?: string } | null;
+      return {
+        id: row.id as string,
+        projectId: row.project_id as string,
+        projectName: project?.name ?? "Unknown Project",
+        incomeType: "other",
+        lineName: (row.line_name as string) ?? "Income",
+        referenceNumber: (row.reference_number as string | null) ?? null,
+        amount: asNumber(row.amount as string | number | null),
+        receivedOn: (row.received_on as string | null) ?? null,
+        createdAt: row.created_at as string
+      };
+    });
+  }
+
+  return (withType.data ?? []).map((row) => {
+    const project = row.projects as { name?: string } | null;
+    const incomeTypeRaw = (row.income_type as string | null) ?? "other";
+    const incomeType =
+      incomeTypeRaw === "starting_budget" ||
+      incomeTypeRaw === "donation" ||
+      incomeTypeRaw === "ticket_sales" ||
+      incomeTypeRaw === "other"
+        ? incomeTypeRaw
+        : "other";
+
+    return {
+      id: row.id as string,
+      projectId: row.project_id as string,
+      projectName: project?.name ?? "Unknown Project",
+      incomeType,
+      lineName: (row.line_name as string) ?? "Income",
+      referenceNumber: (row.reference_number as string | null) ?? null,
+      amount: asNumber(row.amount as string | number | null),
+      receivedOn: (row.received_on as string | null) ?? null,
+      createdAt: row.created_at as string
+    };
+  });
 }
