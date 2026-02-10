@@ -50,7 +50,16 @@ export default async function CreditCardPage({
   const errorMessage = resolvedSearchParams?.error;
 
   const supabase = await getSupabaseServerClient();
-  const [rows, projects, cardsResponse, monthsResponse, linesResponse, pendingPurchasesResponse, budgetLinesResponse] = await Promise.all([
+  const [
+    rows,
+    projects,
+    cardsResponse,
+    monthsResponse,
+    linesResponse,
+    pendingPurchasesResponse,
+    budgetLinesResponse,
+    membershipsResponse
+  ] = await Promise.all([
     getCcPendingRows(),
     getSettingsProjects(),
     supabase.from("credit_cards").select("id, nickname, masked_number, active").order("nickname", { ascending: true }),
@@ -72,6 +81,8 @@ export default async function CreditCardPage({
       .select("id, project_id, budget_code, category, line_name, active")
       .eq("active", true)
       .order("budget_code", { ascending: true })
+    ,
+    supabase.from("project_memberships").select("project_id, role")
   ]);
 
   if (cardsResponse.error) throw cardsResponse.error;
@@ -79,6 +90,17 @@ export default async function CreditCardPage({
   if (linesResponse.error) throw linesResponse.error;
   if (pendingPurchasesResponse.error) throw pendingPurchasesResponse.error;
   if (budgetLinesResponse.error) throw budgetLinesResponse.error;
+  if (membershipsResponse.error) throw membershipsResponse.error;
+
+  const membershipRows = membershipsResponse.data ?? [];
+  const hasGlobalAdmin = membershipRows.some((row) => (row.role as string) === "admin");
+  const manageableProjectIds = new Set(
+    membershipRows
+      .filter((row) => (row.role as string) === "project_manager")
+      .map((row) => row.project_id as string)
+  );
+
+  const manageableProjects = hasGlobalAdmin ? projects : projects.filter((project) => manageableProjectIds.has(project.id));
 
   const cards = (cardsResponse.data ?? []).map((row) => ({
     id: row.id as string,
@@ -171,7 +193,7 @@ export default async function CreditCardPage({
               Project
               <select name="projectId" required>
                 <option value="">Select project</option>
-                {projects.map((project) => (
+                {manageableProjects.map((project) => (
                   <option key={project.id} value={project.id}>
                     {project.name} {project.season ? `(${project.season})` : ""}
                   </option>
@@ -198,6 +220,9 @@ export default async function CreditCardPage({
             <button type="submit" className="buttonLink buttonPrimary">
               Save Statement Month
             </button>
+            {manageableProjects.length === 0 ? (
+              <p className="errorNote">No projects available. You need Admin or Project Manager access to create statements.</p>
+            ) : null}
           </form>
         </article>
       </div>

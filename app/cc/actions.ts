@@ -44,6 +44,27 @@ function rethrowIfRedirect(error: unknown): void {
   }
 }
 
+async function requireCcManagerRole(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  projectId: string,
+  userId: string
+): Promise<void> {
+  const { data: roleRows, error: roleError } = await supabase
+    .from("project_memberships")
+    .select("project_id, role")
+    .eq("user_id", userId)
+    .in("role", ["admin", "project_manager"]);
+
+  if (roleError) throw new Error(roleError.message);
+
+  const hasGlobalAdmin = (roleRows ?? []).some((row) => (row.role as string) === "admin");
+  const hasProjectManagerAccess = (roleRows ?? []).some((row) => (row.project_id as string) === projectId);
+
+  if (!hasGlobalAdmin && !hasProjectManagerAccess) {
+    throw new Error("You must be an Admin or Project Manager for this project to manage credit card statements.");
+  }
+}
+
 export async function createCreditCardAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();
@@ -83,6 +104,7 @@ export async function createStatementMonthAction(formData: FormData): Promise<vo
 
     if (!projectId || !creditCardId || !month) throw new Error("Project, card, and statement month are required.");
     const statementDate = toStatementDate(month);
+    await requireCcManagerRole(supabase, projectId, user.id);
 
     const { data: existing, error: existingError } = await supabase
       .from("cc_statement_months")
@@ -124,6 +146,19 @@ export async function addStatementLineAction(formData: FormData): Promise<void> 
 
     if (!statementMonthId || !projectBudgetLineId) throw new Error("Statement month and budget line are required.");
     if (amount <= 0) throw new Error("Amount must be greater than zero.");
+
+    const { data: statementMonth, error: statementMonthError } = await supabase
+      .from("cc_statement_months")
+      .select("id, project_id")
+      .eq("id", statementMonthId)
+      .single();
+    if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
+
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+    await requireCcManagerRole(supabase, statementMonth.project_id as string, user.id);
 
     const { error } = await supabase.from("cc_statement_lines").insert({
       statement_month_id: statementMonthId,
@@ -171,6 +206,7 @@ export async function confirmStatementLineMatchAction(formData: FormData): Promi
       .eq("id", statementLine.statement_month_id as string)
       .single();
     if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
+    await requireCcManagerRole(supabase, statementMonth.project_id as string, user.id);
 
     const { data: purchases, error: purchasesError } = await supabase
       .from("purchases")
