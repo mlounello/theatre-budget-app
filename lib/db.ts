@@ -71,19 +71,46 @@ export type SettingsProject = {
 export async function getDashboardProjects(): Promise<DashboardProject[]> {
   const supabase = await getSupabaseServerClient();
 
-  const { data, error } = await supabase
-    .from("v_portfolio_summary")
-    .select("project_id, project_name, season, allocated_total, obligated_total, remaining_true, remaining_if_requested_approved, income_total");
+  const { data: projectsData, error: projectsError } = await supabase
+    .from("projects")
+    .select("id, name, season")
+    .order("name", { ascending: true });
 
-  if (error) {
-    throw error;
+  if (projectsError) {
+    throw projectsError;
   }
 
-  const projectIds = (data ?? []).map((row) => row.project_id as string);
+  const projectIds = (projectsData ?? []).map((row) => row.id as string);
 
   let totalsByProject = new Map<string, { requested: number; enc: number; pending: number; ytd: number }>();
+  let summaryByProject = new Map<
+    string,
+    { allocated: number; obligated: number; remainingTrue: number; remainingIfRequestedApproved: number; income: number }
+  >();
 
   if (projectIds.length > 0) {
+    const { data: summaryData, error: summaryError } = await supabase
+      .from("v_portfolio_summary")
+      .select("project_id, allocated_total, obligated_total, remaining_true, remaining_if_requested_approved, income_total")
+      .in("project_id", projectIds);
+
+    if (summaryError) {
+      throw summaryError;
+    }
+
+    summaryByProject = new Map(
+      (summaryData ?? []).map((row) => [
+        row.project_id as string,
+        {
+          allocated: asNumber(row.allocated_total as string | number | null),
+          obligated: asNumber(row.obligated_total as string | number | null),
+          remainingTrue: asNumber(row.remaining_true as string | number | null),
+          remainingIfRequestedApproved: asNumber(row.remaining_if_requested_approved as string | number | null),
+          income: asNumber(row.income_total as string | number | null)
+        }
+      ])
+    );
+
     const { data: totalsData, error: totalsError } = await supabase
       .from("v_project_totals")
       .select("project_id, requested_open_total, enc_total, pending_cc_total, ytd_total")
@@ -106,23 +133,24 @@ export async function getDashboardProjects(): Promise<DashboardProject[]> {
     );
   }
 
-  return (data ?? []).map((row) => {
-    const projectId = row.project_id as string;
+  return (projectsData ?? []).map((row) => {
+    const projectId = row.id as string;
     const totals = totalsByProject.get(projectId);
+    const summary = summaryByProject.get(projectId);
 
     return {
       projectId,
-      projectName: (row.project_name as string) ?? "Untitled Project",
+      projectName: (row.name as string) ?? "Untitled Project",
       season: (row.season as string | null) ?? null,
-      allocatedTotal: asNumber(row.allocated_total as string | number | null),
+      allocatedTotal: summary?.allocated ?? 0,
       requestedOpenTotal: totals?.requested ?? 0,
       encTotal: totals?.enc ?? 0,
       pendingCcTotal: totals?.pending ?? 0,
       ytdTotal: totals?.ytd ?? 0,
-      obligatedTotal: asNumber(row.obligated_total as string | number | null),
-      remainingTrue: asNumber(row.remaining_true as string | number | null),
-      remainingIfRequestedApproved: asNumber(row.remaining_if_requested_approved as string | number | null),
-      incomeTotal: asNumber(row.income_total as string | number | null)
+      obligatedTotal: summary?.obligated ?? 0,
+      remainingTrue: summary?.remainingTrue ?? 0,
+      remainingIfRequestedApproved: summary?.remainingIfRequestedApproved ?? 0,
+      incomeTotal: summary?.income ?? 0
     };
   });
 }
