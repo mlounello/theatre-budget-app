@@ -282,33 +282,37 @@ export default async function SettingsPage({
                                             Save Line
                                           </button>
                                         </form>
-                                      ) : (
-                                        <form action={addBudgetLineAction} className="inlineEditForm">
-                                          <input type="hidden" name="projectId" value={project.id} />
-                                          <select name="accountCodeId" required>
-                                            <option value="">Account code</option>
-                                            {accountCodes.map((accountCode) => (
-                                              <option key={accountCode.id} value={accountCode.id}>
-                                                {accountCode.code} | {accountCode.category} | {accountCode.name}
-                                              </option>
-                                            ))}
-                                          </select>
-                                          <input
-                                            name="allocatedAmount"
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            placeholder="Allocated $"
-                                            defaultValue={0}
-                                          />
-                                          <button type="submit" className="tinyButton">
-                                            Add Line
-                                          </button>
-                                        </form>
-                                      )}
+                                      ) : null}
                                     </td>
                                   </tr>
                                 ))}
+                                <tr>
+                                  <td colSpan={6}>Add a new budget line to this project</td>
+                                  <td>
+                                    <form action={addBudgetLineAction} className="inlineEditForm">
+                                      <input type="hidden" name="projectId" value={project.id} />
+                                      <select name="accountCodeId" required>
+                                        <option value="">Account code</option>
+                                        {accountCodes.map((accountCode) => (
+                                          <option key={accountCode.id} value={accountCode.id}>
+                                            {accountCode.code} | {accountCode.category} | {accountCode.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <input
+                                        name="allocatedAmount"
+                                        type="number"
+                                        step="0.01"
+                                        min="0"
+                                        placeholder="Allocated $"
+                                        defaultValue={0}
+                                      />
+                                      <button type="submit" className="tinyButton">
+                                        Add Line
+                                      </button>
+                                    </form>
+                                  </td>
+                                </tr>
                               </tbody>
                             </table>
                           </div>
