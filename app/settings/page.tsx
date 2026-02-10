@@ -1,4 +1,5 @@
 import {
+  addBudgetLineAction,
   createAccountCodeAction,
   importHierarchyCsvAction,
   updateBudgetLineAction,
@@ -42,11 +43,13 @@ type FiscalYearGroup = {
 export default async function SettingsPage({
   searchParams
 }: {
-  searchParams?: Promise<{ import?: string; msg?: string }>;
+  searchParams?: Promise<{ import?: string; msg?: string; ok?: string; error?: string }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const importStatus = resolvedSearchParams?.import;
   const importMessage = resolvedSearchParams?.msg;
+  const okMessage = resolvedSearchParams?.ok;
+  const errorMessage = resolvedSearchParams?.error;
 
   const projects = await getSettingsProjects();
   const templates = await getTemplateNames();
@@ -100,6 +103,8 @@ export default async function SettingsPage({
       <header className="sectionHeader">
         <p className="eyebrow">Admin</p>
         <h1>Project and Access Settings</h1>
+        {okMessage ? <p className="successNote">{okMessage}</p> : null}
+        {errorMessage ? <p className="errorNote">{errorMessage}</p> : null}
         {importStatus === "ok" ? <p className="successNote">CSV import completed.</p> : null}
         {importStatus === "error" ? <p className="errorNote">CSV import failed: {importMessage ?? "Unknown error"}</p> : null}
       </header>
@@ -246,7 +251,7 @@ export default async function SettingsPage({
                                             defaultValue={line.sortOrder ?? 0}
                                           />
                                           <label className="checkboxLabel">
-                                            <input name="active" type="checkbox" defaultChecked />
+                                            <input name="active" type="checkbox" defaultChecked={line.budgetLineActive ?? true} />
                                             Active
                                           </label>
                                           <button type="submit" className="tinyButton">
@@ -254,7 +259,22 @@ export default async function SettingsPage({
                                           </button>
                                         </form>
                                       ) : (
-                                        "-"
+                                        <form action={addBudgetLineAction} className="inlineEditForm">
+                                          <input type="hidden" name="projectId" value={project.id} />
+                                          <select name="accountCodeId" required>
+                                            <option value="">Account code</option>
+                                            {accountCodes.map((accountCode) => (
+                                              <option key={accountCode.id} value={accountCode.id}>
+                                                {accountCode.code}
+                                              </option>
+                                            ))}
+                                          </select>
+                                          <input name="allocatedAmount" type="number" step="0.01" min="0" defaultValue={0} />
+                                          <input name="sortOrder" type="number" step="1" min="0" defaultValue={0} />
+                                          <button type="submit" className="tinyButton">
+                                            Add Line
+                                          </button>
+                                        </form>
                                       )}
                                     </td>
                                   </tr>

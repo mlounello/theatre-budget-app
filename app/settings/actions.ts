@@ -69,6 +69,14 @@ function parseCsv(text: string): Array<Record<string, string>> {
   });
 }
 
+function settingsSuccess(message: string): never {
+  redirect(`/settings?ok=${encodeURIComponent(message)}`);
+}
+
+function settingsError(message: string): never {
+  redirect(`/settings?error=${encodeURIComponent(message)}`);
+}
+
 async function createProjectViaRpc(
   supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
   params: {
@@ -89,7 +97,6 @@ async function createProjectViaRpc(
 
   if (!error && data) return data as string;
 
-  // Backward compatibility if 5-arg function migration has not run yet.
   const fallback = await supabase.rpc("create_project_with_admin", {
     p_name: params.name,
     p_season: params.season,
@@ -109,171 +116,258 @@ async function createProjectViaRpc(
 }
 
 export async function createProjectAction(formData: FormData): Promise<void> {
-  const supabase = await getSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
 
-  if (!user) {
-    throw new Error("You must be signed in.");
+    if (!user) settingsError("You must be signed in.");
+
+    const projectName = String(formData.get("projectName") ?? "").trim();
+    const season = String(formData.get("season") ?? "").trim();
+    const useTemplate = formData.get("useTemplate") === "on";
+    const templateName = String(formData.get("templateName") ?? "Play/Musical Default").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
+
+    if (!projectName) settingsError("Project name is required.");
+
+    const newProjectId = await createProjectViaRpc(supabase, {
+      name: projectName,
+      season: season || null,
+      useTemplate,
+      templateName: templateName || "Play/Musical Default",
+      organizationId: organizationId || null
+    });
+
+    if (!newProjectId) settingsError("Project creation returned no project id.");
+
+    revalidatePath("/");
+    revalidatePath("/overview");
+    revalidatePath("/settings");
+    revalidatePath("/requests");
+    settingsSuccess("Project added.");
+  } catch (error) {
+    settingsError(error instanceof Error ? error.message : "Project creation failed.");
   }
-
-  const projectName = String(formData.get("projectName") ?? "").trim();
-  const season = String(formData.get("season") ?? "").trim();
-  const useTemplate = formData.get("useTemplate") === "on";
-  const templateName = String(formData.get("templateName") ?? "Play/Musical Default").trim();
-  const organizationId = String(formData.get("organizationId") ?? "").trim();
-
-  if (!projectName) {
-    throw new Error("Project name is required.");
-  }
-
-  const newProjectId = await createProjectViaRpc(supabase, {
-    name: projectName,
-    season: season || null,
-    useTemplate,
-    templateName: templateName || "Play/Musical Default",
-    organizationId: organizationId || null
-  });
-  if (!newProjectId) {
-    throw new Error("Project creation returned no project id.");
-  }
-
-  revalidatePath("/");
-  revalidatePath("/overview");
-  revalidatePath("/settings");
-  revalidatePath("/requests");
 }
 
 export async function createFiscalYearAction(formData: FormData): Promise<void> {
-  const supabase = await getSupabaseServerClient();
-  const name = String(formData.get("name") ?? "").trim();
-  const startDate = String(formData.get("startDate") ?? "").trim();
-  const endDate = String(formData.get("endDate") ?? "").trim();
+  try {
+    const supabase = await getSupabaseServerClient();
+    const name = String(formData.get("name") ?? "").trim();
+    const startDate = String(formData.get("startDate") ?? "").trim();
+    const endDate = String(formData.get("endDate") ?? "").trim();
 
-  if (!name) throw new Error("Fiscal year name is required.");
+    if (!name) settingsError("Fiscal year name is required.");
 
-  const { error } = await supabase.from("fiscal_years").insert({
-    name,
-    start_date: startDate || null,
-    end_date: endDate || null
-  });
-  if (error) throw new Error(error.message);
-  revalidatePath("/settings");
-  revalidatePath("/overview");
+    const { error } = await supabase.from("fiscal_years").insert({
+      name,
+      start_date: startDate || null,
+      end_date: endDate || null
+    });
+    if (error) settingsError(error.message);
+
+    revalidatePath("/settings");
+    revalidatePath("/overview");
+    settingsSuccess("Fiscal year added.");
+  } catch (error) {
+    settingsError(error instanceof Error ? error.message : "Could not add fiscal year.");
+  }
 }
 
 export async function createOrganizationAction(formData: FormData): Promise<void> {
-  const supabase = await getSupabaseServerClient();
-  const name = String(formData.get("name") ?? "").trim();
-  const orgCode = String(formData.get("orgCode") ?? "").trim();
-  const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+  try {
+    const supabase = await getSupabaseServerClient();
+    const name = String(formData.get("name") ?? "").trim();
+    const orgCode = String(formData.get("orgCode") ?? "").trim();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
 
-  if (!name || !orgCode) throw new Error("Organization name and org code are required.");
+    if (!name || !orgCode) settingsError("Organization name and org code are required.");
 
-  const { error } = await supabase.from("organizations").insert({
-    name,
-    org_code: orgCode,
-    fiscal_year_id: fiscalYearId || null
-  });
-  if (error) throw new Error(error.message);
-  revalidatePath("/settings");
-  revalidatePath("/overview");
+    const { error } = await supabase.from("organizations").insert({
+      name,
+      org_code: orgCode,
+      fiscal_year_id: fiscalYearId || null
+    });
+    if (error) settingsError(error.message);
+
+    revalidatePath("/settings");
+    revalidatePath("/overview");
+    settingsSuccess("Organization added.");
+  } catch (error) {
+    settingsError(error instanceof Error ? error.message : "Could not add organization.");
+  }
 }
 
 export async function createAccountCodeAction(formData: FormData): Promise<void> {
-  const supabase = await getSupabaseServerClient();
-  const code = String(formData.get("code") ?? "").trim();
-  const category = String(formData.get("category") ?? "").trim();
-  const name = String(formData.get("name") ?? "").trim();
-  const active = formData.get("active") === "on";
+  try {
+    const supabase = await getSupabaseServerClient();
+    const code = String(formData.get("code") ?? "").trim();
+    const category = String(formData.get("category") ?? "").trim();
+    const name = String(formData.get("name") ?? "").trim();
+    const active = formData.get("active") === "on";
 
-  if (!code || !category || !name) throw new Error("Code, category, and name are required.");
+    if (!code || !category || !name) settingsError("Code, category, and name are required.");
 
-  const { error } = await supabase.from("account_codes").upsert(
-    {
-      code,
-      category,
-      name,
-      active
-    },
-    { onConflict: "code" }
-  );
-  if (error) throw new Error(error.message);
-  revalidatePath("/settings");
+    const { error } = await supabase.from("account_codes").upsert(
+      {
+        code,
+        category,
+        name,
+        active
+      },
+      { onConflict: "code" }
+    );
+    if (error) settingsError(error.message);
+
+    revalidatePath("/settings");
+    settingsSuccess("Account code saved.");
+  } catch (error) {
+    settingsError(error instanceof Error ? error.message : "Could not save account code.");
+  }
 }
 
 export async function updateFiscalYearAction(formData: FormData): Promise<void> {
-  const supabase = await getSupabaseServerClient();
-  const id = String(formData.get("id") ?? "").trim();
-  const name = String(formData.get("name") ?? "").trim();
-  const startDate = String(formData.get("startDate") ?? "").trim();
-  const endDate = String(formData.get("endDate") ?? "").trim();
+  try {
+    const supabase = await getSupabaseServerClient();
+    const id = String(formData.get("id") ?? "").trim();
+    const name = String(formData.get("name") ?? "").trim();
+    const startDate = String(formData.get("startDate") ?? "").trim();
+    const endDate = String(formData.get("endDate") ?? "").trim();
 
-  if (!id || !name) throw new Error("Fiscal year id and name are required.");
+    if (!id || !name) settingsError("Fiscal year id and name are required.");
 
-  const { error } = await supabase
-    .from("fiscal_years")
-    .update({ name, start_date: startDate || null, end_date: endDate || null })
-    .eq("id", id);
-  if (error) throw new Error(error.message);
-  revalidatePath("/settings");
-  revalidatePath("/overview");
+    const { error } = await supabase
+      .from("fiscal_years")
+      .update({ name, start_date: startDate || null, end_date: endDate || null })
+      .eq("id", id);
+    if (error) settingsError(error.message);
+
+    revalidatePath("/settings");
+    revalidatePath("/overview");
+    settingsSuccess("Fiscal year updated.");
+  } catch (error) {
+    settingsError(error instanceof Error ? error.message : "Could not update fiscal year.");
+  }
 }
 
 export async function updateOrganizationAction(formData: FormData): Promise<void> {
-  const supabase = await getSupabaseServerClient();
-  const id = String(formData.get("id") ?? "").trim();
-  const name = String(formData.get("name") ?? "").trim();
-  const orgCode = String(formData.get("orgCode") ?? "").trim();
-  const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+  try {
+    const supabase = await getSupabaseServerClient();
+    const id = String(formData.get("id") ?? "").trim();
+    const name = String(formData.get("name") ?? "").trim();
+    const orgCode = String(formData.get("orgCode") ?? "").trim();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
 
-  if (!id || !name || !orgCode) throw new Error("Organization id, name, and org code are required.");
+    if (!id || !name || !orgCode) settingsError("Organization id, name, and org code are required.");
 
-  const { error } = await supabase
-    .from("organizations")
-    .update({ name, org_code: orgCode, fiscal_year_id: fiscalYearId || null })
-    .eq("id", id);
-  if (error) throw new Error(error.message);
-  revalidatePath("/settings");
-  revalidatePath("/overview");
+    const { error } = await supabase
+      .from("organizations")
+      .update({ name, org_code: orgCode, fiscal_year_id: fiscalYearId || null })
+      .eq("id", id);
+    if (error) settingsError(error.message);
+
+    revalidatePath("/settings");
+    revalidatePath("/overview");
+    settingsSuccess("Organization updated.");
+  } catch (error) {
+    settingsError(error instanceof Error ? error.message : "Could not update organization.");
+  }
 }
 
 export async function updateProjectAction(formData: FormData): Promise<void> {
-  const supabase = await getSupabaseServerClient();
-  const id = String(formData.get("id") ?? "").trim();
-  const name = String(formData.get("name") ?? "").trim();
-  const season = String(formData.get("season") ?? "").trim();
-  const organizationId = String(formData.get("organizationId") ?? "").trim();
+  try {
+    const supabase = await getSupabaseServerClient();
+    const id = String(formData.get("id") ?? "").trim();
+    const name = String(formData.get("name") ?? "").trim();
+    const season = String(formData.get("season") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
 
-  if (!id || !name) throw new Error("Project id and name are required.");
+    if (!id || !name) settingsError("Project id and name are required.");
 
-  const { error } = await supabase
-    .from("projects")
-    .update({ name, season: season || null, organization_id: organizationId || null })
-    .eq("id", id);
-  if (error) throw new Error(error.message);
-  revalidatePath("/settings");
-  revalidatePath("/");
-  revalidatePath("/overview");
+    const { error } = await supabase
+      .from("projects")
+      .update({ name, season: season || null, organization_id: organizationId || null })
+      .eq("id", id);
+    if (error) settingsError(error.message);
+
+    revalidatePath("/settings");
+    revalidatePath("/");
+    revalidatePath("/overview");
+    settingsSuccess("Project updated.");
+  } catch (error) {
+    settingsError(error instanceof Error ? error.message : "Could not update project.");
+  }
 }
 
 export async function updateBudgetLineAction(formData: FormData): Promise<void> {
-  const supabase = await getSupabaseServerClient();
-  const id = String(formData.get("id") ?? "").trim();
-  const allocatedAmount = parseMoney(formData.get("allocatedAmount"));
-  const sortOrder = parseSortOrder(formData.get("sortOrder"));
-  const active = formData.get("active") === "on";
+  try {
+    const supabase = await getSupabaseServerClient();
+    const id = String(formData.get("id") ?? "").trim();
+    const allocatedAmount = parseMoney(formData.get("allocatedAmount"));
+    const sortOrder = parseSortOrder(formData.get("sortOrder"));
+    const active = formData.get("active") === "on";
 
-  if (!id) throw new Error("Budget line id is required.");
+    if (!id) settingsError("Budget line id is required.");
 
-  const { error } = await supabase
-    .from("project_budget_lines")
-    .update({ allocated_amount: allocatedAmount, sort_order: sortOrder, active })
-    .eq("id", id);
-  if (error) throw new Error(error.message);
-  revalidatePath("/settings");
-  revalidatePath("/");
+    const { error } = await supabase
+      .from("project_budget_lines")
+      .update({ allocated_amount: allocatedAmount, sort_order: sortOrder, active })
+      .eq("id", id);
+    if (error) settingsError(error.message);
+
+    revalidatePath("/settings");
+    revalidatePath("/");
+    settingsSuccess("Budget line updated.");
+  } catch (error) {
+    settingsError(error instanceof Error ? error.message : "Could not update budget line.");
+  }
+}
+
+export async function addBudgetLineAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (!user) settingsError("You must be signed in.");
+
+    const projectId = String(formData.get("projectId") ?? "").trim();
+    const accountCodeId = String(formData.get("accountCodeId") ?? "").trim();
+    const allocatedAmount = parseMoney(formData.get("allocatedAmount"));
+    const sortOrder = parseSortOrder(formData.get("sortOrder"));
+
+    if (!projectId || !accountCodeId) settingsError("Project and account code are required.");
+
+    const { data: accountCode, error: accountCodeError } = await supabase
+      .from("account_codes")
+      .select("id, code, category, name")
+      .eq("id", accountCodeId)
+      .single();
+
+    if (accountCodeError || !accountCode) settingsError("Invalid account code selection.");
+
+    const { error } = await supabase.from("project_budget_lines").insert({
+      project_id: projectId,
+      budget_code: accountCode.code,
+      category: accountCode.category,
+      line_name: accountCode.name,
+      account_code_id: accountCode.id,
+      allocated_amount: allocatedAmount,
+      sort_order: sortOrder
+    });
+
+    if (error) settingsError(error.message);
+
+    revalidatePath("/");
+    revalidatePath("/settings");
+    revalidatePath(`/projects/${projectId}`);
+    settingsSuccess("Budget line added.");
+  } catch (error) {
+    settingsError(error instanceof Error ? error.message : "Could not add budget line.");
+  }
 }
 
 export async function importHierarchyCsvAction(formData: FormData): Promise<void> {
@@ -440,52 +534,4 @@ export async function importHierarchyCsvAction(formData: FormData): Promise<void
     const message = error instanceof Error ? error.message : "CSV import failed.";
     redirect(`/settings?import=error&msg=${encodeURIComponent(message)}`);
   }
-}
-
-export async function addBudgetLineAction(formData: FormData): Promise<void> {
-  const supabase = await getSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error("You must be signed in.");
-  }
-
-  const projectId = String(formData.get("projectId") ?? "").trim();
-  const accountCodeId = String(formData.get("accountCodeId") ?? "").trim();
-  const allocatedAmount = parseMoney(formData.get("allocatedAmount"));
-  const sortOrder = parseSortOrder(formData.get("sortOrder"));
-
-  if (!projectId || !accountCodeId) {
-    throw new Error("Project and account code are required.");
-  }
-
-  const { data: accountCode, error: accountCodeError } = await supabase
-    .from("account_codes")
-    .select("id, code, category, name")
-    .eq("id", accountCodeId)
-    .single();
-
-  if (accountCodeError || !accountCode) {
-    throw new Error("Invalid account code selection.");
-  }
-
-  const { error } = await supabase.from("project_budget_lines").insert({
-    project_id: projectId,
-    budget_code: accountCode.code,
-    category: accountCode.category,
-    line_name: accountCode.name,
-    account_code_id: accountCode.id,
-    allocated_amount: allocatedAmount,
-    sort_order: sortOrder
-  });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  revalidatePath("/");
-  revalidatePath("/settings");
-  revalidatePath(`/projects/${projectId}`);
 }
