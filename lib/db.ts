@@ -62,6 +62,12 @@ export type ProjectBudgetLineOption = {
   label: string;
 };
 
+export type SettingsProject = {
+  id: string;
+  name: string;
+  season: string | null;
+};
+
 export async function getDashboardProjects(): Promise<DashboardProject[]> {
   const supabase = await getSupabaseServerClient();
 
@@ -242,4 +248,28 @@ export async function getCcPendingRows(): Promise<
     creditCardName: (row.credit_card_name as string | null) ?? null,
     pendingCcTotal: asNumber(row.pending_cc_total as string | number | null)
   }));
+}
+
+export async function getSettingsProjects(): Promise<SettingsProject[]> {
+  const supabase = await getSupabaseServerClient();
+
+  const { data, error } = await supabase
+    .from("projects")
+    .select("id, name, season")
+    .order("name", { ascending: true });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    season: (row.season as string | null) ?? null
+  }));
+}
+
+export async function getTemplateNames(): Promise<string[]> {
+  const supabase = await getSupabaseServerClient();
+  const { data, error } = await supabase.from("budget_templates").select("name").order("name", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row) => row.name as string);
 }

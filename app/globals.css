@@ -383,6 +383,12 @@ th {
   font-size: 0.86rem;
 }
 
+.checkboxLabel {
+  display: flex !important;
+  align-items: center;
+  gap: 0.45rem !important;
+}
+
 .requestForm input,
 .requestForm select,
 .inlineStatusForm input,

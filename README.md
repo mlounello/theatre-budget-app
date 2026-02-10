@@ -37,6 +37,7 @@ npm run dev
 Run migrations in this order:
 1. `/Users/mikelounello/theatre-budget-app/supabase/migrations/202602101130_init_mvp.sql`
 2. `/Users/mikelounello/theatre-budget-app/supabase/migrations/202602101300_auth_rls.sql`
+3. `/Users/mikelounello/theatre-budget-app/supabase/migrations/202602101345_setup_functions.sql`
 
 ## Google login setup (Supabase)
 In Supabase Dashboard:
@@ -50,34 +51,13 @@ In Supabase Dashboard:
    - Production site URL: `https://theatrebudgetapp.mlounello.com`
    - Additional redirect URL: `https://theatrebudgetapp.mlounello.com/auth/callback`
 
-## Minimal bootstrap data
-After first Google sign-in, run SQL in Supabase SQL editor to bootstrap one project and membership:
+## Bootstrap in app (no SQL required)
+After first Google sign-in:
+1. Open `/settings`.
+2. Use **Create Project** and keep **Apply selected template lines** checked for a fast start.
+3. Optionally use **Add Budget Line** for custom rows.
 
-```sql
--- 1) Find your user id
-select id, email from auth.users order by created_at desc;
-
--- 2) Create project
-insert into public.projects (name, season)
-values ('Rumors', 'Fall 2025')
-returning id;
-
--- 3) Add yourself as admin for that project
-insert into public.project_memberships (project_id, user_id, role)
-values ('<project-id>', '<your-auth-user-id>', 'admin');
-
--- 4) Add budget lines
-insert into public.project_budget_lines (project_id, budget_code, category, line_name, allocated_amount, sort_order)
-values
-  ('<project-id>', '11300', 'Scenic', 'Scenic', 2500, 1),
-  ('<project-id>', '11305', 'Costumes', 'Costumes', 1500, 2),
-  ('<project-id>', '11301', 'Lighting', 'Lighting', 1000, 3),
-  ('<project-id>', '11302', 'Sound', 'Sound', 100, 4),
-  ('<project-id>', '11304', 'Props', 'Props', 300, 5),
-  ('<project-id>', '11308', 'Miscellaneous', 'Miscellaneous', 700, 6);
-```
-
-After this, dashboard, project board, and requests will load real database data.
+This automatically assigns you as project `admin` for newly created projects.
 
 ## Current implemented slice
 - Google OAuth login + callback + signout
