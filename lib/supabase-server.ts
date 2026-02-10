@@ -3,6 +3,11 @@ import { createServerClient } from "@supabase/ssr";
 
 export async function getSupabaseServerClient() {
   const cookieStore = await cookies();
+  type CookieToSet = {
+    name: string;
+    value: string;
+    options?: Parameters<typeof cookieStore.set>[2];
+  };
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
@@ -15,7 +20,7 @@ export async function getSupabaseServerClient() {
       getAll() {
         return cookieStore.getAll();
       },
-      setAll(items) {
+      setAll(items: CookieToSet[]) {
         items.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
       }
     }
