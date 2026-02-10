@@ -78,11 +78,18 @@ function settingsError(message: string): never {
 }
 
 function rethrowIfRedirect(error: unknown): void {
+  const message =
+    typeof error === "object" && error !== null && "message" in error
+      ? String((error as { message?: unknown }).message)
+      : "";
+  const digest =
+    typeof error === "object" && error !== null && "digest" in error
+      ? String((error as { digest?: unknown }).digest)
+      : "";
+
   if (
-    typeof error === "object" &&
-    error !== null &&
-    "digest" in error &&
-    String((error as { digest?: unknown }).digest).includes("NEXT_REDIRECT")
+    message.includes("NEXT_REDIRECT") ||
+    digest.includes("NEXT_REDIRECT")
   ) {
     throw error;
   }
