@@ -1,7 +1,9 @@
 import {
   addBudgetLineAction,
   createAccountCodeAction,
+  deleteAccountCodeAction,
   importHierarchyCsvAction,
+  updateAccountCodeAction,
   updateBudgetLineAction,
   updateFiscalYearAction,
   updateOrganizationAction,
@@ -14,6 +16,7 @@ import { OrganizationReorder } from "@/app/settings/organization-reorder";
 import { ProjectReorder } from "@/app/settings/project-reorder";
 import {
   getAccountCodeOptions,
+  getAccountCodesAdmin,
   getFiscalYearOptions,
   getHierarchyRows,
   getOrganizationOptions,
@@ -57,7 +60,7 @@ export default async function SettingsPage({
     msg?: string;
     ok?: string;
     error?: string;
-    editType?: "fy" | "org" | "project" | "line";
+    editType?: "fy" | "org" | "project" | "line" | "account";
     editId?: string;
   }>;
 }) {
@@ -72,6 +75,7 @@ export default async function SettingsPage({
   const projects = await getSettingsProjects();
   const templates = await getTemplateNames();
   const accountCodes = await getAccountCodeOptions();
+  const allAccountCodes = await getAccountCodesAdmin();
   const fiscalYears = await getFiscalYearOptions();
   const organizations = await getOrganizationOptions();
   const hierarchyRows = await getHierarchyRows();
@@ -159,6 +163,8 @@ export default async function SettingsPage({
   const editingOrganization = editType === "org" && editId ? organizationLookup.get(editId) : null;
   const editingProject = editType === "project" && editId ? projectLookup.get(editId) : null;
   const editingLine = editType === "line" && editId ? budgetLineLookup.get(editId) : null;
+  const accountCodeLookup = new Map(allAccountCodes.map((row) => [row.id, row] as const));
+  const editingAccountCode = editType === "account" && editId ? accountCodeLookup.get(editId) : null;
 
   return (
     <section>
@@ -351,12 +357,48 @@ export default async function SettingsPage({
 
         <article className="panel">
           <h2>Current Account Codes</h2>
-          <ul>
-            {accountCodes.map((ac) => (
-              <li key={ac.id}>{ac.label}</li>
-            ))}
-            {accountCodes.length === 0 ? <li>(none)</li> : null}
-          </ul>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Code</th>
+                  <th>Category</th>
+                  <th>Name</th>
+                  <th>Active</th>
+                  <th>Edit</th>
+                  <th>Trash</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allAccountCodes.map((ac) => (
+                  <tr key={ac.id}>
+                    <td>{ac.code}</td>
+                    <td>{ac.category}</td>
+                    <td>{ac.name}</td>
+                    <td>{ac.active ? "Yes" : "No"}</td>
+                    <td>
+                      <a className="tinyButton" href={`/settings?editType=account&editId=${ac.id}`}>
+                        Edit
+                      </a>
+                    </td>
+                    <td>
+                      <form action={deleteAccountCodeAction}>
+                        <input type="hidden" name="id" value={ac.id} />
+                        <button type="submit" className="tinyButton">
+                          Trash
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+                {allAccountCodes.length === 0 ? (
+                  <tr>
+                    <td colSpan={6}>(none)</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
           <form action={createAccountCodeAction} className="requestForm">
             <label>
               Code
@@ -547,6 +589,44 @@ export default async function SettingsPage({
                 </a>
                 <button type="submit" className="buttonLink buttonPrimary">
                   Save Line
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {editingAccountCode ? (
+        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit account code">
+          <div className="modalPanel">
+            <h2>Edit Account Code</h2>
+            <form action={updateAccountCodeAction} className="requestForm">
+              <input type="hidden" name="id" value={editingAccountCode.id} />
+              <label>
+                Code
+                <input name="code" defaultValue={editingAccountCode.code} required />
+              </label>
+              <label>
+                Category
+                <input name="category" defaultValue={editingAccountCode.category} required />
+              </label>
+              <label>
+                Name
+                <input name="name" defaultValue={editingAccountCode.name} required />
+              </label>
+              <label>
+                Active
+                <select name="active" defaultValue={editingAccountCode.active ? "true" : "false"}>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              </label>
+              <div className="modalActions">
+                <a className="tinyButton" href="/settings">
+                  Cancel
+                </a>
+                <button type="submit" className="buttonLink buttonPrimary">
+                  Save Account Code
                 </button>
               </div>
             </form>

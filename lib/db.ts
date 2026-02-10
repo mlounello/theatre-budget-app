@@ -79,6 +79,14 @@ export type AccountCodeOption = {
   label: string;
 };
 
+export type AccountCodeAdminRow = {
+  id: string;
+  code: string;
+  category: string;
+  name: string;
+  active: boolean;
+};
+
 export type FiscalYearOption = {
   id: string;
   name: string;
@@ -450,6 +458,24 @@ export async function getAccountCodeOptions(): Promise<AccountCodeOption[]> {
     category: row.category as string,
     name: row.name as string,
     label: `${row.code as string} | ${row.category as string} | ${row.name as string}`
+  }));
+}
+
+export async function getAccountCodesAdmin(): Promise<AccountCodeAdminRow[]> {
+  const supabase = await getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("account_codes")
+    .select("id, code, category, name, active")
+    .order("code", { ascending: true });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    code: row.code as string,
+    category: row.category as string,
+    name: row.name as string,
+    active: Boolean(row.active as boolean | null)
   }));
 }
 

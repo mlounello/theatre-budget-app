@@ -267,6 +267,74 @@ export async function createAccountCodeAction(formData: FormData): Promise<void>
   }
 }
 
+export async function updateAccountCodeAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const id = String(formData.get("id") ?? "").trim();
+    const code = String(formData.get("code") ?? "").trim();
+    const category = String(formData.get("category") ?? "").trim();
+    const name = String(formData.get("name") ?? "").trim();
+    const active = String(formData.get("active") ?? "true").trim() === "true";
+
+    if (!id || !code || !category || !name) throw new Error("Account code id, code, category, and name are required.");
+
+    const { error } = await supabase
+      .from("account_codes")
+      .update({
+        code,
+        category,
+        name,
+        active
+      })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/settings");
+    revalidatePath("/requests");
+    settingsSuccess("Account code updated.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not update account code."));
+  }
+}
+
+export async function deleteAccountCodeAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const id = String(formData.get("id") ?? "").trim();
+    if (!id) throw new Error("Account code id is required.");
+
+    const [{ count: budgetLineCount, error: budgetLineCountError }, { count: allocationCount, error: allocationCountError }] =
+      await Promise.all([
+        supabase.from("project_budget_lines").select("id", { head: true, count: "exact" }).eq("account_code_id", id),
+        supabase.from("purchase_allocations").select("id", { head: true, count: "exact" }).eq("account_code_id", id)
+      ]);
+
+    if (budgetLineCountError) throw new Error(budgetLineCountError.message);
+    if (allocationCountError) throw new Error(allocationCountError.message);
+
+    const hasReferences = (budgetLineCount ?? 0) > 0 || (allocationCount ?? 0) > 0;
+
+    if (hasReferences) {
+      const { error: deactivateError } = await supabase.from("account_codes").update({ active: false }).eq("id", id);
+      if (deactivateError) throw new Error(deactivateError.message);
+      revalidatePath("/settings");
+      revalidatePath("/requests");
+      settingsSuccess("Account code is in use and was deactivated.");
+    }
+
+    const { error } = await supabase.from("account_codes").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/settings");
+    revalidatePath("/requests");
+    settingsSuccess("Account code deleted.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not delete account code."));
+  }
+}
+
 export async function updateFiscalYearAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();
