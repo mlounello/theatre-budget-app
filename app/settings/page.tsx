@@ -355,7 +355,7 @@ export default async function SettingsPage({
           ))}
         </article>
 
-        <article className="panel">
+        <article className="panel panelFull">
           <h2>Current Account Codes</h2>
           <div className="tableWrap">
             <table>
