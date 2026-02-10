@@ -60,6 +60,13 @@ export type ProjectBudgetLineOption = {
   id: string;
   projectId: string;
   accountCodeId: string | null;
+  projectName: string;
+  season: string | null;
+  organizationId: string | null;
+  organizationName: string | null;
+  orgCode: string | null;
+  fiscalYearId: string | null;
+  fiscalYearName: string | null;
   label: string;
 };
 
@@ -327,6 +334,14 @@ export async function getRequestsData(): Promise<{
     throw optionsError;
   }
 
+  const { data: projectsData, error: projectsError } = await supabase
+    .from("projects")
+    .select("id, name, season, organization_id, organizations(name, org_code, fiscal_year_id, fiscal_years(name))");
+
+  if (projectsError) {
+    throw projectsError;
+  }
+
   const { data: accountCodeData, error: accountCodeError } = await supabase
     .from("account_codes")
     .select("id, code, category, name")
@@ -375,12 +390,45 @@ export async function getRequestsData(): Promise<{
     };
   });
 
-  const budgetLineOptions: ProjectBudgetLineOption[] = (optionsData ?? []).map((row) => ({
-    id: row.id as string,
-    projectId: row.project_id as string,
-    accountCodeId: (row.account_code_id as string | null) ?? null,
-    label: `${row.category as string} | ${row.budget_code as string} | ${row.line_name as string}`
-  }));
+  const projectLookup = new Map(
+    (projectsData ?? []).map((row) => {
+      const organization = row.organizations as
+        | { name?: string; org_code?: string; fiscal_year_id?: string | null; fiscal_years?: { name?: string } | null }
+        | Array<{ name?: string; org_code?: string; fiscal_year_id?: string | null; fiscal_years?: { name?: string } | null }>
+        | null;
+      const org = Array.isArray(organization) ? organization[0] : organization;
+      const fiscalYear = org?.fiscal_years;
+      return [
+        row.id as string,
+        {
+          projectName: row.name as string,
+          season: (row.season as string | null) ?? null,
+          organizationId: (row.organization_id as string | null) ?? null,
+          organizationName: org?.name ?? null,
+          orgCode: org?.org_code ?? null,
+          fiscalYearId: (org?.fiscal_year_id as string | null) ?? null,
+          fiscalYearName: fiscalYear?.name ?? null
+        }
+      ] as const;
+    })
+  );
+
+  const budgetLineOptions: ProjectBudgetLineOption[] = (optionsData ?? []).map((row) => {
+    const projectMeta = projectLookup.get(row.project_id as string);
+    return {
+      id: row.id as string,
+      projectId: row.project_id as string,
+      accountCodeId: (row.account_code_id as string | null) ?? null,
+      projectName: projectMeta?.projectName ?? "Unknown Project",
+      season: projectMeta?.season ?? null,
+      organizationId: projectMeta?.organizationId ?? null,
+      organizationName: projectMeta?.organizationName ?? null,
+      orgCode: projectMeta?.orgCode ?? null,
+      fiscalYearId: projectMeta?.fiscalYearId ?? null,
+      fiscalYearName: projectMeta?.fiscalYearName ?? null,
+      label: `${row.budget_code as string} | ${row.category as string} | ${row.line_name as string}`
+    };
+  });
 
   const accountCodeOptions: AccountCodeOption[] = (
     (accountCodeData as Array<{ id?: unknown; code?: unknown; category?: unknown; name?: unknown }> | null) ?? []

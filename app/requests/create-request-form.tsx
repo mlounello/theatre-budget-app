@@ -22,8 +22,15 @@ function uid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
+const NONE_FISCAL_YEAR = "__none_fiscal_year__";
+const NONE_ORGANIZATION = "__none_organization__";
+
 export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canManageSplits }: Props) {
   const [useSplits, setUseSplits] = useState(false);
+  const [selectedFiscalYear, setSelectedFiscalYear] = useState("");
+  const [selectedOrganization, setSelectedOrganization] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [selectedBudgetLineId, setSelectedBudgetLineId] = useState("");
   const [rows, setRows] = useState<AllocationRow[]>([
     {
       id: uid(),
@@ -49,17 +56,130 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
     [rows]
   );
 
-  const primaryBudgetLineId = rows[0]?.reportingBudgetLineId ?? "";
-
   const splitMode = canManageSplits && useSplits;
+
+  const fiscalYearOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const option of budgetLineOptions) {
+      const key = option.fiscalYearId ?? NONE_FISCAL_YEAR;
+      const label = option.fiscalYearName ?? "No Fiscal Year";
+      if (!map.has(key)) map.set(key, label);
+    }
+    return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
+  }, [budgetLineOptions]);
+
+  const organizationOptions = useMemo(() => {
+    const map = new Map<string, { label: string; fiscalYearKey: string }>();
+    for (const option of budgetLineOptions) {
+      const orgKey = option.organizationId ?? NONE_ORGANIZATION;
+      const fiscalKey = option.fiscalYearId ?? NONE_FISCAL_YEAR;
+      const label = option.organizationId
+        ? `${option.orgCode ?? ""}${option.organizationName ? ` | ${option.organizationName}` : ""}`
+        : "No Organization";
+      if (!map.has(orgKey)) map.set(orgKey, { label, fiscalYearKey: fiscalKey });
+    }
+    return Array.from(map.entries())
+      .filter(([, value]) => !selectedFiscalYear || value.fiscalYearKey === selectedFiscalYear)
+      .map(([value, meta]) => ({ value, label: meta.label }));
+  }, [budgetLineOptions, selectedFiscalYear]);
+
+  const projectOptions = useMemo(() => {
+    const map = new Map<string, { label: string; fiscalYearKey: string; organizationKey: string }>();
+    for (const option of budgetLineOptions) {
+      const orgKey = option.organizationId ?? NONE_ORGANIZATION;
+      const fiscalKey = option.fiscalYearId ?? NONE_FISCAL_YEAR;
+      const label = `${option.projectName}${option.season ? ` (${option.season})` : ""}`;
+      if (!map.has(option.projectId)) map.set(option.projectId, { label, fiscalYearKey: fiscalKey, organizationKey: orgKey });
+    }
+    return Array.from(map.entries())
+      .filter(([, value]) => !selectedFiscalYear || value.fiscalYearKey === selectedFiscalYear)
+      .filter(([, value]) => !selectedOrganization || value.organizationKey === selectedOrganization)
+      .map(([value, meta]) => ({ value, label: meta.label }));
+  }, [budgetLineOptions, selectedFiscalYear, selectedOrganization]);
+
+  const filteredBudgetLineOptions = useMemo(
+    () =>
+      budgetLineOptions.filter((option) => {
+        if (!selectedProjectId) return false;
+        return option.projectId === selectedProjectId;
+      }),
+    [budgetLineOptions, selectedProjectId]
+  );
 
   return (
     <form className="requestForm" action={createRequest}>
       <label>
+        Fiscal Year
+        <select
+          value={selectedFiscalYear}
+          onChange={(event) => {
+            setSelectedFiscalYear(event.target.value);
+            setSelectedOrganization("");
+            setSelectedProjectId("");
+            setSelectedBudgetLineId("");
+            setRows([{ id: uid(), reportingBudgetLineId: "", accountCodeId: "", amount: "", reportingBucket: "direct" }]);
+          }}
+        >
+          <option value="">Select fiscal year</option>
+          {fiscalYearOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label>
+        Organization
+        <select
+          value={selectedOrganization}
+          onChange={(event) => {
+            setSelectedOrganization(event.target.value);
+            setSelectedProjectId("");
+            setSelectedBudgetLineId("");
+            setRows([{ id: uid(), reportingBudgetLineId: "", accountCodeId: "", amount: "", reportingBucket: "direct" }]);
+          }}
+        >
+          <option value="">Select organization</option>
+          {organizationOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label>
+        Project
+        <select
+          value={selectedProjectId}
+          onChange={(event) => {
+            setSelectedProjectId(event.target.value);
+            setSelectedBudgetLineId("");
+            setRows([{ id: uid(), reportingBudgetLineId: "", accountCodeId: "", amount: "", reportingBucket: "direct" }]);
+          }}
+          required
+        >
+          <option value="">Select project</option>
+          {projectOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label>
         Budget Line
-        <select name="budgetLineId" required={!splitMode} disabled={splitMode}>
+        <select
+          name={splitMode ? undefined : "budgetLineId"}
+          value={selectedBudgetLineId}
+          onChange={(event) => setSelectedBudgetLineId(event.target.value)}
+          required
+          disabled={!selectedProjectId}
+        >
           <option value="">Select budget line</option>
-          {budgetLineOptions.map((option) => (
+          {filteredBudgetLineOptions.map((option) => (
             <option key={option.id} value={option.id}>
               {option.label}
             </option>
@@ -76,7 +196,7 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
 
       {splitMode ? (
         <div className="splitAllocations">
-          <input type="hidden" name="budgetLineId" value={primaryBudgetLineId} />
+          <input type="hidden" name="budgetLineId" value={selectedBudgetLineId} />
           <input type="hidden" name="allocationsJson" value={allocationsJson} />
           {rows.map((row, index) => (
             <div key={row.id} className="splitRow">
@@ -91,7 +211,7 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
                 }
               >
                 <option value="">Reporting line</option>
-                {budgetLineOptions.map((option) => (
+                {filteredBudgetLineOptions.map((option) => (
                   <option key={option.id} value={option.id}>
                     {option.label}
                   </option>
