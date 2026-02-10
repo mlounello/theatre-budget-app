@@ -42,6 +42,7 @@ Run migrations in this order:
 5. `/Users/mikelounello/theatre-budget-app/supabase/migrations/202602101500_project_creation_repair.sql`
 6. `/Users/mikelounello/theatre-budget-app/supabase/migrations/202602101530_org_fiscal_hierarchy.sql`
 7. `/Users/mikelounello/theatre-budget-app/supabase/migrations/202602101600_account_codes.sql`
+8. `/Users/mikelounello/theatre-budget-app/supabase/migrations/202602101630_admin_masterdata_and_overview.sql`
 
 ## Google login setup (Supabase)
 In Supabase Dashboard:

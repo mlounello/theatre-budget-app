@@ -76,6 +76,38 @@ export type AccountCodeOption = {
   label: string;
 };
 
+export type FiscalYearOption = {
+  id: string;
+  name: string;
+  startDate: string | null;
+  endDate: string | null;
+};
+
+export type OrganizationOption = {
+  id: string;
+  name: string;
+  orgCode: string;
+  fiscalYearId: string | null;
+  fiscalYearName: string | null;
+  label: string;
+};
+
+export type OrganizationOverviewRow = {
+  organizationId: string;
+  organizationName: string;
+  orgCode: string;
+  fiscalYearName: string | null;
+  allocatedTotal: number;
+  requestedOpenTotal: number;
+  encTotal: number;
+  pendingCcTotal: number;
+  ytdTotal: number;
+  obligatedTotal: number;
+  remainingTrue: number;
+  remainingIfRequestedApproved: number;
+  incomeTotal: number;
+};
+
 export async function getDashboardProjects(): Promise<DashboardProject[]> {
   const supabase = await getSupabaseServerClient();
 
@@ -326,5 +358,68 @@ export async function getAccountCodeOptions(): Promise<AccountCodeOption[]> {
     category: row.category as string,
     name: row.name as string,
     label: `${row.code as string} | ${row.category as string} | ${row.name as string}`
+  }));
+}
+
+export async function getFiscalYearOptions(): Promise<FiscalYearOption[]> {
+  const supabase = await getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("fiscal_years")
+    .select("id, name, start_date, end_date")
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    startDate: (row.start_date as string | null) ?? null,
+    endDate: (row.end_date as string | null) ?? null
+  }));
+}
+
+export async function getOrganizationOptions(): Promise<OrganizationOption[]> {
+  const supabase = await getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("organizations")
+    .select("id, name, org_code, fiscal_year_id, fiscal_years(name)")
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row) => {
+    const fy = row.fiscal_years as { name?: string } | null;
+    const fiscalYearName = fy?.name ?? null;
+    return {
+      id: row.id as string,
+      name: row.name as string,
+      orgCode: row.org_code as string,
+      fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
+      fiscalYearName,
+      label: `${row.org_code as string} | ${row.name as string}${fiscalYearName ? ` (${fiscalYearName})` : ""}`
+    };
+  });
+}
+
+export async function getOrganizationOverviewRows(): Promise<OrganizationOverviewRow[]> {
+  const supabase = await getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("v_organization_totals")
+    .select(
+      "organization_id, organization_name, org_code, fiscal_year_name, allocated_total, requested_open_total, enc_total, pending_cc_total, ytd_total, obligated_total, remaining_true, remaining_if_requested_approved, income_total"
+    )
+    .order("fiscal_year_name", { ascending: true })
+    .order("org_code", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    organizationId: row.organization_id as string,
+    organizationName: row.organization_name as string,
+    orgCode: row.org_code as string,
+    fiscalYearName: (row.fiscal_year_name as string | null) ?? null,
+    allocatedTotal: asNumber(row.allocated_total as string | number | null),
+    requestedOpenTotal: asNumber(row.requested_open_total as string | number | null),
+    encTotal: asNumber(row.enc_total as string | number | null),
+    pendingCcTotal: asNumber(row.pending_cc_total as string | number | null),
+    ytdTotal: asNumber(row.ytd_total as string | number | null),
+    obligatedTotal: asNumber(row.obligated_total as string | number | null),
+    remainingTrue: asNumber(row.remaining_true as string | number | null),
+    remainingIfRequestedApproved: asNumber(row.remaining_if_requested_approved as string | number | null),
+    incomeTotal: asNumber(row.income_total as string | number | null)
   }));
 }

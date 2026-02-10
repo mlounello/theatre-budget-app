@@ -29,6 +29,7 @@ export async function createProjectAction(formData: FormData): Promise<void> {
   const season = String(formData.get("season") ?? "").trim();
   const useTemplate = formData.get("useTemplate") === "on";
   const templateName = String(formData.get("templateName") ?? "Play/Musical Default").trim();
+  const organizationId = String(formData.get("organizationId") ?? "").trim();
 
   if (!projectName) {
     throw new Error("Project name is required.");
@@ -38,7 +39,8 @@ export async function createProjectAction(formData: FormData): Promise<void> {
     p_name: projectName,
     p_season: season || null,
     p_use_template: useTemplate,
-    p_template_name: templateName || "Play/Musical Default"
+    p_template_name: templateName || "Play/Musical Default",
+    p_organization_id: organizationId || null
   });
 
   if (error) {
@@ -49,8 +51,67 @@ export async function createProjectAction(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/");
+  revalidatePath("/overview");
   revalidatePath("/settings");
   revalidatePath("/requests");
+}
+
+export async function createFiscalYearAction(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const name = String(formData.get("name") ?? "").trim();
+  const startDate = String(formData.get("startDate") ?? "").trim();
+  const endDate = String(formData.get("endDate") ?? "").trim();
+
+  if (!name) throw new Error("Fiscal year name is required.");
+
+  const { error } = await supabase.from("fiscal_years").insert({
+    name,
+    start_date: startDate || null,
+    end_date: endDate || null
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
+  revalidatePath("/overview");
+}
+
+export async function createOrganizationAction(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const name = String(formData.get("name") ?? "").trim();
+  const orgCode = String(formData.get("orgCode") ?? "").trim();
+  const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+
+  if (!name || !orgCode) throw new Error("Organization name and org code are required.");
+
+  const { error } = await supabase.from("organizations").insert({
+    name,
+    org_code: orgCode,
+    fiscal_year_id: fiscalYearId || null
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
+  revalidatePath("/overview");
+}
+
+export async function createAccountCodeAction(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const code = String(formData.get("code") ?? "").trim();
+  const category = String(formData.get("category") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  const active = formData.get("active") === "on";
+
+  if (!code || !category || !name) throw new Error("Code, category, and name are required.");
+
+  const { error } = await supabase.from("account_codes").upsert(
+    {
+      code,
+      category,
+      name,
+      active
+    },
+    { onConflict: "code" }
+  );
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
 }
 
 export async function addBudgetLineAction(formData: FormData): Promise<void> {

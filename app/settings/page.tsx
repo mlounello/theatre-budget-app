@@ -1,10 +1,24 @@
-import { addBudgetLineAction, createProjectAction } from "@/app/settings/actions";
-import { getAccountCodeOptions, getSettingsProjects, getTemplateNames } from "@/lib/db";
+import {
+  addBudgetLineAction,
+  createAccountCodeAction,
+  createFiscalYearAction,
+  createOrganizationAction,
+  createProjectAction
+} from "@/app/settings/actions";
+import {
+  getAccountCodeOptions,
+  getFiscalYearOptions,
+  getOrganizationOptions,
+  getSettingsProjects,
+  getTemplateNames
+} from "@/lib/db";
 
 export default async function SettingsPage() {
   const projects = await getSettingsProjects();
   const templates = await getTemplateNames();
   const accountCodes = await getAccountCodeOptions();
+  const fiscalYears = await getFiscalYearOptions();
+  const organizations = await getOrganizationOptions();
 
   return (
     <section>
@@ -14,6 +28,55 @@ export default async function SettingsPage() {
       </header>
 
       <div className="panelGrid">
+        <article className="panel">
+          <h2>Create Fiscal Year</h2>
+          <form className="requestForm" action={createFiscalYearAction}>
+            <label>
+              Name
+              <input name="name" required placeholder="Ex: FY 2025-2026" />
+            </label>
+            <label>
+              Start Date
+              <input type="date" name="startDate" />
+            </label>
+            <label>
+              End Date
+              <input type="date" name="endDate" />
+            </label>
+            <button type="submit" className="buttonLink buttonPrimary">
+              Add Fiscal Year
+            </button>
+          </form>
+        </article>
+
+        <article className="panel">
+          <h2>Create Organization</h2>
+          <form className="requestForm" action={createOrganizationAction}>
+            <label>
+              Organization Name
+              <input name="name" required placeholder="Ex: Theatre Department" />
+            </label>
+            <label>
+              Org Code
+              <input name="orgCode" required placeholder="Ex: ORG-113" />
+            </label>
+            <label>
+              Fiscal Year
+              <select name="fiscalYearId">
+                <option value="">No fiscal year</option>
+                {fiscalYears.map((fy) => (
+                  <option key={fy.id} value={fy.id}>
+                    {fy.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="submit" className="buttonLink buttonPrimary">
+              Add Organization
+            </button>
+          </form>
+        </article>
+
         <article className="panel">
           <h2>Create Project</h2>
           <p>Create a project and auto-assign yourself as Admin. Template usage is always optional.</p>
@@ -25,6 +88,17 @@ export default async function SettingsPage() {
             <label>
               Season
               <input name="season" placeholder="Ex: Spring 2026" />
+            </label>
+            <label>
+              Organization
+              <select name="organizationId">
+                <option value="">No organization</option>
+                {organizations.map((org) => (
+                  <option key={org.id} value={org.id}>
+                    {org.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Template
@@ -42,6 +116,32 @@ export default async function SettingsPage() {
             </label>
             <button type="submit" className="buttonLink buttonPrimary">
               Create Project
+            </button>
+          </form>
+        </article>
+
+        <article className="panel">
+          <h2>Add Account Code</h2>
+          <p>Admin-managed master list (university-controlled values).</p>
+          <form className="requestForm" action={createAccountCodeAction}>
+            <label>
+              Code
+              <input name="code" required placeholder="Ex: 11310" />
+            </label>
+            <label>
+              Category
+              <input name="category" required placeholder="Ex: Scenic" />
+            </label>
+            <label>
+              Name
+              <input name="name" required placeholder="Ex: Scenic Supplies" />
+            </label>
+            <label className="checkboxLabel">
+              <input name="active" type="checkbox" defaultChecked />
+              Active
+            </label>
+            <button type="submit" className="buttonLink buttonPrimary">
+              Save Account Code
             </button>
           </form>
         </article>

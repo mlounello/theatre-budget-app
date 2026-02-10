@@ -4,6 +4,7 @@ import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 const links = [
   { href: "/", label: "Dashboard" },
+  { href: "/overview", label: "Overview" },
   { href: "/requests", label: "Requests" },
   { href: "/cc", label: "CC" },
   { href: "/settings", label: "Settings" },
