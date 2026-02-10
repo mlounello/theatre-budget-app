@@ -484,6 +484,40 @@ th {
   cursor: pointer;
 }
 
+.reorderBlock {
+  margin: 0.55rem 0 0.7rem;
+}
+
+.reorderHint {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.reorderList {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.reorderItem {
+  border: 1px solid #d7ddd7;
+  border-radius: 8px;
+  padding: 0.35rem 0.55rem;
+  background: #ffffff;
+  cursor: grab;
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.86rem;
+}
+
+.dragHandle {
+  display: inline-block;
+  margin-right: 0.45rem;
+  color: var(--text-muted);
+}
+
 @media (max-width: 720px) {
   .topNavInner {
     flex-direction: column;

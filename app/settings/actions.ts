@@ -10,10 +10,10 @@ function parseMoney(value: FormDataEntryValue | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function parseSortOrder(value: FormDataEntryValue | null): number {
-  if (typeof value !== "string" || value.trim() === "") return 0;
+function parseOptionalSortOrder(value: FormDataEntryValue | null): number | undefined {
+  if (typeof value !== "string" || value.trim() === "") return undefined;
   const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : 0;
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function parseCsv(text: string): Array<Record<string, string>> {
@@ -265,20 +265,24 @@ export async function updateBudgetLineAction(formData: FormData): Promise<void> 
   const id = String(formData.get("id") ?? "").trim();
   const accountCodeId = String(formData.get("accountCodeId") ?? "").trim();
   const allocatedAmount = parseMoney(formData.get("allocatedAmount"));
-  const sortOrder = parseSortOrder(formData.get("sortOrder"));
+  const sortOrder = parseOptionalSortOrder(formData.get("sortOrder"));
   const active = formData.get("active") === "on";
 
   if (!id) throw new Error("Budget line id is required.");
 
   let nextValues: {
     allocated_amount: number;
-    sort_order: number;
+    sort_order?: number;
     active: boolean;
     account_code_id?: string;
     budget_code?: string;
     category?: string;
     line_name?: string;
-  } = { allocated_amount: allocatedAmount, sort_order: sortOrder, active };
+  } = { allocated_amount: allocatedAmount, active };
+
+  if (sortOrder !== undefined) {
+    nextValues.sort_order = sortOrder;
+  }
 
   if (accountCodeId) {
     const { data: accountCode, error: accountCodeError } = await supabase
@@ -315,8 +319,6 @@ export async function addBudgetLineAction(formData: FormData): Promise<void> {
   const projectId = String(formData.get("projectId") ?? "").trim();
   const accountCodeId = String(formData.get("accountCodeId") ?? "").trim();
   const allocatedAmount = parseMoney(formData.get("allocatedAmount"));
-  const sortOrder = parseSortOrder(formData.get("sortOrder"));
-
   if (!projectId || !accountCodeId) throw new Error("Project and account code are required.");
 
   const { data: accountCode, error: accountCodeError } = await supabase
@@ -327,22 +329,89 @@ export async function addBudgetLineAction(formData: FormData): Promise<void> {
 
   if (accountCodeError || !accountCode) throw new Error("Invalid account code selection.");
 
-  const { error } = await supabase.from("project_budget_lines").insert({
-    project_id: projectId,
-    budget_code: accountCode.code,
-    category: accountCode.category,
-    line_name: accountCode.name,
-    account_code_id: accountCode.id,
-    allocated_amount: allocatedAmount,
-    sort_order: sortOrder
-  });
+  const { data: existingLine, error: existingLineError } = await supabase
+    .from("project_budget_lines")
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("budget_code", accountCode.code)
+    .eq("category", accountCode.category)
+    .eq("line_name", accountCode.name)
+    .maybeSingle();
 
-  if (error) throw new Error(error.message);
+  if (existingLineError) throw new Error(existingLineError.message);
+
+  if (existingLine?.id) {
+    const { error: updateError } = await supabase
+      .from("project_budget_lines")
+      .update({
+        account_code_id: accountCode.id,
+        allocated_amount: allocatedAmount,
+        active: true
+      })
+      .eq("id", existingLine.id as string);
+    if (updateError) throw new Error(updateError.message);
+  } else {
+    const { data: maxSortRows, error: maxSortError } = await supabase
+      .from("project_budget_lines")
+      .select("sort_order")
+      .eq("project_id", projectId)
+      .order("sort_order", { ascending: false })
+      .limit(1);
+    if (maxSortError) throw new Error(maxSortError.message);
+
+    const nextSort = ((maxSortRows?.[0]?.sort_order as number | null) ?? -1) + 1;
+
+    const { error: insertError } = await supabase.from("project_budget_lines").insert({
+      project_id: projectId,
+      budget_code: accountCode.code,
+      category: accountCode.category,
+      line_name: accountCode.name,
+      account_code_id: accountCode.id,
+      allocated_amount: allocatedAmount,
+      sort_order: nextSort,
+      active: true
+    });
+    if (insertError) throw new Error(insertError.message);
+  }
 
   revalidatePath("/");
   revalidatePath("/settings");
   revalidatePath(`/projects/${projectId}`);
   revalidatePath("/requests");
+}
+
+export async function reorderBudgetLinesAction(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const projectId = String(formData.get("projectId") ?? "").trim();
+  const orderedLineIdsRaw = String(formData.get("orderedLineIds") ?? "").trim();
+
+  if (!projectId || !orderedLineIdsRaw) throw new Error("Project and ordered lines are required.");
+
+  let orderedLineIds: string[] = [];
+  try {
+    const parsed = JSON.parse(orderedLineIdsRaw);
+    if (Array.isArray(parsed)) {
+      orderedLineIds = parsed.map((item) => String(item)).filter(Boolean);
+    }
+  } catch {
+    throw new Error("Invalid line ordering payload.");
+  }
+
+  if (orderedLineIds.length === 0) throw new Error("No lines provided for reorder.");
+
+  for (let idx = 0; idx < orderedLineIds.length; idx += 1) {
+    const lineId = orderedLineIds[idx];
+    const { error } = await supabase
+      .from("project_budget_lines")
+      .update({ sort_order: idx })
+      .eq("id", lineId)
+      .eq("project_id", projectId);
+    if (error) throw new Error(error.message);
+  }
+
+  revalidatePath("/settings");
+  revalidatePath("/");
+  revalidatePath(`/projects/${projectId}`);
 }
 
 function rethrowIfRedirect(error: unknown): void {

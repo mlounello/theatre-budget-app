@@ -8,6 +8,7 @@ import {
   updateProjectAction
 } from "@/app/settings/actions";
 import { AddEntityPanel } from "@/app/settings/add-entity-panel";
+import { BudgetLineReorder } from "@/app/settings/budget-line-reorder";
 import {
   getAccountCodeOptions,
   getFiscalYearOptions,
@@ -214,6 +215,17 @@ export default async function SettingsPage({
                             </button>
                           </form>
 
+                          <BudgetLineReorder
+                            projectId={project.id}
+                            lines={[...project.rows]
+                              .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+                              .filter((line) => Boolean(line.budgetLineId))
+                              .map((line) => ({
+                                id: line.budgetLineId as string,
+                                label: `${line.budgetCode ?? ""} | ${line.budgetCategory ?? ""} | ${line.budgetLineName ?? ""}`
+                              }))}
+                          />
+
                           <div className="tableWrap">
                             <table>
                               <thead>
@@ -228,7 +240,9 @@ export default async function SettingsPage({
                                 </tr>
                               </thead>
                               <tbody>
-                                {project.rows.map((line, idx) => (
+                                {[...project.rows]
+                                  .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+                                  .map((line, idx) => (
                                   <tr key={`${project.id}-${line.budgetLineId ?? "none"}-${idx}`}>
                                     <td>{line.budgetCode ?? "-"}</td>
                                     <td>{line.budgetCategory ?? "-"}</td>
@@ -256,14 +270,6 @@ export default async function SettingsPage({
                                             placeholder="Allocated $"
                                             defaultValue={line.allocatedAmount ?? 0}
                                           />
-                                          <input
-                                            name="sortOrder"
-                                            type="number"
-                                            step="1"
-                                            min="0"
-                                            placeholder="Sort #"
-                                            defaultValue={line.sortOrder ?? 0}
-                                          />
                                           <label className="checkboxLabel">
                                             <input name="active" type="checkbox" defaultChecked={line.budgetLineActive ?? true} />
                                             Active
@@ -279,7 +285,7 @@ export default async function SettingsPage({
                                             <option value="">Account code</option>
                                             {accountCodes.map((accountCode) => (
                                               <option key={accountCode.id} value={accountCode.id}>
-                                                {accountCode.code}
+                                                {accountCode.code} | {accountCode.category} | {accountCode.name}
                                               </option>
                                             ))}
                                           </select>
@@ -289,14 +295,6 @@ export default async function SettingsPage({
                                             step="0.01"
                                             min="0"
                                             placeholder="Allocated $"
-                                            defaultValue={0}
-                                          />
-                                          <input
-                                            name="sortOrder"
-                                            type="number"
-                                            step="1"
-                                            min="0"
-                                            placeholder="Sort #"
                                             defaultValue={0}
                                           />
                                           <button type="submit" className="tinyButton">

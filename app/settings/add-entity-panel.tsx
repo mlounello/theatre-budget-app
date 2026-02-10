@@ -179,10 +179,6 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
             Allocated Amount
             <input name="allocatedAmount" type="number" step="0.01" min="0" defaultValue="0" />
           </label>
-          <label>
-            Sort Order
-            <input name="sortOrder" type="number" step="1" min="0" defaultValue="0" />
-          </label>
           <button type="submit" className="buttonLink buttonPrimary">
             Add Budget Line
           </button>
