@@ -265,4 +265,9 @@ with check (
 
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
-grant select on all views in schema public to authenticated;
+grant select on public.v_budget_line_totals to authenticated;
+grant select on public.v_project_totals to authenticated;
+grant select on public.v_project_category_totals to authenticated;
+grant select on public.v_cc_pending_by_code to authenticated;
+grant select on public.v_cc_posted_by_month to authenticated;
+grant select on public.v_portfolio_summary to authenticated;
