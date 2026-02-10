@@ -59,6 +59,7 @@ export type PurchaseRow = {
 export type ProjectBudgetLineOption = {
   id: string;
   projectId: string;
+  accountCodeId: string | null;
   label: string;
 };
 
@@ -282,7 +283,11 @@ export async function getProjectBudgetBoard(projectId: string): Promise<{ projec
   };
 }
 
-export async function getRequestsData(): Promise<{ purchases: PurchaseRow[]; budgetLineOptions: ProjectBudgetLineOption[] }> {
+export async function getRequestsData(): Promise<{
+  purchases: PurchaseRow[];
+  budgetLineOptions: ProjectBudgetLineOption[];
+  accountCodeOptions: AccountCodeOption[];
+}> {
   const supabase = await getSupabaseServerClient();
 
   const { data: purchasesData, error: purchasesError } = await supabase
@@ -299,13 +304,23 @@ export async function getRequestsData(): Promise<{ purchases: PurchaseRow[]; bud
 
   const { data: optionsData, error: optionsError } = await supabase
     .from("project_budget_lines")
-    .select("id, project_id, budget_code, category, line_name")
+    .select("id, project_id, account_code_id, budget_code, category, line_name")
     .eq("active", true)
     .order("category", { ascending: true })
     .order("budget_code", { ascending: true });
 
   if (optionsError) {
     throw optionsError;
+  }
+
+  const { data: accountCodeData, error: accountCodeError } = await supabase
+    .from("account_codes")
+    .select("id, code, category, name")
+    .eq("active", true)
+    .order("code", { ascending: true });
+
+  if (accountCodeError) {
+    throw accountCodeError;
   }
 
   const purchases: PurchaseRow[] = (purchasesData ?? []).map((row) => {
@@ -334,10 +349,21 @@ export async function getRequestsData(): Promise<{ purchases: PurchaseRow[]; bud
   const budgetLineOptions: ProjectBudgetLineOption[] = (optionsData ?? []).map((row) => ({
     id: row.id as string,
     projectId: row.project_id as string,
+    accountCodeId: (row.account_code_id as string | null) ?? null,
     label: `${row.category as string} | ${row.budget_code as string} | ${row.line_name as string}`
   }));
 
-  return { purchases, budgetLineOptions };
+  const accountCodeOptions: AccountCodeOption[] = (
+    (accountCodeData as Array<{ id?: unknown; code?: unknown; category?: unknown; name?: unknown }> | null) ?? []
+  ).map((row) => ({
+    id: row.id as string,
+    code: row.code as string,
+    category: row.category as string,
+    name: row.name as string,
+    label: `${row.code as string} | ${row.category as string} | ${row.name as string}`
+  }));
+
+  return { purchases, budgetLineOptions, accountCodeOptions };
 }
 
 export async function getCcPendingRows(): Promise<

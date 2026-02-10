@@ -10,6 +10,13 @@ function parseMoney(value: FormDataEntryValue | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+type AllocationInput = {
+  reportingBudgetLineId: string;
+  accountCodeId: string;
+  amount: number;
+  reportingBucket: "direct" | "miscellaneous";
+};
+
 export async function createRequest(formData: FormData): Promise<void> {
   const supabase = await getSupabaseServerClient();
   const {
@@ -25,6 +32,7 @@ export async function createRequest(formData: FormData): Promise<void> {
   const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
   const estimatedAmount = parseMoney(formData.get("estimatedAmount"));
   const requestedAmount = parseMoney(formData.get("requestedAmount"));
+  const allocationsJson = String(formData.get("allocationsJson") ?? "").trim();
 
   if (!budgetLineId || !title) {
     throw new Error("Budget line and title are required.");
@@ -40,6 +48,30 @@ export async function createRequest(formData: FormData): Promise<void> {
     throw new Error("Invalid budget line selected.");
   }
 
+  let allocations: AllocationInput[] = [];
+  if (allocationsJson) {
+    try {
+      const parsed = JSON.parse(allocationsJson);
+      if (Array.isArray(parsed)) {
+        allocations = parsed
+          .map((entry) => ({
+            reportingBudgetLineId: String((entry as { reportingBudgetLineId?: unknown }).reportingBudgetLineId ?? ""),
+            accountCodeId: String((entry as { accountCodeId?: unknown }).accountCodeId ?? ""),
+            amount: Number.parseFloat(String((entry as { amount?: unknown }).amount ?? "0")),
+            reportingBucket:
+              String((entry as { reportingBucket?: unknown }).reportingBucket ?? "") === "miscellaneous"
+                ? ("miscellaneous" as const)
+                : ("direct" as const)
+          }))
+          .filter((entry) => entry.reportingBudgetLineId && entry.accountCodeId && Number.isFinite(entry.amount) && entry.amount > 0);
+      }
+    } catch {
+      throw new Error("Invalid split allocation payload.");
+    }
+  }
+
+  const requestedTotal = allocations.length > 0 ? allocations.reduce((sum, allocation) => sum + allocation.amount, 0) : requestedAmount;
+
   const { data: inserted, error } = await supabase
     .from("purchases")
     .insert({
@@ -49,7 +81,7 @@ export async function createRequest(formData: FormData): Promise<void> {
       title,
       reference_number: referenceNumber || null,
       estimated_amount: estimatedAmount,
-      requested_amount: requestedAmount,
+      requested_amount: requestedTotal,
       status: "requested"
     })
     .select("id")
@@ -59,12 +91,60 @@ export async function createRequest(formData: FormData): Promise<void> {
     throw new Error(error?.message ?? "Unable to create request.");
   }
 
+  if (allocations.length > 0) {
+    const reportingIds = [...new Set(allocations.map((a) => a.reportingBudgetLineId))];
+    const accountIds = [...new Set(allocations.map((a) => a.accountCodeId))];
+
+    const { data: reportingLines, error: reportingError } = await supabase
+      .from("project_budget_lines")
+      .select("id, project_id")
+      .in("id", reportingIds);
+    if (reportingError) throw new Error(reportingError.message);
+
+    const lineSet = new Set((reportingLines ?? []).filter((line) => line.project_id === budgetLine.project_id).map((line) => line.id as string));
+    if (lineSet.size !== reportingIds.length) {
+      throw new Error("All reporting lines must belong to the same project.");
+    }
+
+    const { data: accountRows, error: accountError } = await supabase.from("account_codes").select("id").in("id", accountIds);
+    if (accountError) throw new Error(accountError.message);
+    const accountSet = new Set((accountRows ?? []).map((row) => row.id as string));
+    if (accountSet.size !== accountIds.length) throw new Error("One or more account codes are invalid.");
+
+    const { error: allocationError } = await supabase.from("purchase_allocations").insert(
+      allocations.map((allocation) => ({
+        purchase_id: inserted.id,
+        reporting_budget_line_id: allocation.reportingBudgetLineId,
+        account_code_id: allocation.accountCodeId,
+        amount: allocation.amount,
+        reporting_bucket: allocation.reportingBucket
+      }))
+    );
+    if (allocationError) throw new Error(allocationError.message);
+  } else {
+    const { data: lineWithCode, error: lineWithCodeError } = await supabase
+      .from("project_budget_lines")
+      .select("id, account_code_id")
+      .eq("id", budgetLine.id)
+      .single();
+    if (lineWithCodeError || !lineWithCode) throw new Error("Unable to resolve account code for selected budget line.");
+
+    const { error: allocationError } = await supabase.from("purchase_allocations").insert({
+      purchase_id: inserted.id,
+      reporting_budget_line_id: budgetLine.id,
+      account_code_id: lineWithCode.account_code_id,
+      amount: requestedTotal,
+      reporting_bucket: "direct"
+    });
+    if (allocationError) throw new Error(allocationError.message);
+  }
+
   const eventError = await supabase.from("purchase_events").insert({
     purchase_id: inserted.id,
     from_status: null,
     to_status: "requested",
     estimated_amount_snapshot: estimatedAmount,
-    requested_amount_snapshot: requestedAmount,
+    requested_amount_snapshot: requestedTotal,
     encumbered_amount_snapshot: 0,
     pending_cc_amount_snapshot: 0,
     posted_amount_snapshot: 0,

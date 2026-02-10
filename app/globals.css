@@ -468,6 +468,23 @@ th {
   min-width: 0;
 }
 
+.splitAllocations {
+  grid-column: 1 / -1;
+  border: 1px solid #d9e1da;
+  border-radius: 10px;
+  padding: 0.6rem;
+  background: #f8fbf8;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.splitRow {
+  display: grid;
+  grid-template-columns: 2fr 2fr 1fr 1.3fr auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
 .inlineStatusForm {
   display: grid;
   grid-template-columns: 1fr 110px auto;
@@ -530,6 +547,10 @@ th {
   }
 
   .inlineStatusForm {
+    grid-template-columns: 1fr;
+  }
+
+  .splitRow {
     grid-template-columns: 1fr;
   }
 }

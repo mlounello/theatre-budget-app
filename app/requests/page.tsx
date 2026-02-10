@@ -1,11 +1,12 @@
 import { formatCurrency } from "@/lib/format";
 import { getRequestsData } from "@/lib/db";
-import { createRequest, updatePurchaseStatus } from "@/app/requests/actions";
+import { updatePurchaseStatus } from "@/app/requests/actions";
+import { CreateRequestForm } from "@/app/requests/create-request-form";
 
 const statuses = ["requested", "encumbered", "pending_cc", "posted", "cancelled"] as const;
 
 export default async function RequestsPage() {
-  const { purchases, budgetLineOptions } = await getRequestsData();
+  const { purchases, budgetLineOptions, accountCodeOptions } = await getRequestsData();
 
   return (
     <section>
@@ -19,38 +20,7 @@ export default async function RequestsPage() {
 
       <article className="panel requestFormPanel">
         <h2>Create Request</h2>
-        <form className="requestForm" action={createRequest}>
-          <label>
-            Budget Line
-            <select name="budgetLineId" required>
-              <option value="">Select budget line</option>
-              {budgetLineOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Title
-            <input name="title" required placeholder="Ex: Scenic hardware" />
-          </label>
-          <label>
-            Reference #
-            <input name="referenceNumber" placeholder="EP/EC/J code" />
-          </label>
-          <label>
-            Estimated
-            <input name="estimatedAmount" type="number" step="0.01" min="0" />
-          </label>
-          <label>
-            Requested
-            <input name="requestedAmount" type="number" step="0.01" min="0" />
-          </label>
-          <button type="submit" className="buttonLink buttonPrimary">
-            Create Request
-          </button>
-        </form>
+        <CreateRequestForm budgetLineOptions={budgetLineOptions} accountCodeOptions={accountCodeOptions} />
       </article>
 
       <div className="tableWrap">
