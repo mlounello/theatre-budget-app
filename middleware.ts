@@ -38,7 +38,7 @@ export async function middleware(request: NextRequest) {
     } = await supabase.auth.getUser();
     user = resolvedUser;
   } catch {
-    return response;
+    user = null;
   }
 
   const pathname = request.nextUrl.pathname;
