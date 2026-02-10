@@ -55,20 +55,21 @@ export async function createIncomeEntryAction(formData: FormData): Promise<void>
 
     if (!user) throw new Error("You must be signed in.");
 
-    const projectId = String(formData.get("projectId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
     const incomeType = parseIncomeType(String(formData.get("incomeType") ?? "other"));
     const lineNameInput = String(formData.get("lineName") ?? "").trim();
     const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
     const amount = parseMoney(formData.get("amount"));
     const receivedOn = String(formData.get("receivedOn") ?? "").trim();
 
-    if (!projectId) throw new Error("Project is required.");
+    if (!organizationId) throw new Error("Organization is required.");
     if (amount <= 0) throw new Error("Amount must be greater than 0.");
 
     const lineName = lineNameInput || defaultLineName(incomeType);
 
     const withType = await supabase.from("income_lines").insert({
-      project_id: projectId,
+      organization_id: organizationId,
+      project_id: null,
       line_name: lineName,
       reference_number: referenceNumber || null,
       amount,
@@ -79,7 +80,8 @@ export async function createIncomeEntryAction(formData: FormData): Promise<void>
 
     if (withType.error) {
       const fallback = await supabase.from("income_lines").insert({
-        project_id: projectId,
+        organization_id: organizationId,
+        project_id: null,
         line_name: lineName,
         reference_number: referenceNumber || null,
         amount,
@@ -92,7 +94,6 @@ export async function createIncomeEntryAction(formData: FormData): Promise<void>
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath("/income");
-    revalidatePath(`/projects/${projectId}`);
     redirect("/income?ok=Income%20entry%20saved.");
   } catch (error) {
     rethrowIfRedirect(error);

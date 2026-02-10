@@ -113,8 +113,10 @@ export type OrganizationOverviewRow = {
 
 export type IncomeRow = {
   id: string;
-  projectId: string;
-  projectName: string;
+  organizationId: string | null;
+  organizationLabel: string;
+  projectId: string | null;
+  projectName: string | null;
   incomeType: "starting_budget" | "donation" | "ticket_sales" | "other";
   lineName: string;
   referenceNumber: string | null;
@@ -586,24 +588,29 @@ export async function getIncomeRows(): Promise<IncomeRow[]> {
 
   const withType = await supabase
     .from("income_lines")
-    .select("id, project_id, line_name, reference_number, amount, received_on, created_at, income_type, projects(name)")
+    .select(
+      "id, project_id, organization_id, line_name, reference_number, amount, received_on, created_at, income_type, projects(name), organizations(name, org_code, fiscal_years(name))"
+    )
     .order("created_at", { ascending: false })
     .limit(500);
 
   if (withType.error) {
     const fallback = await supabase
       .from("income_lines")
-      .select("id, project_id, line_name, reference_number, amount, received_on, created_at, projects(name)")
+      .select("id, project_id, organization_id, line_name, reference_number, amount, received_on, created_at, projects(name)")
       .order("created_at", { ascending: false })
       .limit(500);
     if (fallback.error) throw fallback.error;
 
     return (fallback.data ?? []).map((row) => {
       const project = row.projects as { name?: string } | null;
+      const organizationLabel = (row.organization_id as string | null) ? "Organization" : "Unassigned Organization";
       return {
         id: row.id as string,
-        projectId: row.project_id as string,
-        projectName: project?.name ?? "Unknown Project",
+        organizationId: (row.organization_id as string | null) ?? null,
+        organizationLabel,
+        projectId: (row.project_id as string | null) ?? null,
+        projectName: project?.name ?? null,
         incomeType: "other",
         lineName: (row.line_name as string) ?? "Income",
         referenceNumber: (row.reference_number as string | null) ?? null,
@@ -616,6 +623,10 @@ export async function getIncomeRows(): Promise<IncomeRow[]> {
 
   return (withType.data ?? []).map((row) => {
     const project = row.projects as { name?: string } | null;
+    const org = row.organizations as { name?: string; org_code?: string; fiscal_years?: { name?: string } | null } | null;
+    const orgLabel = org
+      ? `${org.org_code ?? ""} | ${org.name ?? "Organization"}${org.fiscal_years?.name ? ` (${org.fiscal_years.name})` : ""}`
+      : "Unassigned Organization";
     const incomeTypeRaw = (row.income_type as string | null) ?? "other";
     const incomeType =
       incomeTypeRaw === "starting_budget" ||
@@ -627,8 +638,10 @@ export async function getIncomeRows(): Promise<IncomeRow[]> {
 
     return {
       id: row.id as string,
-      projectId: row.project_id as string,
-      projectName: project?.name ?? "Unknown Project",
+      organizationId: (row.organization_id as string | null) ?? null,
+      organizationLabel: orgLabel,
+      projectId: (row.project_id as string | null) ?? null,
+      projectName: project?.name ?? null,
       incomeType,
       lineName: (row.line_name as string) ?? "Income",
       referenceNumber: (row.reference_number as string | null) ?? null,

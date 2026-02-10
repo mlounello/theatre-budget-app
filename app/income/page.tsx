@@ -1,6 +1,6 @@
 import { createIncomeEntryAction } from "@/app/income/actions";
 import { formatCurrency } from "@/lib/format";
-import { getIncomeRows, getSettingsProjects, type IncomeRow } from "@/lib/db";
+import { getIncomeRows, getOrganizationOptions, type IncomeRow } from "@/lib/db";
 
 function typeLabel(type: IncomeRow["incomeType"]): string {
   if (type === "starting_budget") return "Starting Budget";
@@ -18,7 +18,7 @@ export default async function IncomePage({
   const okMessage = resolvedSearchParams?.ok;
   const errorMessage = resolvedSearchParams?.error;
 
-  const [projects, rows] = await Promise.all([getSettingsProjects(), getIncomeRows()]);
+  const [organizations, rows] = await Promise.all([getOrganizationOptions(), getIncomeRows()]);
 
   const totals = {
     overall: 0,
@@ -50,12 +50,12 @@ export default async function IncomePage({
         <h2>Add Income Entry</h2>
         <form className="requestForm" action={createIncomeEntryAction}>
           <label>
-            Project
-            <select name="projectId" required>
-              <option value="">Select project</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name} {project.season ? `(${project.season})` : ""}
+            Organization
+            <select name="organizationId" required>
+              <option value="">Select organization</option>
+              {organizations.map((organization) => (
+                <option key={organization.id} value={organization.id}>
+                  {organization.label}
                 </option>
               ))}
             </select>
@@ -121,6 +121,7 @@ export default async function IncomePage({
           <thead>
             <tr>
               <th>Project</th>
+              <th>Organization</th>
               <th>Type</th>
               <th>Description</th>
               <th>Reference</th>
@@ -131,12 +132,13 @@ export default async function IncomePage({
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6}>No income entries yet.</td>
+                <td colSpan={7}>No income entries yet.</td>
               </tr>
             ) : null}
             {rows.map((row) => (
               <tr key={row.id}>
-                <td>{row.projectName}</td>
+                <td>{row.projectName ?? "-"}</td>
+                <td>{row.organizationLabel}</td>
                 <td>{typeLabel(row.incomeType)}</td>
                 <td>{row.lineName}</td>
                 <td>{row.referenceNumber ?? "-"}</td>

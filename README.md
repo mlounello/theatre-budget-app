@@ -46,6 +46,7 @@ Run migrations in this order:
 9. `/Users/mikelounello/theatre-budget-app/supabase/migrations/202602101800_budget_line_rls_repair.sql`
 10. `/Users/mikelounello/theatre-budget-app/supabase/migrations/202602101900_income_types.sql`
 11. `/Users/mikelounello/theatre-budget-app/supabase/migrations/202602101930_hierarchy_sort_orders.sql`
+12. `/Users/mikelounello/theatre-budget-app/supabase/migrations/202602102000_org_scoped_income.sql`
 
 ## Google login setup (Supabase)
 In Supabase Dashboard:
