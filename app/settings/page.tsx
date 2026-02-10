@@ -16,7 +16,15 @@ import {
 } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ import?: string; msg?: string }>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const importStatus = resolvedSearchParams?.import;
+  const importMessage = resolvedSearchParams?.msg;
+
   const projects = await getSettingsProjects();
   const templates = await getTemplateNames();
   const accountCodes = await getAccountCodeOptions();
@@ -29,6 +37,8 @@ export default async function SettingsPage() {
       <header className="sectionHeader">
         <p className="eyebrow">Admin</p>
         <h1>Project and Access Settings</h1>
+        {importStatus === "ok" ? <p className="successNote">CSV import completed.</p> : null}
+        {importStatus === "error" ? <p className="errorNote">CSV import failed: {importMessage ?? "Unknown error"}</p> : null}
       </header>
 
       <div className="panelGrid">

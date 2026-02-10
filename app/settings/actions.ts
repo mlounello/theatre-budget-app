@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 function parseMoney(value: FormDataEntryValue | null): number {
@@ -68,6 +69,45 @@ function parseCsv(text: string): Array<Record<string, string>> {
   });
 }
 
+async function createProjectViaRpc(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  params: {
+    name: string;
+    season: string | null;
+    useTemplate: boolean;
+    templateName: string;
+    organizationId: string | null;
+  }
+): Promise<string> {
+  const { data, error } = await supabase.rpc("create_project_with_admin", {
+    p_name: params.name,
+    p_season: params.season,
+    p_use_template: params.useTemplate,
+    p_template_name: params.templateName,
+    p_organization_id: params.organizationId
+  });
+
+  if (!error && data) return data as string;
+
+  // Backward compatibility if 5-arg function migration has not run yet.
+  const fallback = await supabase.rpc("create_project_with_admin", {
+    p_name: params.name,
+    p_season: params.season,
+    p_use_template: params.useTemplate,
+    p_template_name: params.templateName
+  });
+
+  if (fallback.error || !fallback.data) {
+    throw new Error(error?.message ?? fallback.error?.message ?? "Project creation failed.");
+  }
+
+  if (params.organizationId) {
+    await supabase.from("projects").update({ organization_id: params.organizationId }).eq("id", fallback.data as string);
+  }
+
+  return fallback.data as string;
+}
+
 export async function createProjectAction(formData: FormData): Promise<void> {
   const supabase = await getSupabaseServerClient();
   const {
@@ -88,17 +128,13 @@ export async function createProjectAction(formData: FormData): Promise<void> {
     throw new Error("Project name is required.");
   }
 
-  const { data: newProjectId, error } = await supabase.rpc("create_project_with_admin", {
-    p_name: projectName,
-    p_season: season || null,
-    p_use_template: useTemplate,
-    p_template_name: templateName || "Play/Musical Default",
-    p_organization_id: organizationId || null
+  const newProjectId = await createProjectViaRpc(supabase, {
+    name: projectName,
+    season: season || null,
+    useTemplate,
+    templateName: templateName || "Play/Musical Default",
+    organizationId: organizationId || null
   });
-
-  if (error) {
-    throw new Error(error.message);
-  }
   if (!newProjectId) {
     throw new Error("Project creation returned no project id.");
   }
@@ -168,157 +204,161 @@ export async function createAccountCodeAction(formData: FormData): Promise<void>
 }
 
 export async function importHierarchyCsvAction(formData: FormData): Promise<void> {
-  const supabase = await getSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
 
-  if (!user) throw new Error("You must be signed in.");
+    if (!user) throw new Error("You must be signed in.");
 
-  const uploaded = formData.get("csvFile");
-  if (!(uploaded instanceof File) || uploaded.size === 0) {
-    throw new Error("Please upload a CSV file.");
-  }
-
-  const text = await uploaded.text();
-  const rows = parseCsv(text);
-  if (rows.length === 0) throw new Error("CSV has no data rows.");
-
-  const requiredHeaders = [
-    "fiscal_year_name",
-    "organization_name",
-    "org_code",
-    "project_name",
-    "season",
-    "budget_code",
-    "category",
-    "line_name",
-    "allocated_amount",
-    "sort_order"
-  ];
-
-  const first = rows[0];
-  for (const header of requiredHeaders) {
-    if (!(header in first)) {
-      throw new Error(`Missing required header: ${header}`);
-    }
-  }
-
-  for (const row of rows) {
-    const fiscalYearName = row.fiscal_year_name;
-    const organizationName = row.organization_name;
-    const orgCode = row.org_code;
-    const projectName = row.project_name;
-    const season = row.season || null;
-    const budgetCode = row.budget_code;
-    const category = row.category || "Uncategorized";
-    const lineName = row.line_name || category;
-    const allocatedAmount = Number.parseFloat(row.allocated_amount || "0");
-    const sortOrder = Number.parseInt(row.sort_order || "0", 10);
-
-    if (!projectName) continue;
-
-    let fiscalYearId: string | null = null;
-    if (fiscalYearName) {
-      const { data: fyData, error: fyError } = await supabase
-        .from("fiscal_years")
-        .upsert({ name: fiscalYearName }, { onConflict: "name" })
-        .select("id")
-        .single();
-      if (fyError) throw new Error(fyError.message);
-      fiscalYearId = fyData.id as string;
+    const uploaded = formData.get("csvFile");
+    if (!(uploaded instanceof File) || uploaded.size === 0) {
+      throw new Error("Please upload a CSV file.");
     }
 
-    let organizationId: string | null = null;
-    if (organizationName && orgCode) {
-      const { data: orgExisting } = await supabase
-        .from("organizations")
-        .select("id")
-        .eq("org_code", orgCode)
-        .eq("name", organizationName)
-        .maybeSingle();
+    const text = await uploaded.text();
+    const rows = parseCsv(text);
+    if (rows.length === 0) throw new Error("CSV has no data rows.");
 
-      if (orgExisting?.id) {
-        organizationId = orgExisting.id as string;
-      } else {
-        const { data: orgData, error: orgError } = await supabase
-          .from("organizations")
-          .insert({
-            name: organizationName,
-            org_code: orgCode,
-            fiscal_year_id: fiscalYearId
-          })
+    const requiredHeaders = [
+      "fiscal_year_name",
+      "organization_name",
+      "org_code",
+      "project_name",
+      "season",
+      "budget_code",
+      "category",
+      "line_name",
+      "allocated_amount",
+      "sort_order"
+    ];
+
+    const first = rows[0];
+    for (const header of requiredHeaders) {
+      if (!(header in first)) {
+        throw new Error(`Missing required header: ${header}`);
+      }
+    }
+
+    for (const row of rows) {
+      const fiscalYearName = row.fiscal_year_name;
+      const organizationName = row.organization_name;
+      const orgCode = row.org_code;
+      const projectName = row.project_name;
+      const season = row.season || null;
+      const budgetCode = row.budget_code;
+      const category = row.category || "Uncategorized";
+      const lineName = row.line_name || category;
+      const allocatedAmount = Number.parseFloat(row.allocated_amount || "0");
+      const sortOrder = Number.parseInt(row.sort_order || "0", 10);
+
+      if (!projectName) continue;
+
+      let fiscalYearId: string | null = null;
+      if (fiscalYearName) {
+        const { data: fyData, error: fyError } = await supabase
+          .from("fiscal_years")
+          .upsert({ name: fiscalYearName }, { onConflict: "name" })
           .select("id")
           .single();
-        if (orgError) throw new Error(orgError.message);
-        organizationId = orgData.id as string;
+        if (fyError) throw new Error(fyError.message);
+        fiscalYearId = fyData.id as string;
       }
-    }
 
-    const { data: projectExisting } = await supabase
-      .from("projects")
-      .select("id")
-      .eq("name", projectName)
-      .eq("season", season)
-      .maybeSingle();
+      let organizationId: string | null = null;
+      if (organizationName && orgCode) {
+        const { data: orgExisting } = await supabase
+          .from("organizations")
+          .select("id")
+          .eq("org_code", orgCode)
+          .eq("name", organizationName)
+          .maybeSingle();
 
-    let projectId: string;
-    if (projectExisting?.id) {
-      projectId = projectExisting.id as string;
-      if (organizationId) {
-        await supabase.from("projects").update({ organization_id: organizationId }).eq("id", projectId);
+        if (orgExisting?.id) {
+          organizationId = orgExisting.id as string;
+        } else {
+          const { data: orgData, error: orgError } = await supabase
+            .from("organizations")
+            .insert({
+              name: organizationName,
+              org_code: orgCode,
+              fiscal_year_id: fiscalYearId
+            })
+            .select("id")
+            .single();
+          if (orgError) throw new Error(orgError.message);
+          organizationId = orgData.id as string;
+        }
       }
-    } else {
-      const { data: newProject, error: projectError } = await supabase.rpc("create_project_with_admin", {
-        p_name: projectName,
-        p_season: season,
-        p_use_template: false,
-        p_template_name: "Play/Musical Default",
-        p_organization_id: organizationId
-      });
-      if (projectError || !newProject) throw new Error(projectError?.message ?? "Could not create project.");
-      projectId = newProject as string;
-    }
 
-    if (!budgetCode) continue;
+      const { data: projectExisting } = await supabase
+        .from("projects")
+        .select("id")
+        .eq("name", projectName)
+        .eq("season", season)
+        .maybeSingle();
 
-    const { data: accountCodeData, error: accountCodeError } = await supabase
-      .from("account_codes")
-      .upsert(
+      let projectId: string;
+      if (projectExisting?.id) {
+        projectId = projectExisting.id as string;
+        if (organizationId) {
+          await supabase.from("projects").update({ organization_id: organizationId }).eq("id", projectId);
+        }
+      } else {
+        projectId = await createProjectViaRpc(supabase, {
+          name: projectName,
+          season,
+          useTemplate: false,
+          templateName: "Play/Musical Default",
+          organizationId
+        });
+      }
+
+      if (!budgetCode) continue;
+
+      const { data: accountCodeData, error: accountCodeError } = await supabase
+        .from("account_codes")
+        .upsert(
+          {
+            code: budgetCode,
+            category,
+            name: lineName,
+            active: true
+          },
+          { onConflict: "code" }
+        )
+        .select("id, code, category, name")
+        .single();
+      if (accountCodeError) throw new Error(accountCodeError.message);
+
+      const amount = Number.isFinite(allocatedAmount) ? allocatedAmount : 0;
+      const order = Number.isFinite(sortOrder) ? sortOrder : 0;
+
+      const { error: lineError } = await supabase.from("project_budget_lines").upsert(
         {
-          code: budgetCode,
-          category,
-          name: lineName,
-          active: true
+          project_id: projectId,
+          account_code_id: accountCodeData.id,
+          budget_code: accountCodeData.code,
+          category: accountCodeData.category,
+          line_name: accountCodeData.name,
+          allocated_amount: amount,
+          sort_order: order
         },
-        { onConflict: "code" }
-      )
-      .select("id, code, category, name")
-      .single();
-    if (accountCodeError) throw new Error(accountCodeError.message);
+        { onConflict: "project_id,budget_code,category,line_name" }
+      );
+      if (lineError) throw new Error(lineError.message);
+    }
 
-    const amount = Number.isFinite(allocatedAmount) ? allocatedAmount : 0;
-    const order = Number.isFinite(sortOrder) ? sortOrder : 0;
-
-    const { error: lineError } = await supabase.from("project_budget_lines").upsert(
-      {
-        project_id: projectId,
-        account_code_id: accountCodeData.id,
-        budget_code: accountCodeData.code,
-        category: accountCodeData.category,
-        line_name: accountCodeData.name,
-        allocated_amount: amount,
-        sort_order: order
-      },
-      { onConflict: "project_id,budget_code,category,line_name" }
-    );
-    if (lineError) throw new Error(lineError.message);
+    revalidatePath("/");
+    revalidatePath("/overview");
+    revalidatePath("/settings");
+    revalidatePath("/requests");
+    redirect("/settings?import=ok");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "CSV import failed.";
+    redirect(`/settings?import=error&msg=${encodeURIComponent(message)}`);
   }
-
-  revalidatePath("/");
-  revalidatePath("/overview");
-  revalidatePath("/settings");
-  revalidatePath("/requests");
 }
 
 export async function addBudgetLineAction(formData: FormData): Promise<void> {

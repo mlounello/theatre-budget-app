@@ -176,6 +176,18 @@ th {
   margin: 0.5rem 0 0;
 }
 
+.successNote {
+  margin: 0.6rem 0 0;
+  color: var(--siena-light-green);
+  font-family: "Gudea", "Arial", sans-serif;
+}
+
+.errorNote {
+  margin: 0.6rem 0 0;
+  color: var(--siena-red);
+  font-family: "Gudea", "Arial", sans-serif;
+}
+
 .gridCards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
