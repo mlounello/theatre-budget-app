@@ -162,3 +162,28 @@ export async function updateIncomeEntryAction(formData: FormData): Promise<void>
     redirect(`/income?error=${encodeURIComponent(getErrorMessage(error, "Could not update income entry."))}`);
   }
 }
+
+export async function deleteIncomeEntryAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (!user) throw new Error("You must be signed in.");
+
+    const id = String(formData.get("id") ?? "").trim();
+    if (!id) throw new Error("Income entry id is required.");
+
+    const { error } = await supabase.from("income_lines").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/");
+    revalidatePath("/overview");
+    revalidatePath("/income");
+    redirect("/income?ok=Income%20entry%20deleted.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    redirect(`/income?error=${encodeURIComponent(getErrorMessage(error, "Could not delete income entry."))}`);
+  }
+}
