@@ -9,6 +9,9 @@ import {
 } from "@/app/settings/actions";
 import { AddEntityPanel } from "@/app/settings/add-entity-panel";
 import { BudgetLineReorder } from "@/app/settings/budget-line-reorder";
+import { FiscalYearReorder } from "@/app/settings/fiscal-year-reorder";
+import { OrganizationReorder } from "@/app/settings/organization-reorder";
+import { ProjectReorder } from "@/app/settings/project-reorder";
 import {
   getAccountCodeOptions,
   getFiscalYearOptions,
@@ -24,6 +27,7 @@ type ProjectGroup = {
   id: string;
   name: string;
   season: string | null;
+  sortOrder: number;
   rows: HierarchyRow[];
 };
 
@@ -32,6 +36,7 @@ type OrganizationGroup = {
   name: string;
   orgCode: string;
   fiscalYearId: string | null;
+  sortOrder: number;
   projects: Map<string, ProjectGroup>;
 };
 
@@ -40,6 +45,7 @@ type FiscalYearGroup = {
   name: string;
   startDate: string | null;
   endDate: string | null;
+  sortOrder: number;
   organizations: Map<string, OrganizationGroup>;
 };
 
@@ -73,6 +79,7 @@ export default async function SettingsPage({
         name: fyName,
         startDate: row.fiscalYearStartDate,
         endDate: row.fiscalYearEndDate,
+        sortOrder: row.fiscalYearSortOrder ?? 0,
         organizations: new Map()
       });
     }
@@ -88,6 +95,7 @@ export default async function SettingsPage({
         name: orgName,
         orgCode,
         fiscalYearId: row.fiscalYearId,
+        sortOrder: row.organizationSortOrder ?? 0,
         projects: new Map()
       });
     }
@@ -98,6 +106,7 @@ export default async function SettingsPage({
         id: row.projectId,
         name: row.projectName,
         season: row.season,
+        sortOrder: row.projectSortOrder ?? 0,
         rows: []
       });
     }
@@ -105,7 +114,9 @@ export default async function SettingsPage({
     org.projects.get(row.projectId)!.rows.push(row);
   }
 
-  const fiscalYearGroups = Array.from(groupedByFiscalYear.values()).sort((a, b) => a.name.localeCompare(b.name));
+  const fiscalYearGroups = Array.from(groupedByFiscalYear.values()).sort(
+    (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)
+  );
 
   return (
     <section>
@@ -149,6 +160,9 @@ export default async function SettingsPage({
         <article className="panel panelFull">
           <h2>Hierarchy Reference</h2>
           <p>Fiscal Year {"->"} Organization {"->"} Project {"->"} Budget Line (expand with arrows, edit inline).</p>
+          <FiscalYearReorder
+            items={fiscalYearGroups.filter((fy) => fy.id !== noFiscalYearKey).map((fy) => ({ id: fy.id, label: fy.name }))}
+          />
 
           {fiscalYearGroups.length === 0 ? <p>(none)</p> : null}
 
@@ -169,8 +183,16 @@ export default async function SettingsPage({
                 </form>
               ) : null}
 
+              <OrganizationReorder
+                fiscalYearId={fy.id === noFiscalYearKey ? null : fy.id}
+                items={Array.from(fy.organizations.values())
+                  .filter((orgItem) => !orgItem.id.startsWith("__no_org__"))
+                  .sort((a, b) => a.sortOrder - b.sortOrder || a.orgCode.localeCompare(b.orgCode))
+                  .map((orgItem) => ({ id: orgItem.id, label: `${orgItem.orgCode} - ${orgItem.name}` }))}
+              />
+
               {Array.from(fy.organizations.values())
-                .sort((a, b) => a.orgCode.localeCompare(b.orgCode))
+                .sort((a, b) => a.sortOrder - b.sortOrder || a.orgCode.localeCompare(b.orgCode))
                 .map((org) => (
                   <details key={org.id} className="treeNode childNode" open>
                     <summary>
@@ -195,8 +217,18 @@ export default async function SettingsPage({
                       </form>
                     )}
 
+                    <ProjectReorder
+                      organizationId={org.id.startsWith("__no_org__") ? null : org.id}
+                      items={Array.from(org.projects.values())
+                        .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
+                        .map((projectItem) => ({
+                          id: projectItem.id,
+                          label: `${projectItem.name}${projectItem.season ? ` (${projectItem.season})` : ""}`
+                        }))}
+                    />
+
                     {Array.from(org.projects.values())
-                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
                       .map((project) => (
                         <details key={project.id} className="treeNode childNode" open>
                           <summary>

@@ -16,6 +16,15 @@ function parseOptionalSortOrder(value: FormDataEntryValue | null): number | unde
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function parseOrderedIds(raw: string): string[] {
+  let orderedIds: string[] = [];
+  const parsed = JSON.parse(raw);
+  if (Array.isArray(parsed)) {
+    orderedIds = parsed.map((item) => String(item)).filter(Boolean);
+  }
+  return orderedIds;
+}
+
 function parseCsv(text: string): Array<Record<string, string>> {
   const rows: string[][] = [];
   let current = "";
@@ -142,6 +151,14 @@ export async function createProjectAction(formData: FormData): Promise<void> {
 
     if (!newProjectId) throw new Error("Project creation returned no project id.");
 
+    let maxProjectSortQuery = supabase.from("projects").select("sort_order").order("sort_order", { ascending: false }).limit(1);
+    maxProjectSortQuery = organizationId
+      ? maxProjectSortQuery.eq("organization_id", organizationId)
+      : maxProjectSortQuery.is("organization_id", null);
+    const { data: maxProjectSortRows } = await maxProjectSortQuery;
+    const nextProjectSort = ((maxProjectSortRows?.[0]?.sort_order as number | null) ?? -1) + 1;
+    await supabase.from("projects").update({ sort_order: nextProjectSort }).eq("id", newProjectId);
+
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath("/settings");
@@ -163,10 +180,19 @@ export async function createFiscalYearAction(formData: FormData): Promise<void> 
 
     if (!name) throw new Error("Fiscal year name is required.");
 
+    const { data: maxSortRows, error: maxSortError } = await supabase
+      .from("fiscal_years")
+      .select("sort_order")
+      .order("sort_order", { ascending: false })
+      .limit(1);
+    if (maxSortError) throw new Error(maxSortError.message);
+    const nextSort = ((maxSortRows?.[0]?.sort_order as number | null) ?? -1) + 1;
+
     const { error } = await supabase.from("fiscal_years").insert({
       name,
       start_date: startDate || null,
-      end_date: endDate || null
+      end_date: endDate || null,
+      sort_order: nextSort
     });
     if (error) throw new Error(error.message);
 
@@ -188,10 +214,17 @@ export async function createOrganizationAction(formData: FormData): Promise<void
 
     if (!name || !orgCode) throw new Error("Organization name and org code are required.");
 
+    let maxSortQuery = supabase.from("organizations").select("sort_order").order("sort_order", { ascending: false }).limit(1);
+    maxSortQuery = fiscalYearId ? maxSortQuery.eq("fiscal_year_id", fiscalYearId) : maxSortQuery.is("fiscal_year_id", null);
+    const { data: maxSortRows, error: maxSortError } = await maxSortQuery;
+    if (maxSortError) throw new Error(maxSortError.message);
+    const nextSort = ((maxSortRows?.[0]?.sort_order as number | null) ?? -1) + 1;
+
     const { error } = await supabase.from("organizations").insert({
       name,
       org_code: orgCode,
-      fiscal_year_id: fiscalYearId || null
+      fiscal_year_id: fiscalYearId || null,
+      sort_order: nextSort
     });
     if (error) throw new Error(error.message);
 
@@ -452,10 +485,7 @@ export async function reorderBudgetLinesAction(formData: FormData): Promise<void
 
     let orderedLineIds: string[] = [];
     try {
-      const parsed = JSON.parse(orderedLineIdsRaw);
-      if (Array.isArray(parsed)) {
-        orderedLineIds = parsed.map((item) => String(item)).filter(Boolean);
-      }
+      orderedLineIds = parseOrderedIds(orderedLineIdsRaw);
     } catch {
       throw new Error("Invalid line ordering payload.");
     }
@@ -479,6 +509,97 @@ export async function reorderBudgetLinesAction(formData: FormData): Promise<void
   } catch (error) {
     rethrowIfRedirect(error);
     settingsError(getErrorMessage(error, "Could not reorder lines."));
+  }
+}
+
+export async function reorderFiscalYearsAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const orderedIdsRaw = String(formData.get("orderedFiscalYearIds") ?? "").trim();
+    if (!orderedIdsRaw) throw new Error("No fiscal year ordering payload provided.");
+
+    let orderedIds: string[] = [];
+    try {
+      orderedIds = parseOrderedIds(orderedIdsRaw);
+    } catch {
+      throw new Error("Invalid fiscal year ordering payload.");
+    }
+    if (orderedIds.length === 0) throw new Error("No fiscal years provided for reorder.");
+
+    for (let idx = 0; idx < orderedIds.length; idx += 1) {
+      const { error } = await supabase.from("fiscal_years").update({ sort_order: idx }).eq("id", orderedIds[idx]);
+      if (error) throw new Error(error.message);
+    }
+
+    revalidatePath("/settings");
+    revalidatePath("/overview");
+    settingsSuccess("Fiscal year order saved.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not reorder fiscal years."));
+  }
+}
+
+export async function reorderOrganizationsAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+    const orderedIdsRaw = String(formData.get("orderedOrganizationIds") ?? "").trim();
+    if (!orderedIdsRaw) throw new Error("No organization ordering payload provided.");
+
+    let orderedIds: string[] = [];
+    try {
+      orderedIds = parseOrderedIds(orderedIdsRaw);
+    } catch {
+      throw new Error("Invalid organization ordering payload.");
+    }
+    if (orderedIds.length === 0) throw new Error("No organizations provided for reorder.");
+
+    for (let idx = 0; idx < orderedIds.length; idx += 1) {
+      let query = supabase.from("organizations").update({ sort_order: idx }).eq("id", orderedIds[idx]);
+      query = fiscalYearId ? query.eq("fiscal_year_id", fiscalYearId) : query.is("fiscal_year_id", null);
+      const { error } = await query;
+      if (error) throw new Error(error.message);
+    }
+
+    revalidatePath("/settings");
+    revalidatePath("/overview");
+    settingsSuccess("Organization order saved.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not reorder organizations."));
+  }
+}
+
+export async function reorderProjectsAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
+    const orderedIdsRaw = String(formData.get("orderedProjectIds") ?? "").trim();
+    if (!orderedIdsRaw) throw new Error("No project ordering payload provided.");
+
+    let orderedIds: string[] = [];
+    try {
+      orderedIds = parseOrderedIds(orderedIdsRaw);
+    } catch {
+      throw new Error("Invalid project ordering payload.");
+    }
+    if (orderedIds.length === 0) throw new Error("No projects provided for reorder.");
+
+    for (let idx = 0; idx < orderedIds.length; idx += 1) {
+      let query = supabase.from("projects").update({ sort_order: idx }).eq("id", orderedIds[idx]);
+      query = organizationId ? query.eq("organization_id", organizationId) : query.is("organization_id", null);
+      const { error } = await query;
+      if (error) throw new Error(error.message);
+    }
+
+    revalidatePath("/settings");
+    revalidatePath("/");
+    revalidatePath("/overview");
+    settingsSuccess("Project order saved.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not reorder projects."));
   }
 }
 

@@ -66,6 +66,7 @@ export type SettingsProject = {
   id: string;
   name: string;
   season: string | null;
+  sortOrder: number;
 };
 
 export type AccountCodeOption = {
@@ -81,6 +82,7 @@ export type FiscalYearOption = {
   name: string;
   startDate: string | null;
   endDate: string | null;
+  sortOrder: number;
 };
 
 export type OrganizationOption = {
@@ -89,6 +91,7 @@ export type OrganizationOption = {
   orgCode: string;
   fiscalYearId: string | null;
   fiscalYearName: string | null;
+  sortOrder: number;
   label: string;
 };
 
@@ -125,12 +128,15 @@ export type HierarchyRow = {
   fiscalYearName: string | null;
   fiscalYearStartDate: string | null;
   fiscalYearEndDate: string | null;
+  fiscalYearSortOrder: number | null;
   organizationId: string | null;
   organizationName: string | null;
   orgCode: string | null;
+  organizationSortOrder: number | null;
   projectId: string;
   projectName: string;
   season: string | null;
+  projectSortOrder: number | null;
   budgetLineId: string | null;
   budgetLineActive: boolean | null;
   accountCodeId: string | null;
@@ -146,7 +152,8 @@ export async function getDashboardProjects(): Promise<DashboardProject[]> {
 
   const { data: projectsData, error: projectsError } = await supabase
     .from("projects")
-    .select("id, name, season")
+    .select("id, name, season, sort_order")
+    .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
 
   if (projectsError) {
@@ -356,7 +363,8 @@ export async function getSettingsProjects(): Promise<SettingsProject[]> {
 
   const { data, error } = await supabase
     .from("projects")
-    .select("id, name, season")
+    .select("id, name, season, sort_order")
+    .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
 
   if (error) throw error;
@@ -364,7 +372,8 @@ export async function getSettingsProjects(): Promise<SettingsProject[]> {
   return (data ?? []).map((row) => ({
     id: row.id as string,
     name: row.name as string,
-    season: (row.season as string | null) ?? null
+    season: (row.season as string | null) ?? null,
+    sortOrder: (row.sort_order as number | null) ?? 0
   }));
 }
 
@@ -398,14 +407,16 @@ export async function getFiscalYearOptions(): Promise<FiscalYearOption[]> {
   const supabase = await getSupabaseServerClient();
   const { data, error } = await supabase
     .from("fiscal_years")
-    .select("id, name, start_date, end_date")
+    .select("id, name, start_date, end_date, sort_order")
+    .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
   if (error) throw error;
   return (data ?? []).map((row) => ({
     id: row.id as string,
     name: row.name as string,
     startDate: (row.start_date as string | null) ?? null,
-    endDate: (row.end_date as string | null) ?? null
+    endDate: (row.end_date as string | null) ?? null,
+    sortOrder: (row.sort_order as number | null) ?? 0
   }));
 }
 
@@ -413,7 +424,8 @@ export async function getOrganizationOptions(): Promise<OrganizationOption[]> {
   const supabase = await getSupabaseServerClient();
   const { data, error } = await supabase
     .from("organizations")
-    .select("id, name, org_code, fiscal_year_id, fiscal_years(name)")
+    .select("id, name, org_code, fiscal_year_id, sort_order, fiscal_years(name)")
+    .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
   if (error) throw error;
   return (data ?? []).map((row) => {
@@ -425,6 +437,7 @@ export async function getOrganizationOptions(): Promise<OrganizationOption[]> {
       orgCode: row.org_code as string,
       fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
       fiscalYearName,
+      sortOrder: (row.sort_order as number | null) ?? 0,
       label: `${row.org_code as string} | ${row.name as string}${fiscalYearName ? ` (${fiscalYearName})` : ""}`
     };
   });
@@ -462,8 +475,9 @@ export async function getHierarchyRows(): Promise<HierarchyRow[]> {
   const { data: projects, error } = await supabase
     .from("projects")
     .select(
-      "id, name, season, organization_id, organizations(id, name, org_code, fiscal_year_id, fiscal_years(id, name, start_date, end_date)), project_budget_lines(id, account_code_id, budget_code, category, line_name, allocated_amount, sort_order, active)"
+      "id, name, season, sort_order, organization_id, organizations(id, name, org_code, fiscal_year_id, sort_order, fiscal_years(id, name, start_date, end_date, sort_order)), project_budget_lines(id, account_code_id, budget_code, category, line_name, allocated_amount, sort_order, active)"
     )
+    .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
 
   if (error) throw error;
@@ -477,13 +491,23 @@ export async function getHierarchyRows(): Promise<HierarchyRow[]> {
           name?: string;
           org_code?: string;
           fiscal_year_id?: string | null;
-          fiscal_years?: { id?: string; name?: string; start_date?: string | null; end_date?: string | null } | null;
+          sort_order?: number | null;
+          fiscal_years?: {
+            id?: string;
+            name?: string;
+            start_date?: string | null;
+            end_date?: string | null;
+            sort_order?: number | null;
+          } | null;
         }
       | null;
     const fiscalYearName = organization?.fiscal_years?.name ?? null;
     const fiscalYearId = (organization?.fiscal_years?.id as string | null) ?? null;
     const fiscalYearStartDate = (organization?.fiscal_years?.start_date as string | null) ?? null;
     const fiscalYearEndDate = (organization?.fiscal_years?.end_date as string | null) ?? null;
+    const fiscalYearSortOrder = (organization?.fiscal_years?.sort_order as number | null) ?? null;
+    const organizationSortOrder = (organization?.sort_order as number | null) ?? null;
+    const projectSortOrder = (project.sort_order as number | null) ?? null;
     const lines = (project.project_budget_lines as
       | Array<{
           id?: string;
@@ -503,12 +527,15 @@ export async function getHierarchyRows(): Promise<HierarchyRow[]> {
         fiscalYearId,
         fiscalYearStartDate,
         fiscalYearEndDate,
+        fiscalYearSortOrder,
         organizationName: organization?.name ?? null,
         organizationId: (organization?.id as string | null) ?? null,
         orgCode: organization?.org_code ?? null,
+        organizationSortOrder,
         projectId: project.id as string,
         projectName: project.name as string,
         season: (project.season as string | null) ?? null,
+        projectSortOrder,
         budgetLineId: null,
         budgetLineActive: null,
         accountCodeId: null,
@@ -527,12 +554,15 @@ export async function getHierarchyRows(): Promise<HierarchyRow[]> {
         fiscalYearId,
         fiscalYearStartDate,
         fiscalYearEndDate,
+        fiscalYearSortOrder,
         organizationName: organization?.name ?? null,
         organizationId: (organization?.id as string | null) ?? null,
         orgCode: organization?.org_code ?? null,
+        organizationSortOrder,
         projectId: project.id as string,
         projectName: project.name as string,
         season: (project.season as string | null) ?? null,
+        projectSortOrder,
         budgetLineId: (line.id as string | null) ?? null,
         budgetLineActive: (line.active as boolean | null) ?? null,
         accountCodeId: (line.account_code_id as string | null) ?? null,
