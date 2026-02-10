@@ -1,4 +1,4 @@
-export default function SettingsPage(): JSX.Element {
+export default function SettingsPage() {
   return (
     <section>
       <header className="sectionHeader">

@@ -33,7 +33,7 @@ function calcProjectTotals(projectId: string): {
   };
 }
 
-export default function DashboardPage(): JSX.Element {
+export default function DashboardPage() {
   return (
     <section>
       <div className="heroCard">

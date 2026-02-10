@@ -6,7 +6,7 @@ const links = [
   { href: "/settings", label: "Settings" }
 ];
 
-export function TopNav(): JSX.Element {
+export function TopNav() {
   return (
     <header className="topNav">
       <div className="topNavInner">

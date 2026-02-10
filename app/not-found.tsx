@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export default function NotFoundPage(): JSX.Element {
+export default function NotFoundPage() {
   return (
     <section className="heroCard">
       <p className="eyebrow">Not Found</p>

@@ -6,7 +6,7 @@ type Props = {
   params: Promise<{ projectId: string }>;
 };
 
-export default async function ProjectBudgetBoardPage({ params }: Props): Promise<JSX.Element> {
+export default async function ProjectBudgetBoardPage({ params }: Props) {
   const { projectId } = await params;
   const project = projects.find((item) => item.id === projectId);
 

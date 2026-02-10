@@ -1,7 +1,7 @@
 import { purchases, projects } from "@/lib/mock-data";
 import { formatCurrency } from "@/lib/format";
 
-export default function RequestsPage(): JSX.Element {
+export default function RequestsPage() {
   return (
     <section>
       <header className="sectionHeader">
