@@ -111,6 +111,8 @@ export type OrganizationOverviewRow = {
 export type HierarchyRow = {
   fiscalYearId: string | null;
   fiscalYearName: string | null;
+  fiscalYearStartDate: string | null;
+  fiscalYearEndDate: string | null;
   organizationId: string | null;
   organizationName: string | null;
   orgCode: string | null;
@@ -119,6 +121,7 @@ export type HierarchyRow = {
   season: string | null;
   budgetLineId: string | null;
   budgetLineActive: boolean | null;
+  accountCodeId: string | null;
   budgetCode: string | null;
   budgetCategory: string | null;
   budgetLineName: string | null;
@@ -447,7 +450,7 @@ export async function getHierarchyRows(): Promise<HierarchyRow[]> {
   const { data: projects, error } = await supabase
     .from("projects")
     .select(
-      "id, name, season, organization_id, organizations(id, name, org_code, fiscal_year_id, fiscal_years(id, name)), project_budget_lines(id, budget_code, category, line_name, allocated_amount, sort_order, active)"
+      "id, name, season, organization_id, organizations(id, name, org_code, fiscal_year_id, fiscal_years(id, name, start_date, end_date)), project_budget_lines(id, account_code_id, budget_code, category, line_name, allocated_amount, sort_order, active)"
     )
     .order("name", { ascending: true });
 
@@ -457,13 +460,22 @@ export async function getHierarchyRows(): Promise<HierarchyRow[]> {
 
   for (const project of projects ?? []) {
     const organization = project.organizations as
-      | { id?: string; name?: string; org_code?: string; fiscal_year_id?: string | null; fiscal_years?: { id?: string; name?: string } | null }
+      | {
+          id?: string;
+          name?: string;
+          org_code?: string;
+          fiscal_year_id?: string | null;
+          fiscal_years?: { id?: string; name?: string; start_date?: string | null; end_date?: string | null } | null;
+        }
       | null;
     const fiscalYearName = organization?.fiscal_years?.name ?? null;
     const fiscalYearId = (organization?.fiscal_years?.id as string | null) ?? null;
+    const fiscalYearStartDate = (organization?.fiscal_years?.start_date as string | null) ?? null;
+    const fiscalYearEndDate = (organization?.fiscal_years?.end_date as string | null) ?? null;
     const lines = (project.project_budget_lines as
       | Array<{
           id?: string;
+          account_code_id?: string | null;
           budget_code?: string;
           category?: string;
           line_name?: string;
@@ -477,6 +489,8 @@ export async function getHierarchyRows(): Promise<HierarchyRow[]> {
       rows.push({
         fiscalYearName,
         fiscalYearId,
+        fiscalYearStartDate,
+        fiscalYearEndDate,
         organizationName: organization?.name ?? null,
         organizationId: (organization?.id as string | null) ?? null,
         orgCode: organization?.org_code ?? null,
@@ -485,6 +499,7 @@ export async function getHierarchyRows(): Promise<HierarchyRow[]> {
         season: (project.season as string | null) ?? null,
         budgetLineId: null,
         budgetLineActive: null,
+        accountCodeId: null,
         budgetCode: null,
         budgetCategory: null,
         budgetLineName: null,
@@ -498,6 +513,8 @@ export async function getHierarchyRows(): Promise<HierarchyRow[]> {
       rows.push({
         fiscalYearName,
         fiscalYearId,
+        fiscalYearStartDate,
+        fiscalYearEndDate,
         organizationName: organization?.name ?? null,
         organizationId: (organization?.id as string | null) ?? null,
         orgCode: organization?.org_code ?? null,
@@ -506,6 +523,7 @@ export async function getHierarchyRows(): Promise<HierarchyRow[]> {
         season: (project.season as string | null) ?? null,
         budgetLineId: (line.id as string | null) ?? null,
         budgetLineActive: (line.active as boolean | null) ?? null,
+        accountCodeId: (line.account_code_id as string | null) ?? null,
         budgetCode: line.budget_code ?? null,
         budgetCategory: line.category ?? null,
         budgetLineName: line.line_name ?? null,

@@ -37,19 +37,19 @@ type OrganizationGroup = {
 type FiscalYearGroup = {
   id: string;
   name: string;
+  startDate: string | null;
+  endDate: string | null;
   organizations: Map<string, OrganizationGroup>;
 };
 
 export default async function SettingsPage({
   searchParams
 }: {
-  searchParams?: Promise<{ import?: string; msg?: string; ok?: string; error?: string }>;
+  searchParams?: Promise<{ import?: string; msg?: string }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const importStatus = resolvedSearchParams?.import;
   const importMessage = resolvedSearchParams?.msg;
-  const okMessage = resolvedSearchParams?.ok;
-  const errorMessage = resolvedSearchParams?.error;
 
   const projects = await getSettingsProjects();
   const templates = await getTemplateNames();
@@ -65,7 +65,13 @@ export default async function SettingsPage({
     const fyId = row.fiscalYearId ?? noFiscalYearKey;
     const fyName = row.fiscalYearName ?? "No Fiscal Year";
     if (!groupedByFiscalYear.has(fyId)) {
-      groupedByFiscalYear.set(fyId, { id: fyId, name: fyName, organizations: new Map() });
+      groupedByFiscalYear.set(fyId, {
+        id: fyId,
+        name: fyName,
+        startDate: row.fiscalYearStartDate,
+        endDate: row.fiscalYearEndDate,
+        organizations: new Map()
+      });
     }
     const fy = groupedByFiscalYear.get(fyId)!;
 
@@ -103,8 +109,6 @@ export default async function SettingsPage({
       <header className="sectionHeader">
         <p className="eyebrow">Admin</p>
         <h1>Project and Access Settings</h1>
-        {okMessage ? <p className="successNote">{okMessage}</p> : null}
-        {errorMessage ? <p className="errorNote">{errorMessage}</p> : null}
         {importStatus === "ok" ? <p className="successNote">CSV import completed.</p> : null}
         {importStatus === "error" ? <p className="errorNote">CSV import failed: {importMessage ?? "Unknown error"}</p> : null}
       </header>
@@ -152,8 +156,8 @@ export default async function SettingsPage({
                 <form action={updateFiscalYearAction} className="inlineEditForm">
                   <input type="hidden" name="id" value={fy.id} />
                   <input name="name" defaultValue={fy.name} />
-                  <input name="startDate" type="date" />
-                  <input name="endDate" type="date" />
+                  <input name="startDate" type="date" defaultValue={fy.startDate ?? ""} />
+                  <input name="endDate" type="date" defaultValue={fy.endDate ?? ""} />
                   <button type="submit" className="tinyButton">
                     Save FY
                   </button>
@@ -231,17 +235,25 @@ export default async function SettingsPage({
                                     <td>{line.budgetLineName ?? "-"}</td>
                                     <td>{line.allocatedAmount === null ? "-" : formatCurrency(line.allocatedAmount)}</td>
                                     <td>{line.sortOrder ?? "-"}</td>
-                                    <td>{line.budgetLineId ? "Yes" : "-"}</td>
+                                    <td>{line.budgetLineId ? (line.budgetLineActive ? "Yes" : "No") : "-"}</td>
                                     <td>
                                       {line.budgetLineId ? (
                                         <form action={updateBudgetLineAction} className="inlineEditForm">
                                           <input type="hidden" name="id" value={line.budgetLineId} />
+                                          <select name="accountCodeId" defaultValue={line.accountCodeId ?? ""}>
+                                            <option value="">Keep current code</option>
+                                            {accountCodes.map((accountCode) => (
+                                              <option key={accountCode.id} value={accountCode.id}>
+                                                {accountCode.code} | {accountCode.category} | {accountCode.name}
+                                              </option>
+                                            ))}
+                                          </select>
                                           <input
                                             name="allocatedAmount"
                                             type="number"
                                             step="0.01"
                                             min="0"
-                                            placeholder="Allocated"
+                                            placeholder="Allocated $"
                                             defaultValue={line.allocatedAmount ?? 0}
                                           />
                                           <input
@@ -249,7 +261,7 @@ export default async function SettingsPage({
                                             type="number"
                                             step="1"
                                             min="0"
-                                            placeholder="Sort"
+                                            placeholder="Sort #"
                                             defaultValue={line.sortOrder ?? 0}
                                           />
                                           <label className="checkboxLabel">
@@ -276,7 +288,7 @@ export default async function SettingsPage({
                                             type="number"
                                             step="0.01"
                                             min="0"
-                                            placeholder="Allocated"
+                                            placeholder="Allocated $"
                                             defaultValue={0}
                                           />
                                           <input
@@ -284,7 +296,7 @@ export default async function SettingsPage({
                                             type="number"
                                             step="1"
                                             min="0"
-                                            placeholder="Sort"
+                                            placeholder="Sort #"
                                             defaultValue={0}
                                           />
                                           <button type="submit" className="tinyButton">
