@@ -241,6 +241,7 @@ export default async function SettingsPage({
                                             type="number"
                                             step="0.01"
                                             min="0"
+                                            placeholder="Allocated"
                                             defaultValue={line.allocatedAmount ?? 0}
                                           />
                                           <input
@@ -248,6 +249,7 @@ export default async function SettingsPage({
                                             type="number"
                                             step="1"
                                             min="0"
+                                            placeholder="Sort"
                                             defaultValue={line.sortOrder ?? 0}
                                           />
                                           <label className="checkboxLabel">
@@ -269,8 +271,22 @@ export default async function SettingsPage({
                                               </option>
                                             ))}
                                           </select>
-                                          <input name="allocatedAmount" type="number" step="0.01" min="0" defaultValue={0} />
-                                          <input name="sortOrder" type="number" step="1" min="0" defaultValue={0} />
+                                          <input
+                                            name="allocatedAmount"
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            placeholder="Allocated"
+                                            defaultValue={0}
+                                          />
+                                          <input
+                                            name="sortOrder"
+                                            type="number"
+                                            step="1"
+                                            min="0"
+                                            placeholder="Sort"
+                                            defaultValue={0}
+                                          />
                                           <button type="submit" className="tinyButton">
                                             Add Line
                                           </button>

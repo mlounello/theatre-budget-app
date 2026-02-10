@@ -77,6 +77,17 @@ function settingsError(message: string): never {
   redirect(`/settings?error=${encodeURIComponent(message)}`);
 }
 
+function rethrowIfRedirect(error: unknown): void {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "digest" in error &&
+    String((error as { digest?: unknown }).digest).includes("NEXT_REDIRECT")
+  ) {
+    throw error;
+  }
+}
+
 async function createProjectViaRpc(
   supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
   params: {
@@ -148,6 +159,7 @@ export async function createProjectAction(formData: FormData): Promise<void> {
     revalidatePath("/requests");
     settingsSuccess("Project added.");
   } catch (error) {
+    rethrowIfRedirect(error);
     settingsError(error instanceof Error ? error.message : "Project creation failed.");
   }
 }
@@ -172,6 +184,7 @@ export async function createFiscalYearAction(formData: FormData): Promise<void> 
     revalidatePath("/overview");
     settingsSuccess("Fiscal year added.");
   } catch (error) {
+    rethrowIfRedirect(error);
     settingsError(error instanceof Error ? error.message : "Could not add fiscal year.");
   }
 }
@@ -196,6 +209,7 @@ export async function createOrganizationAction(formData: FormData): Promise<void
     revalidatePath("/overview");
     settingsSuccess("Organization added.");
   } catch (error) {
+    rethrowIfRedirect(error);
     settingsError(error instanceof Error ? error.message : "Could not add organization.");
   }
 }
@@ -224,6 +238,7 @@ export async function createAccountCodeAction(formData: FormData): Promise<void>
     revalidatePath("/settings");
     settingsSuccess("Account code saved.");
   } catch (error) {
+    rethrowIfRedirect(error);
     settingsError(error instanceof Error ? error.message : "Could not save account code.");
   }
 }
@@ -248,6 +263,7 @@ export async function updateFiscalYearAction(formData: FormData): Promise<void> 
     revalidatePath("/overview");
     settingsSuccess("Fiscal year updated.");
   } catch (error) {
+    rethrowIfRedirect(error);
     settingsError(error instanceof Error ? error.message : "Could not update fiscal year.");
   }
 }
@@ -272,6 +288,7 @@ export async function updateOrganizationAction(formData: FormData): Promise<void
     revalidatePath("/overview");
     settingsSuccess("Organization updated.");
   } catch (error) {
+    rethrowIfRedirect(error);
     settingsError(error instanceof Error ? error.message : "Could not update organization.");
   }
 }
@@ -297,6 +314,7 @@ export async function updateProjectAction(formData: FormData): Promise<void> {
     revalidatePath("/overview");
     settingsSuccess("Project updated.");
   } catch (error) {
+    rethrowIfRedirect(error);
     settingsError(error instanceof Error ? error.message : "Could not update project.");
   }
 }
@@ -321,6 +339,7 @@ export async function updateBudgetLineAction(formData: FormData): Promise<void> 
     revalidatePath("/");
     settingsSuccess("Budget line updated.");
   } catch (error) {
+    rethrowIfRedirect(error);
     settingsError(error instanceof Error ? error.message : "Could not update budget line.");
   }
 }
@@ -531,6 +550,7 @@ export async function importHierarchyCsvAction(formData: FormData): Promise<void
     revalidatePath("/requests");
     redirect("/settings?import=ok");
   } catch (error) {
+    rethrowIfRedirect(error);
     const message = error instanceof Error ? error.message : "CSV import failed.";
     redirect(`/settings?import=error&msg=${encodeURIComponent(message)}`);
   }
