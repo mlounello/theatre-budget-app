@@ -52,13 +52,22 @@ type FiscalYearGroup = {
 export default async function SettingsPage({
   searchParams
 }: {
-  searchParams?: Promise<{ import?: string; msg?: string; ok?: string; error?: string }>;
+  searchParams?: Promise<{
+    import?: string;
+    msg?: string;
+    ok?: string;
+    error?: string;
+    editType?: "fy" | "org" | "project" | "line";
+    editId?: string;
+  }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const importStatus = resolvedSearchParams?.import;
   const importMessage = resolvedSearchParams?.msg;
   const okMessage = resolvedSearchParams?.ok;
   const errorMessage = resolvedSearchParams?.error;
+  const editType = resolvedSearchParams?.editType;
+  const editId = resolvedSearchParams?.editId;
 
   const projects = await getSettingsProjects();
   const templates = await getTemplateNames();
@@ -118,6 +127,39 @@ export default async function SettingsPage({
     (a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name)
   );
 
+  const fiscalYearLookup = new Map(
+    fiscalYearGroups.filter((fy) => fy.id !== noFiscalYearKey).map((fy) => [fy.id, fy] as const)
+  );
+
+  const organizationLookup = new Map(
+    fiscalYearGroups.flatMap((fy) => Array.from(fy.organizations.values()).map((org) => [org.id, org] as const))
+  );
+
+  const projectLookup = new Map(
+    fiscalYearGroups.flatMap((fy) =>
+      Array.from(fy.organizations.values()).flatMap((org) =>
+        Array.from(org.projects.values()).map((project) => [project.id, project] as const)
+      )
+    )
+  );
+
+  const budgetLineLookup = new Map(
+    fiscalYearGroups.flatMap((fy) =>
+      Array.from(fy.organizations.values()).flatMap((org) =>
+        Array.from(org.projects.values()).flatMap((project) =>
+          project.rows
+            .filter((line) => Boolean(line.budgetLineId))
+            .map((line) => [line.budgetLineId as string, { ...line, projectId: project.id }] as const)
+        )
+      )
+    )
+  );
+
+  const editingFiscalYear = editType === "fy" && editId ? fiscalYearLookup.get(editId) : null;
+  const editingOrganization = editType === "org" && editId ? organizationLookup.get(editId) : null;
+  const editingProject = editType === "project" && editId ? projectLookup.get(editId) : null;
+  const editingLine = editType === "line" && editId ? budgetLineLookup.get(editId) : null;
+
   return (
     <section>
       <header className="sectionHeader">
@@ -172,15 +214,11 @@ export default async function SettingsPage({
                 <strong>FY:</strong> {fy.name}
               </summary>
               {fy.id !== noFiscalYearKey ? (
-                <form action={updateFiscalYearAction} className="inlineEditForm">
-                  <input type="hidden" name="id" value={fy.id} />
-                  <input name="name" defaultValue={fy.name} />
-                  <input name="startDate" type="date" defaultValue={fy.startDate ?? ""} />
-                  <input name="endDate" type="date" defaultValue={fy.endDate ?? ""} />
-                  <button type="submit" className="tinyButton">
-                    Save FY
-                  </button>
-                </form>
+                <div className="inlineActionRow">
+                  <a className="tinyButton" href={`/settings?editType=fy&editId=${fy.id}`}>
+                    Edit FY
+                  </a>
+                </div>
               ) : null}
 
               <OrganizationReorder
@@ -199,22 +237,11 @@ export default async function SettingsPage({
                       <strong>Org:</strong> {org.orgCode} - {org.name}
                     </summary>
                     {org.id.startsWith("__no_org__") ? null : (
-                      <form action={updateOrganizationAction} className="inlineEditForm">
-                        <input type="hidden" name="id" value={org.id} />
-                        <input name="name" defaultValue={org.name} />
-                        <input name="orgCode" defaultValue={org.orgCode} />
-                        <select name="fiscalYearId" defaultValue={org.fiscalYearId ?? ""}>
-                          <option value="">No fiscal year</option>
-                          {fiscalYears.map((fyOption) => (
-                            <option key={fyOption.id} value={fyOption.id}>
-                              {fyOption.name}
-                            </option>
-                          ))}
-                        </select>
-                        <button type="submit" className="tinyButton">
-                          Save Org
-                        </button>
-                      </form>
+                      <div className="inlineActionRow">
+                        <a className="tinyButton" href={`/settings?editType=org&editId=${org.id}`}>
+                          Edit Org
+                        </a>
+                      </div>
                     )}
 
                     <ProjectReorder
@@ -230,26 +257,15 @@ export default async function SettingsPage({
                     {Array.from(org.projects.values())
                       .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
                       .map((project) => (
-                        <details key={project.id} className="treeNode childNode" open>
+                        <details key={project.id} className="treeNode childNode" open id={`project-${project.id}`}>
                           <summary>
                             <strong>Project:</strong> {project.name} {project.season ? `(${project.season})` : ""}
                           </summary>
-                          <form action={updateProjectAction} className="inlineEditForm">
-                            <input type="hidden" name="id" value={project.id} />
-                            <input name="name" defaultValue={project.name} />
-                            <input name="season" defaultValue={project.season ?? ""} />
-                            <select name="organizationId" defaultValue={org.id.startsWith("__no_org__") ? "" : org.id}>
-                              <option value="">No organization</option>
-                              {organizations.map((orgOption) => (
-                                <option key={orgOption.id} value={orgOption.id}>
-                                  {orgOption.label}
-                                </option>
-                              ))}
-                            </select>
-                            <button type="submit" className="tinyButton">
-                              Save Project
-                            </button>
-                          </form>
+                          <div className="inlineActionRow">
+                            <a className="tinyButton" href={`/settings?editType=project&editId=${project.id}`}>
+                              Edit Project
+                            </a>
+                          </div>
 
                           <BudgetLineReorder
                             projectId={project.id}
@@ -288,32 +304,9 @@ export default async function SettingsPage({
                                     <td>{line.budgetLineId ? (line.budgetLineActive ? "Yes" : "No") : "-"}</td>
                                     <td>
                                       {line.budgetLineId ? (
-                                        <form action={updateBudgetLineAction} className="inlineEditForm">
-                                          <input type="hidden" name="id" value={line.budgetLineId} />
-                                          <select name="accountCodeId" defaultValue={line.accountCodeId ?? ""}>
-                                            <option value="">Keep current code</option>
-                                            {accountCodes.map((accountCode) => (
-                                              <option key={accountCode.id} value={accountCode.id}>
-                                                {accountCode.code} | {accountCode.category} | {accountCode.name}
-                                              </option>
-                                            ))}
-                                          </select>
-                                          <input
-                                            name="allocatedAmount"
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            placeholder="Allocated $"
-                                            defaultValue={line.allocatedAmount ?? 0}
-                                          />
-                                          <label className="checkboxLabel">
-                                            <input name="active" type="checkbox" defaultChecked={line.budgetLineActive ?? true} />
-                                            Active
-                                          </label>
-                                          <button type="submit" className="tinyButton">
-                                            Save Line
-                                          </button>
-                                        </form>
+                                        <a className="tinyButton" href={`/settings?editType=line&editId=${line.budgetLineId}`}>
+                                          Edit Line
+                                        </a>
                                       ) : null}
                                     </td>
                                   </tr>
@@ -387,6 +380,179 @@ export default async function SettingsPage({
           </form>
         </article>
       </div>
+
+      {editingFiscalYear ? (
+        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit fiscal year">
+          <div className="modalPanel">
+            <h2>Edit Fiscal Year</h2>
+            <form action={updateFiscalYearAction} className="requestForm">
+              <input type="hidden" name="id" value={editingFiscalYear.id} />
+              <label>
+                Name
+                <input name="name" defaultValue={editingFiscalYear.name} required />
+              </label>
+              <label>
+                Start Date
+                <input name="startDate" type="date" defaultValue={editingFiscalYear.startDate ?? ""} />
+              </label>
+              <label>
+                End Date
+                <input name="endDate" type="date" defaultValue={editingFiscalYear.endDate ?? ""} />
+              </label>
+              <div className="modalActions">
+                <a className="tinyButton" href="/settings">
+                  Cancel
+                </a>
+                <button type="submit" className="buttonLink buttonPrimary">
+                  Save FY
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {editingOrganization ? (
+        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit organization">
+          <div className="modalPanel">
+            <h2>Edit Organization</h2>
+            <form action={updateOrganizationAction} className="requestForm">
+              <input type="hidden" name="id" value={editingOrganization.id} />
+              <label>
+                Name
+                <input name="name" defaultValue={editingOrganization.name} required />
+              </label>
+              <label>
+                Org Code
+                <input name="orgCode" defaultValue={editingOrganization.orgCode} required />
+              </label>
+              <label>
+                Fiscal Year
+                <select name="fiscalYearId" defaultValue={editingOrganization.fiscalYearId ?? ""}>
+                  <option value="">No fiscal year</option>
+                  {fiscalYears.map((fyOption) => (
+                    <option key={fyOption.id} value={fyOption.id}>
+                      {fyOption.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="modalActions">
+                <a className="tinyButton" href="/settings">
+                  Cancel
+                </a>
+                <button type="submit" className="buttonLink buttonPrimary">
+                  Save Org
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {editingProject ? (
+        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit project">
+          <div className="modalPanel">
+            <h2>Edit Project</h2>
+            <form action={updateProjectAction} className="requestForm">
+              <input type="hidden" name="id" value={editingProject.id} />
+              <label>
+                Name
+                <input name="name" defaultValue={editingProject.name} required />
+              </label>
+              <label>
+                Season
+                <input name="season" defaultValue={editingProject.season ?? ""} />
+              </label>
+              <label>
+                Organization
+                <select
+                  name="organizationId"
+                  defaultValue={projects.find((project) => project.id === editingProject.id)?.organizationId ?? ""}
+                >
+                  <option value="">No organization</option>
+                  {organizations.map((orgOption) => (
+                    <option key={orgOption.id} value={orgOption.id}>
+                      {orgOption.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="modalActions">
+                <a className="tinyButton" href="/settings">
+                  Cancel
+                </a>
+                <button type="submit" className="buttonLink buttonPrimary">
+                  Save Project
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {editingLine ? (
+        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit budget line">
+          <div className="modalPanel">
+            <h2>Edit Budget Line</h2>
+            <form action={updateBudgetLineAction} className="requestForm">
+              <input type="hidden" name="id" value={editingLine.budgetLineId ?? ""} />
+              <input type="hidden" name="currentProjectId" value={editingLine.projectId} />
+              <label>
+                Move to Project
+                <select name="targetProjectId" defaultValue={editingLine.projectId}>
+                  {projects
+                    .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
+                    .map((project) => {
+                      const orgLabel = organizations.find((org) => org.id === project.organizationId)?.label ?? "No org";
+                      return (
+                        <option key={project.id} value={project.id}>
+                          {project.name} {project.season ? `(${project.season})` : ""} | {orgLabel}
+                        </option>
+                      );
+                    })}
+                </select>
+              </label>
+              <label>
+                Account Code
+                <select name="accountCodeId" defaultValue={editingLine.accountCodeId ?? ""} required>
+                  {accountCodes.map((accountCode) => (
+                    <option key={accountCode.id} value={accountCode.id}>
+                      {accountCode.code} | {accountCode.category} | {accountCode.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Allocated
+                <input
+                  name="allocatedAmount"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  defaultValue={editingLine.allocatedAmount ?? 0}
+                  required
+                />
+              </label>
+              <label>
+                Active
+                <select name="active" defaultValue={editingLine.budgetLineActive ? "on" : "off"}>
+                  <option value="on">Yes</option>
+                  <option value="off">No</option>
+                </select>
+              </label>
+              <div className="modalActions">
+                <a className="tinyButton" href="/settings">
+                  Cancel
+                </a>
+                <button type="submit" className="buttonLink buttonPrimary">
+                  Save Line
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

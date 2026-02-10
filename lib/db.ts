@@ -67,6 +67,7 @@ export type SettingsProject = {
   id: string;
   name: string;
   season: string | null;
+  organizationId: string | null;
   sortOrder: number;
 };
 
@@ -411,7 +412,7 @@ export async function getSettingsProjects(): Promise<SettingsProject[]> {
 
   const { data, error } = await supabase
     .from("projects")
-    .select("id, name, season, sort_order")
+    .select("id, name, season, organization_id, sort_order")
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
 
@@ -421,6 +422,7 @@ export async function getSettingsProjects(): Promise<SettingsProject[]> {
     id: row.id as string,
     name: row.name as string,
     season: (row.season as string | null) ?? null,
+    organizationId: (row.organization_id as string | null) ?? null,
     sortOrder: (row.sort_order as number | null) ?? 0
   }));
 }

@@ -78,8 +78,9 @@ function parseCsv(text: string): Array<Record<string, string>> {
   });
 }
 
-function settingsSuccess(message: string): never {
-  redirect(`/settings?ok=${encodeURIComponent(message)}`);
+function settingsSuccess(message: string, hash?: string): never {
+  const target = `/settings?ok=${encodeURIComponent(message)}${hash ? `#${hash}` : ""}`;
+  redirect(target);
 }
 
 function settingsError(message: string): never {
@@ -347,6 +348,8 @@ export async function updateBudgetLineAction(formData: FormData): Promise<void> 
   try {
     const supabase = await getSupabaseServerClient();
     const id = String(formData.get("id") ?? "").trim();
+    const currentProjectId = String(formData.get("currentProjectId") ?? "").trim();
+    const targetProjectId = String(formData.get("targetProjectId") ?? "").trim();
     const accountCodeId = String(formData.get("accountCodeId") ?? "").trim();
     const allocatedAmount = parseMoney(formData.get("allocatedAmount"));
     const sortOrder = parseOptionalSortOrder(formData.get("sortOrder"));
@@ -362,7 +365,12 @@ export async function updateBudgetLineAction(formData: FormData): Promise<void> 
       budget_code?: string;
       category?: string;
       line_name?: string;
+      project_id?: string;
     } = { allocated_amount: allocatedAmount, active };
+
+    if (targetProjectId) {
+      nextValues.project_id = targetProjectId;
+    }
 
     if (sortOrder !== undefined) {
       nextValues.sort_order = sortOrder;
@@ -387,10 +395,15 @@ export async function updateBudgetLineAction(formData: FormData): Promise<void> 
     const { error } = await supabase.from("project_budget_lines").update(nextValues).eq("id", id);
     if (error) throw new Error(error.message);
 
+    const focusProjectId = targetProjectId || currentProjectId;
+
     revalidatePath("/settings");
     revalidatePath("/");
     revalidatePath("/requests");
-    settingsSuccess("Budget line updated.");
+    if (focusProjectId) {
+      revalidatePath(`/projects/${focusProjectId}`);
+    }
+    settingsSuccess("Budget line updated.", focusProjectId ? `project-${focusProjectId}` : undefined);
   } catch (error) {
     rethrowIfRedirect(error);
     settingsError(getErrorMessage(error, "Could not update budget line."));
