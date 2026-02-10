@@ -21,7 +21,11 @@ export async function getSupabaseServerClient() {
         return cookieStore.getAll();
       },
       setAll(items: CookieToSet[]) {
-        items.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
+        try {
+          items.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
+        } catch {
+          // Server Components cannot always set cookies; middleware refresh handles session persistence.
+        }
       }
     }
   });

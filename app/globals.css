@@ -112,6 +112,33 @@ th {
   background: #ffffff1a;
 }
 
+.navButton {
+  color: var(--siena-white);
+  text-decoration: none;
+  font-family: "Gudea", "Arial", sans-serif;
+  border: 1px solid #ffffff52;
+  background: transparent;
+  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+}
+
+.navButton:hover {
+  background: #ffffff1a;
+}
+
+.userBar {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 1rem 0.6rem;
+}
+
+.userBarText {
+  margin: 0;
+  color: #d6ebe2;
+  font-size: 0.8rem;
+}
+
 .heroCard,
 .projectCard,
 .panel,
@@ -211,6 +238,15 @@ th {
   padding: 0.45rem 0.85rem;
 }
 
+.buttonPrimary {
+  background: var(--siena-green);
+  color: var(--siena-white);
+}
+
+.buttonPrimary:hover {
+  background: var(--siena-dark-green);
+}
+
 .sectionHeader h1 {
   margin-top: 0.2rem;
 }
@@ -288,6 +324,92 @@ th {
   padding-left: 1.1rem;
 }
 
+.authShell {
+  display: grid;
+  place-items: center;
+  min-height: calc(100vh - 180px);
+  padding: 1rem;
+}
+
+.authCard {
+  width: min(460px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  border-radius: 16px;
+  padding: 1.2rem;
+}
+
+.authCard h1 {
+  margin: 0.4rem 0;
+}
+
+.authButton {
+  width: 100%;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--siena-dark-green);
+  background: var(--siena-green);
+  color: var(--siena-white);
+  border-radius: 999px;
+  font-family: "Gudea", "Arial", sans-serif;
+  cursor: pointer;
+  margin-top: 0.9rem;
+}
+
+.authButton:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.authError {
+  margin-top: 0.8rem;
+  color: var(--siena-red);
+}
+
+.requestFormPanel {
+  margin-bottom: 1rem;
+}
+
+.requestForm {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.7rem;
+  align-items: end;
+}
+
+.requestForm label {
+  display: grid;
+  gap: 0.35rem;
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.86rem;
+}
+
+.requestForm input,
+.requestForm select,
+.inlineStatusForm input,
+.inlineStatusForm select {
+  border: 1px solid #cbd6ce;
+  border-radius: 8px;
+  padding: 0.42rem 0.5rem;
+  font-family: "Merriweather", "Georgia", serif;
+  min-width: 0;
+}
+
+.inlineStatusForm {
+  display: grid;
+  grid-template-columns: 1fr 110px auto;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.tinyButton {
+  border: 1px solid var(--siena-dark-green);
+  border-radius: 999px;
+  background: transparent;
+  padding: 0.35rem 0.65rem;
+  font-family: "Gudea", "Arial", sans-serif;
+  cursor: pointer;
+}
+
 @media (max-width: 720px) {
   .topNavInner {
     flex-direction: column;
@@ -297,5 +419,9 @@ th {
   .mainNav {
     width: 100%;
     flex-wrap: wrap;
+  }
+
+  .inlineStatusForm {
+    grid-template-columns: 1fr;
   }
 }
