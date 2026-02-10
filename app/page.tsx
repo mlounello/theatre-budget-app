@@ -1,9 +1,17 @@
 import Link from "next/link";
 import { formatCurrency } from "@/lib/format";
 import { getDashboardProjects } from "@/lib/db";
+import type { DashboardProject } from "@/lib/db";
 
 export default async function DashboardPage() {
-  const projects = await getDashboardProjects();
+  let projects: DashboardProject[] = [];
+  let loadError: string | null = null;
+
+  try {
+    projects = await getDashboardProjects();
+  } catch {
+    loadError = "Unable to load project data. Check Supabase view grants and migration status.";
+  }
 
   return (
     <section>
@@ -17,6 +25,13 @@ export default async function DashboardPage() {
       </div>
 
       <div className="gridCards">
+        {loadError ? (
+          <article className="projectCard">
+            <h2>Data Connection Error</h2>
+            <p>{loadError}</p>
+          </article>
+        ) : null}
+
         {projects.length === 0 ? (
           <article className="projectCard">
             <h2>No projects yet</h2>

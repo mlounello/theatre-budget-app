@@ -10,10 +10,20 @@ const links = [
 ];
 
 export async function TopNav() {
-  const supabase = await getSupabaseServerClient();
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
+  let userEmail: string | null = null;
+  let hasUser = false;
+
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    hasUser = Boolean(user);
+    userEmail = user?.email ?? null;
+  } catch {
+    hasUser = false;
+    userEmail = null;
+  }
 
   return (
     <header className="topNav">
@@ -31,7 +41,7 @@ export async function TopNav() {
               {link.label}
             </Link>
           ))}
-          {user ? (
+          {hasUser ? (
             <form action={signOut}>
               <button className="navButton" type="submit">
                 Sign Out
@@ -40,9 +50,9 @@ export async function TopNav() {
           ) : null}
         </nav>
       </div>
-      {user?.email ? (
+      {userEmail ? (
         <div className="userBar">
-          <p className="userBarText">Signed in as {user.email}</p>
+          <p className="userBarText">Signed in as {userEmail}</p>
         </div>
       ) : null}
     </header>
