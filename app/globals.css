@@ -316,6 +316,41 @@ th {
   color: #1b4932;
 }
 
+.status-ordered {
+  background: #ffe5c2;
+  color: #8a4300;
+}
+
+.status-partial_received {
+  background: #efe5ff;
+  color: #5d2f9e;
+}
+
+.status-fully_received {
+  background: #dfd0ff;
+  color: #45207a;
+}
+
+.status-invoice_sent {
+  background: #dff4fb;
+  color: #005a73;
+}
+
+.status-invoice_received {
+  background: #cfeeff;
+  color: #004f78;
+}
+
+.status-paid {
+  background: #dbf3d8;
+  color: #1f5f1e;
+}
+
+.status-cancelled {
+  background: #f8dde0;
+  color: #7f1d2a;
+}
+
 .panelGrid {
   display: grid;
   gap: 0.9rem;
