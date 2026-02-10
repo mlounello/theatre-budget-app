@@ -1,9 +1,10 @@
 import { addBudgetLineAction, createProjectAction } from "@/app/settings/actions";
-import { getSettingsProjects, getTemplateNames } from "@/lib/db";
+import { getAccountCodeOptions, getSettingsProjects, getTemplateNames } from "@/lib/db";
 
 export default async function SettingsPage() {
   const projects = await getSettingsProjects();
   const templates = await getTemplateNames();
+  const accountCodes = await getAccountCodeOptions();
 
   return (
     <section>
@@ -47,7 +48,7 @@ export default async function SettingsPage() {
 
         <article className="panel">
           <h2>Add Budget Line</h2>
-          <p>Add manual lines to any project where you have manager/admin access.</p>
+          <p>Select from fixed university account codes.</p>
           <form className="requestForm" action={addBudgetLineAction}>
             <label>
               Project
@@ -61,16 +62,15 @@ export default async function SettingsPage() {
               </select>
             </label>
             <label>
-              Budget Code
-              <input name="budgetCode" required placeholder="Ex: 11300" />
-            </label>
-            <label>
-              Category
-              <input name="category" required placeholder="Ex: Scenic" />
-            </label>
-            <label>
-              Line Name
-              <input name="lineName" required placeholder="Ex: Scenic" />
+              Account Code
+              <select name="accountCodeId" required>
+                <option value="">Select account code</option>
+                {accountCodes.map((accountCode) => (
+                  <option key={accountCode.id} value={accountCode.id}>
+                    {accountCode.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <label>
               Allocated Amount

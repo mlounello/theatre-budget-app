@@ -68,6 +68,14 @@ export type SettingsProject = {
   season: string | null;
 };
 
+export type AccountCodeOption = {
+  id: string;
+  code: string;
+  category: string;
+  name: string;
+  label: string;
+};
+
 export async function getDashboardProjects(): Promise<DashboardProject[]> {
   const supabase = await getSupabaseServerClient();
 
@@ -300,4 +308,23 @@ export async function getTemplateNames(): Promise<string[]> {
   const { data, error } = await supabase.from("budget_templates").select("name").order("name", { ascending: true });
   if (error) throw error;
   return (data ?? []).map((row) => row.name as string);
+}
+
+export async function getAccountCodeOptions(): Promise<AccountCodeOption[]> {
+  const supabase = await getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("account_codes")
+    .select("id, code, category, name")
+    .eq("active", true)
+    .order("code", { ascending: true });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    code: row.code as string,
+    category: row.category as string,
+    name: row.name as string,
+    label: `${row.code as string} | ${row.category as string} | ${row.name as string}`
+  }));
 }

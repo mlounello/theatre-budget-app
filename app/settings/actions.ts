@@ -64,21 +64,30 @@ export async function addBudgetLineAction(formData: FormData): Promise<void> {
   }
 
   const projectId = String(formData.get("projectId") ?? "").trim();
-  const budgetCode = String(formData.get("budgetCode") ?? "").trim();
-  const category = String(formData.get("category") ?? "").trim();
-  const lineName = String(formData.get("lineName") ?? "").trim();
+  const accountCodeId = String(formData.get("accountCodeId") ?? "").trim();
   const allocatedAmount = parseMoney(formData.get("allocatedAmount"));
   const sortOrder = parseSortOrder(formData.get("sortOrder"));
 
-  if (!projectId || !budgetCode || !category || !lineName) {
-    throw new Error("Project, budget code, category, and line name are required.");
+  if (!projectId || !accountCodeId) {
+    throw new Error("Project and account code are required.");
+  }
+
+  const { data: accountCode, error: accountCodeError } = await supabase
+    .from("account_codes")
+    .select("id, code, category, name")
+    .eq("id", accountCodeId)
+    .single();
+
+  if (accountCodeError || !accountCode) {
+    throw new Error("Invalid account code selection.");
   }
 
   const { error } = await supabase.from("project_budget_lines").insert({
     project_id: projectId,
-    budget_code: budgetCode,
-    category,
-    line_name: lineName,
+    budget_code: accountCode.code,
+    category: accountCode.category,
+    line_name: accountCode.name,
+    account_code_id: accountCode.id,
     allocated_amount: allocatedAmount,
     sort_order: sortOrder
   });
