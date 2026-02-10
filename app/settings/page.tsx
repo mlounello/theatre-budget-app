@@ -3,15 +3,18 @@ import {
   createAccountCodeAction,
   createFiscalYearAction,
   createOrganizationAction,
-  createProjectAction
+  createProjectAction,
+  importHierarchyCsvAction
 } from "@/app/settings/actions";
 import {
   getAccountCodeOptions,
   getFiscalYearOptions,
+  getHierarchyRows,
   getOrganizationOptions,
   getSettingsProjects,
   getTemplateNames
 } from "@/lib/db";
+import { formatCurrency } from "@/lib/format";
 
 export default async function SettingsPage() {
   const projects = await getSettingsProjects();
@@ -19,6 +22,7 @@ export default async function SettingsPage() {
   const accountCodes = await getAccountCodeOptions();
   const fiscalYears = await getFiscalYearOptions();
   const organizations = await getOrganizationOptions();
+  const hierarchyRows = await getHierarchyRows();
 
   return (
     <section>
@@ -121,6 +125,25 @@ export default async function SettingsPage() {
         </article>
 
         <article className="panel">
+          <h2>CSV Import</h2>
+          <p>Download template, fill your rows, then upload to create/update fiscal years, orgs, projects, and lines.</p>
+          <div className="inlineActionRow">
+            <a className="buttonLink" href="/settings/import-template">
+              Download CSV Template
+            </a>
+          </div>
+          <form className="requestForm" action={importHierarchyCsvAction}>
+            <label>
+              CSV File
+              <input name="csvFile" type="file" accept=".csv,text/csv" required />
+            </label>
+            <button type="submit" className="buttonLink buttonPrimary">
+              Import CSV
+            </button>
+          </form>
+        </article>
+
+        <article className="panel">
           <h2>Add Account Code</h2>
           <p>Admin-managed master list (university-controlled values).</p>
           <form className="requestForm" action={createAccountCodeAction}>
@@ -196,6 +219,68 @@ export default async function SettingsPage() {
               </li>
             ))}
           </ul>
+        </article>
+
+        <article className="panel">
+          <h2>Current Fiscal Years</h2>
+          <ul>
+            {fiscalYears.map((fy) => (
+              <li key={fy.id}>{fy.name}</li>
+            ))}
+            {fiscalYears.length === 0 ? <li>(none)</li> : null}
+          </ul>
+        </article>
+
+        <article className="panel">
+          <h2>Current Organizations</h2>
+          <ul>
+            {organizations.map((org) => (
+              <li key={org.id}>{org.label}</li>
+            ))}
+            {organizations.length === 0 ? <li>(none)</li> : null}
+          </ul>
+        </article>
+
+        <article className="panel panelFull">
+          <h2>Hierarchy Reference</h2>
+          <p>Fiscal Year {"->"} Organization {"->"} Project {"->"} Budget Line</p>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Fiscal Year</th>
+                  <th>Org Code</th>
+                  <th>Organization</th>
+                  <th>Project</th>
+                  <th>Season</th>
+                  <th>Budget Code</th>
+                  <th>Category</th>
+                  <th>Line</th>
+                  <th>Allocated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {hierarchyRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={9}>(none)</td>
+                  </tr>
+                ) : null}
+                {hierarchyRows.map((row, idx) => (
+                  <tr key={`${row.projectId}-${row.budgetCode ?? "none"}-${idx}`}>
+                    <td>{row.fiscalYearName ?? "-"}</td>
+                    <td>{row.orgCode ?? "-"}</td>
+                    <td>{row.organizationName ?? "-"}</td>
+                    <td>{row.projectName}</td>
+                    <td>{row.season ?? "-"}</td>
+                    <td>{row.budgetCode ?? "-"}</td>
+                    <td>{row.budgetCategory ?? "-"}</td>
+                    <td>{row.budgetLineName ?? "-"}</td>
+                    <td>{row.allocatedAmount === null ? "-" : formatCurrency(row.allocatedAmount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </article>
       </div>
     </section>

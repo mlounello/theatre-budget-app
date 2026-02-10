@@ -15,6 +15,59 @@ function parseSortOrder(value: FormDataEntryValue | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseCsv(text: string): Array<Record<string, string>> {
+  const rows: string[][] = [];
+  let current = "";
+  let row: string[] = [];
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    const next = text[i + 1];
+
+    if (ch === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (ch === "," && !inQuotes) {
+      row.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    if ((ch === "\n" || ch === "\r") && !inQuotes) {
+      if (ch === "\r" && next === "\n") i += 1;
+      row.push(current.trim());
+      current = "";
+      if (row.some((cell) => cell.length > 0)) rows.push(row);
+      row = [];
+      continue;
+    }
+
+    current += ch;
+  }
+
+  row.push(current.trim());
+  if (row.some((cell) => cell.length > 0)) rows.push(row);
+
+  if (rows.length === 0) return [];
+
+  const headers = rows[0].map((h) => h.trim());
+  return rows.slice(1).map((cells) => {
+    const record: Record<string, string> = {};
+    headers.forEach((header, idx) => {
+      record[header] = (cells[idx] ?? "").trim();
+    });
+    return record;
+  });
+}
+
 export async function createProjectAction(formData: FormData): Promise<void> {
   const supabase = await getSupabaseServerClient();
   const {
@@ -112,6 +165,160 @@ export async function createAccountCodeAction(formData: FormData): Promise<void>
   );
   if (error) throw new Error(error.message);
   revalidatePath("/settings");
+}
+
+export async function importHierarchyCsvAction(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("You must be signed in.");
+
+  const uploaded = formData.get("csvFile");
+  if (!(uploaded instanceof File) || uploaded.size === 0) {
+    throw new Error("Please upload a CSV file.");
+  }
+
+  const text = await uploaded.text();
+  const rows = parseCsv(text);
+  if (rows.length === 0) throw new Error("CSV has no data rows.");
+
+  const requiredHeaders = [
+    "fiscal_year_name",
+    "organization_name",
+    "org_code",
+    "project_name",
+    "season",
+    "budget_code",
+    "category",
+    "line_name",
+    "allocated_amount",
+    "sort_order"
+  ];
+
+  const first = rows[0];
+  for (const header of requiredHeaders) {
+    if (!(header in first)) {
+      throw new Error(`Missing required header: ${header}`);
+    }
+  }
+
+  for (const row of rows) {
+    const fiscalYearName = row.fiscal_year_name;
+    const organizationName = row.organization_name;
+    const orgCode = row.org_code;
+    const projectName = row.project_name;
+    const season = row.season || null;
+    const budgetCode = row.budget_code;
+    const category = row.category || "Uncategorized";
+    const lineName = row.line_name || category;
+    const allocatedAmount = Number.parseFloat(row.allocated_amount || "0");
+    const sortOrder = Number.parseInt(row.sort_order || "0", 10);
+
+    if (!projectName) continue;
+
+    let fiscalYearId: string | null = null;
+    if (fiscalYearName) {
+      const { data: fyData, error: fyError } = await supabase
+        .from("fiscal_years")
+        .upsert({ name: fiscalYearName }, { onConflict: "name" })
+        .select("id")
+        .single();
+      if (fyError) throw new Error(fyError.message);
+      fiscalYearId = fyData.id as string;
+    }
+
+    let organizationId: string | null = null;
+    if (organizationName && orgCode) {
+      const { data: orgExisting } = await supabase
+        .from("organizations")
+        .select("id")
+        .eq("org_code", orgCode)
+        .eq("name", organizationName)
+        .maybeSingle();
+
+      if (orgExisting?.id) {
+        organizationId = orgExisting.id as string;
+      } else {
+        const { data: orgData, error: orgError } = await supabase
+          .from("organizations")
+          .insert({
+            name: organizationName,
+            org_code: orgCode,
+            fiscal_year_id: fiscalYearId
+          })
+          .select("id")
+          .single();
+        if (orgError) throw new Error(orgError.message);
+        organizationId = orgData.id as string;
+      }
+    }
+
+    const { data: projectExisting } = await supabase
+      .from("projects")
+      .select("id")
+      .eq("name", projectName)
+      .eq("season", season)
+      .maybeSingle();
+
+    let projectId: string;
+    if (projectExisting?.id) {
+      projectId = projectExisting.id as string;
+      if (organizationId) {
+        await supabase.from("projects").update({ organization_id: organizationId }).eq("id", projectId);
+      }
+    } else {
+      const { data: newProject, error: projectError } = await supabase.rpc("create_project_with_admin", {
+        p_name: projectName,
+        p_season: season,
+        p_use_template: false,
+        p_template_name: "Play/Musical Default",
+        p_organization_id: organizationId
+      });
+      if (projectError || !newProject) throw new Error(projectError?.message ?? "Could not create project.");
+      projectId = newProject as string;
+    }
+
+    if (!budgetCode) continue;
+
+    const { data: accountCodeData, error: accountCodeError } = await supabase
+      .from("account_codes")
+      .upsert(
+        {
+          code: budgetCode,
+          category,
+          name: lineName,
+          active: true
+        },
+        { onConflict: "code" }
+      )
+      .select("id, code, category, name")
+      .single();
+    if (accountCodeError) throw new Error(accountCodeError.message);
+
+    const amount = Number.isFinite(allocatedAmount) ? allocatedAmount : 0;
+    const order = Number.isFinite(sortOrder) ? sortOrder : 0;
+
+    const { error: lineError } = await supabase.from("project_budget_lines").upsert(
+      {
+        project_id: projectId,
+        account_code_id: accountCodeData.id,
+        budget_code: accountCodeData.code,
+        category: accountCodeData.category,
+        line_name: accountCodeData.name,
+        allocated_amount: amount,
+        sort_order: order
+      },
+      { onConflict: "project_id,budget_code,category,line_name" }
+    );
+    if (lineError) throw new Error(lineError.message);
+  }
+
+  revalidatePath("/");
+  revalidatePath("/overview");
+  revalidatePath("/settings");
+  revalidatePath("/requests");
 }
 
 export async function addBudgetLineAction(formData: FormData): Promise<void> {

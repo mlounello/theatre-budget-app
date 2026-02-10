@@ -108,6 +108,19 @@ export type OrganizationOverviewRow = {
   incomeTotal: number;
 };
 
+export type HierarchyRow = {
+  fiscalYearName: string | null;
+  organizationName: string | null;
+  orgCode: string | null;
+  projectId: string;
+  projectName: string;
+  season: string | null;
+  budgetCode: string | null;
+  budgetCategory: string | null;
+  budgetLineName: string | null;
+  allocatedAmount: number | null;
+};
+
 export async function getDashboardProjects(): Promise<DashboardProject[]> {
   const supabase = await getSupabaseServerClient();
 
@@ -422,4 +435,64 @@ export async function getOrganizationOverviewRows(): Promise<OrganizationOvervie
     remainingIfRequestedApproved: asNumber(row.remaining_if_requested_approved as string | number | null),
     incomeTotal: asNumber(row.income_total as string | number | null)
   }));
+}
+
+export async function getHierarchyRows(): Promise<HierarchyRow[]> {
+  const supabase = await getSupabaseServerClient();
+  const { data: projects, error } = await supabase
+    .from("projects")
+    .select(
+      "id, name, season, organizations(name, org_code, fiscal_years(name)), project_budget_lines(budget_code, category, line_name, allocated_amount)"
+    )
+    .order("name", { ascending: true });
+
+  if (error) throw error;
+
+  const rows: HierarchyRow[] = [];
+
+  for (const project of projects ?? []) {
+    const organization = project.organizations as
+      | { name?: string; org_code?: string; fiscal_years?: { name?: string } | null }
+      | null;
+    const fiscalYearName = organization?.fiscal_years?.name ?? null;
+    const lines = (project.project_budget_lines as
+      | Array<{ budget_code?: string; category?: string; line_name?: string; allocated_amount?: string | number | null }>
+      | null) ?? [];
+
+    if (lines.length === 0) {
+      rows.push({
+        fiscalYearName,
+        organizationName: organization?.name ?? null,
+        orgCode: organization?.org_code ?? null,
+        projectId: project.id as string,
+        projectName: project.name as string,
+        season: (project.season as string | null) ?? null,
+        budgetCode: null,
+        budgetCategory: null,
+        budgetLineName: null,
+        allocatedAmount: null
+      });
+      continue;
+    }
+
+    for (const line of lines) {
+      rows.push({
+        fiscalYearName,
+        organizationName: organization?.name ?? null,
+        orgCode: organization?.org_code ?? null,
+        projectId: project.id as string,
+        projectName: project.name as string,
+        season: (project.season as string | null) ?? null,
+        budgetCode: line.budget_code ?? null,
+        budgetCategory: line.category ?? null,
+        budgetLineName: line.line_name ?? null,
+        allocatedAmount:
+          line.allocated_amount === null || line.allocated_amount === undefined
+            ? null
+            : asNumber(line.allocated_amount as string | number | null)
+      });
+    }
+  }
+
+  return rows;
 }

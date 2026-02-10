@@ -314,6 +314,10 @@ th {
   padding: 1rem;
 }
 
+.panelFull {
+  grid-column: 1 / -1;
+}
+
 .panel h2 {
   margin-bottom: 0.5rem;
   font-size: 1.1rem;
@@ -322,6 +326,12 @@ th {
 .panel ul {
   margin: 0.3rem 0 0;
   padding-left: 1.1rem;
+}
+
+.inlineActionRow {
+  display: flex;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
 }
 
 .authShell {

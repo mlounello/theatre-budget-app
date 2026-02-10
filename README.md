@@ -64,6 +64,12 @@ After first Google sign-in:
 
 This automatically assigns you as project `admin` for newly created projects.
 
+## CSV import
+- Go to `/settings`
+- Download template from `Download CSV Template`
+- Fill rows and upload in `CSV Import`
+- Import upserts: fiscal years, organizations, projects, account codes, and project budget lines
+
 ## Current implemented slice
 - Google OAuth login + callback + signout
 - Auth-protected routes with middleware
