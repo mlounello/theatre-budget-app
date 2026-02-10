@@ -105,12 +105,21 @@ export type VendorOption = {
 export type ProcurementBudgetLineOption = {
   id: string;
   projectId: string;
+  projectName: string;
+  season: string | null;
+  organizationId: string | null;
+  organizationName: string | null;
+  orgCode: string | null;
+  fiscalYearId: string | null;
+  fiscalYearName: string | null;
   label: string;
 };
 
 export type ProcurementProjectOption = {
   id: string;
   label: string;
+  organizationId: string | null;
+  fiscalYearId: string | null;
 };
 
 export type ProjectBudgetLineOption = {
@@ -520,7 +529,9 @@ export async function getProcurementData(): Promise<{
       .limit(200),
     supabase
       .from("project_budget_lines")
-      .select("id, project_id, budget_code, category, line_name, projects(name, season)")
+      .select(
+        "id, project_id, budget_code, category, line_name, projects(name, season, organization_id, organizations(name, org_code, fiscal_year_id, fiscal_years(name)))"
+      )
       .eq("active", true)
       .order("budget_code", { ascending: true }),
     supabase.from("vendors").select("id, name").order("name", { ascending: true }),
@@ -528,7 +539,7 @@ export async function getProcurementData(): Promise<{
       .from("purchase_receipts")
       .select("id, purchase_id, note, amount_received, fully_received, attachment_url, created_at")
       .order("created_at", { ascending: false }),
-    supabase.from("projects").select("id, name, season").order("name", { ascending: true })
+    supabase.from("projects").select("id, name, season, organization_id").order("name", { ascending: true })
   ]);
 
   if (purchasesResponse.error) throw purchasesResponse.error;
@@ -589,18 +600,61 @@ export async function getProcurementData(): Promise<{
   });
 
   const budgetLineOptions: ProcurementBudgetLineOption[] = (linesResponse.data ?? []).map((row) => {
-    const project = row.projects as { name?: string; season?: string | null } | null;
+    const project = row.projects as
+      | {
+          name?: string;
+          season?: string | null;
+          organization_id?: string | null;
+          organizations?:
+            | { name?: string; org_code?: string; fiscal_year_id?: string | null; fiscal_years?: { name?: string } | null }
+            | Array<{ name?: string; org_code?: string; fiscal_year_id?: string | null; fiscal_years?: { name?: string } | null }>
+            | null;
+        }
+      | null;
+    const organization = Array.isArray(project?.organizations) ? project?.organizations[0] : project?.organizations;
+    const fiscalYear = organization?.fiscal_years;
     return {
       id: row.id as string,
       projectId: row.project_id as string,
+      projectName: project?.name ?? "Unknown Project",
+      season: project?.season ?? null,
+      organizationId: (project?.organization_id as string | null) ?? null,
+      organizationName: organization?.name ?? null,
+      orgCode: organization?.org_code ?? null,
+      fiscalYearId: (organization?.fiscal_year_id as string | null) ?? null,
+      fiscalYearName: fiscalYear?.name ?? null,
       label: `${project?.name ?? "Unknown"}${project?.season ? ` (${project.season})` : ""} | ${row.budget_code as string} | ${row.category as string} | ${row.line_name as string}`
     };
   });
 
   const projectOptions: ProcurementProjectOption[] = (projectsResponse.data ?? []).map((row) => ({
     id: row.id as string,
-    label: `${row.name as string}${(row.season as string | null) ? ` (${row.season as string})` : ""}`
+    label: `${row.name as string}${(row.season as string | null) ? ` (${row.season as string})` : ""}`,
+    organizationId: (row.organization_id as string | null) ?? null,
+    fiscalYearId: null
   }));
+
+  const projectWithHierarchy = new Map<
+    string,
+    { organizationId: string | null; fiscalYearId: string | null }
+  >();
+  for (const line of budgetLineOptions) {
+    if (!projectWithHierarchy.has(line.projectId)) {
+      projectWithHierarchy.set(line.projectId, {
+        organizationId: line.organizationId,
+        fiscalYearId: line.fiscalYearId
+      });
+    }
+  }
+
+  const normalizedProjectOptions: ProcurementProjectOption[] = projectOptions.map((project) => {
+    const hierarchy = projectWithHierarchy.get(project.id);
+    return {
+      ...project,
+      organizationId: hierarchy?.organizationId ?? project.organizationId ?? null,
+      fiscalYearId: hierarchy?.fiscalYearId ?? project.fiscalYearId ?? null
+    };
+  });
 
   const vendors: VendorOption[] = (vendorsResponse.data ?? []).map((row) => ({
     id: row.id as string,
@@ -617,7 +671,7 @@ export async function getProcurementData(): Promise<{
     createdAt: row.created_at as string
   }));
 
-  return { purchases, receipts, budgetLineOptions, projectOptions, vendors, canManageProcurement };
+  return { purchases, receipts, budgetLineOptions, projectOptions: normalizedProjectOptions, vendors, canManageProcurement };
 }
 
 export async function getCcPendingRows(): Promise<

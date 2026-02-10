@@ -4,6 +4,9 @@ import { useMemo, useState } from "react";
 import { createProcurementOrderAction } from "@/app/procurement/actions";
 import type { ProcurementBudgetLineOption, ProcurementProjectOption, VendorOption } from "@/lib/db";
 
+const NONE_FISCAL_YEAR = "__none_fiscal_year__";
+const NONE_ORGANIZATION = "__none_organization__";
+
 export function CreateOrderForm({
   projectOptions,
   budgetLineOptions,
@@ -14,8 +17,52 @@ export function CreateOrderForm({
   vendors: VendorOption[];
 }) {
   const [projectId, setProjectId] = useState("");
+  const [fiscalYearId, setFiscalYearId] = useState("");
+  const [organizationId, setOrganizationId] = useState("");
   const [budgetTracked, setBudgetTracked] = useState(true);
   const [budgetLineId, setBudgetLineId] = useState("");
+
+  const fiscalYearOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const line of budgetLineOptions) {
+      const key = line.fiscalYearId ?? NONE_FISCAL_YEAR;
+      const label = line.fiscalYearName ?? "No Fiscal Year";
+      if (!map.has(key)) map.set(key, label);
+    }
+    for (const project of projectOptions) {
+      const key = project.fiscalYearId ?? NONE_FISCAL_YEAR;
+      if (!map.has(key)) map.set(key, key === NONE_FISCAL_YEAR ? "No Fiscal Year" : key);
+    }
+    return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
+  }, [budgetLineOptions, projectOptions]);
+
+  const organizationOptions = useMemo(() => {
+    const map = new Map<string, { label: string; fiscalYearId: string }>();
+    for (const line of budgetLineOptions) {
+      const orgKey = line.organizationId ?? NONE_ORGANIZATION;
+      const fyKey = line.fiscalYearId ?? NONE_FISCAL_YEAR;
+      const label = line.organizationId ? `${line.orgCode ?? ""} | ${line.organizationName ?? "Organization"}` : "No Organization";
+      if (!map.has(orgKey)) map.set(orgKey, { label, fiscalYearId: fyKey });
+    }
+    for (const project of projectOptions) {
+      const orgKey = project.organizationId ?? NONE_ORGANIZATION;
+      const fyKey = project.fiscalYearId ?? NONE_FISCAL_YEAR;
+      if (!map.has(orgKey)) map.set(orgKey, { label: orgKey === NONE_ORGANIZATION ? "No Organization" : orgKey, fiscalYearId: fyKey });
+    }
+    return Array.from(map.entries())
+      .filter(([, value]) => !fiscalYearId || value.fiscalYearId === fiscalYearId)
+      .map(([value, meta]) => ({ value, label: meta.label }));
+  }, [budgetLineOptions, projectOptions, fiscalYearId]);
+
+  const filteredProjectOptions = useMemo(
+    () =>
+      projectOptions.filter((project) => {
+        const fyMatch = !fiscalYearId || (project.fiscalYearId ?? NONE_FISCAL_YEAR) === fiscalYearId;
+        const orgMatch = !organizationId || (project.organizationId ?? NONE_ORGANIZATION) === organizationId;
+        return fyMatch && orgMatch;
+      }),
+    [projectOptions, fiscalYearId, organizationId]
+  );
 
   const filteredBudgetLines = useMemo(
     () => budgetLineOptions.filter((line) => line.projectId === projectId),
@@ -25,10 +72,47 @@ export function CreateOrderForm({
   return (
     <form action={createProcurementOrderAction} className="requestForm">
       <label>
+        Fiscal Year
+        <select
+          value={fiscalYearId}
+          onChange={(event) => {
+            setFiscalYearId(event.target.value);
+            setOrganizationId("");
+            setProjectId("");
+            setBudgetLineId("");
+          }}
+        >
+          <option value="">Select fiscal year</option>
+          {fiscalYearOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Organization
+        <select
+          value={organizationId}
+          onChange={(event) => {
+            setOrganizationId(event.target.value);
+            setProjectId("");
+            setBudgetLineId("");
+          }}
+        >
+          <option value="">Select organization</option>
+          {organizationOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
         Project
         <select name="projectId" value={projectId} onChange={(event) => setProjectId(event.target.value)} required>
           <option value="">Select project</option>
-          {projectOptions.map((project) => (
+          {filteredProjectOptions.map((project) => (
             <option key={project.id} value={project.id}>
               {project.label}
             </option>
