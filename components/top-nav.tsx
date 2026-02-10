@@ -6,7 +6,8 @@ const links = [
   { href: "/", label: "Dashboard" },
   { href: "/requests", label: "Requests" },
   { href: "/cc", label: "CC" },
-  { href: "/settings", label: "Settings" }
+  { href: "/settings", label: "Settings" },
+  { href: "/debug", label: "Debug" }
 ];
 
 export async function TopNav() {
