@@ -1,20 +1,43 @@
 import {
-  addBudgetLineAction,
   createAccountCodeAction,
-  createFiscalYearAction,
-  createOrganizationAction,
-  createProjectAction,
-  importHierarchyCsvAction
+  importHierarchyCsvAction,
+  updateBudgetLineAction,
+  updateFiscalYearAction,
+  updateOrganizationAction,
+  updateProjectAction
 } from "@/app/settings/actions";
+import { AddEntityPanel } from "@/app/settings/add-entity-panel";
 import {
   getAccountCodeOptions,
   getFiscalYearOptions,
   getHierarchyRows,
   getOrganizationOptions,
   getSettingsProjects,
-  getTemplateNames
+  getTemplateNames,
+  type HierarchyRow
 } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
+
+type ProjectGroup = {
+  id: string;
+  name: string;
+  season: string | null;
+  rows: HierarchyRow[];
+};
+
+type OrganizationGroup = {
+  id: string;
+  name: string;
+  orgCode: string;
+  fiscalYearId: string | null;
+  projects: Map<string, ProjectGroup>;
+};
+
+type FiscalYearGroup = {
+  id: string;
+  name: string;
+  organizations: Map<string, OrganizationGroup>;
+};
 
 export default async function SettingsPage({
   searchParams
@@ -32,6 +55,46 @@ export default async function SettingsPage({
   const organizations = await getOrganizationOptions();
   const hierarchyRows = await getHierarchyRows();
 
+  const groupedByFiscalYear = new Map<string, FiscalYearGroup>();
+  const noFiscalYearKey = "__no_fy__";
+
+  for (const row of hierarchyRows) {
+    const fyId = row.fiscalYearId ?? noFiscalYearKey;
+    const fyName = row.fiscalYearName ?? "No Fiscal Year";
+    if (!groupedByFiscalYear.has(fyId)) {
+      groupedByFiscalYear.set(fyId, { id: fyId, name: fyName, organizations: new Map() });
+    }
+    const fy = groupedByFiscalYear.get(fyId)!;
+
+    const orgId = row.organizationId ?? `__no_org__:${row.projectId}`;
+    const orgName = row.organizationName ?? "No Organization";
+    const orgCode = row.orgCode ?? "-";
+
+    if (!fy.organizations.has(orgId)) {
+      fy.organizations.set(orgId, {
+        id: orgId,
+        name: orgName,
+        orgCode,
+        fiscalYearId: row.fiscalYearId,
+        projects: new Map()
+      });
+    }
+    const org = fy.organizations.get(orgId)!;
+
+    if (!org.projects.has(row.projectId)) {
+      org.projects.set(row.projectId, {
+        id: row.projectId,
+        name: row.projectName,
+        season: row.season,
+        rows: []
+      });
+    }
+
+    org.projects.get(row.projectId)!.rows.push(row);
+  }
+
+  const fiscalYearGroups = Array.from(groupedByFiscalYear.values()).sort((a, b) => a.name.localeCompare(b.name));
+
   return (
     <section>
       <header className="sectionHeader">
@@ -42,101 +105,17 @@ export default async function SettingsPage({
       </header>
 
       <div className="panelGrid">
-        <article className="panel">
-          <h2>Create Fiscal Year</h2>
-          <form className="requestForm" action={createFiscalYearAction}>
-            <label>
-              Name
-              <input name="name" required placeholder="Ex: FY 2025-2026" />
-            </label>
-            <label>
-              Start Date
-              <input type="date" name="startDate" />
-            </label>
-            <label>
-              End Date
-              <input type="date" name="endDate" />
-            </label>
-            <button type="submit" className="buttonLink buttonPrimary">
-              Add Fiscal Year
-            </button>
-          </form>
-        </article>
+        <AddEntityPanel
+          fiscalYears={fiscalYears}
+          organizations={organizations}
+          templates={templates}
+          projects={projects}
+          accountCodes={accountCodes}
+        />
 
-        <article className="panel">
-          <h2>Create Organization</h2>
-          <form className="requestForm" action={createOrganizationAction}>
-            <label>
-              Organization Name
-              <input name="name" required placeholder="Ex: Theatre Department" />
-            </label>
-            <label>
-              Org Code
-              <input name="orgCode" required placeholder="Ex: ORG-113" />
-            </label>
-            <label>
-              Fiscal Year
-              <select name="fiscalYearId">
-                <option value="">No fiscal year</option>
-                {fiscalYears.map((fy) => (
-                  <option key={fy.id} value={fy.id}>
-                    {fy.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="submit" className="buttonLink buttonPrimary">
-              Add Organization
-            </button>
-          </form>
-        </article>
-
-        <article className="panel">
-          <h2>Create Project</h2>
-          <p>Create a project and auto-assign yourself as Admin. Template usage is always optional.</p>
-          <form className="requestForm" action={createProjectAction}>
-            <label>
-              Project Name
-              <input name="projectName" required placeholder="Ex: Spring Musical 2026" />
-            </label>
-            <label>
-              Season
-              <input name="season" placeholder="Ex: Spring 2026" />
-            </label>
-            <label>
-              Organization
-              <select name="organizationId">
-                <option value="">No organization</option>
-                {organizations.map((org) => (
-                  <option key={org.id} value={org.id}>
-                    {org.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Template
-              <select name="templateName" defaultValue="Play/Musical Default">
-                {templates.map((templateName) => (
-                  <option key={templateName} value={templateName}>
-                    {templateName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="checkboxLabel">
-              <input name="useTemplate" type="checkbox" defaultChecked />
-              Apply selected template lines
-            </label>
-            <button type="submit" className="buttonLink buttonPrimary">
-              Create Project
-            </button>
-          </form>
-        </article>
-
-        <article className="panel">
+        <article className="panel panelFull">
           <h2>CSV Import</h2>
-          <p>Download template, fill your rows, then upload to create/update fiscal years, orgs, projects, and lines.</p>
+          <p>Download template, fill rows, upload to create/update hierarchy and budget lines.</p>
           <div className="inlineActionRow">
             <a className="buttonLink" href="/settings/import-template">
               Download CSV Template
@@ -153,10 +132,153 @@ export default async function SettingsPage({
           </form>
         </article>
 
+        <article className="panel panelFull">
+          <h2>Hierarchy Reference</h2>
+          <p>Fiscal Year {"->"} Organization {"->"} Project {"->"} Budget Line (expand with arrows, edit inline).</p>
+
+          {fiscalYearGroups.length === 0 ? <p>(none)</p> : null}
+
+          {fiscalYearGroups.map((fy) => (
+            <details key={fy.id} className="treeNode" open>
+              <summary>
+                <strong>FY:</strong> {fy.name}
+              </summary>
+              {fy.id !== noFiscalYearKey ? (
+                <form action={updateFiscalYearAction} className="inlineEditForm">
+                  <input type="hidden" name="id" value={fy.id} />
+                  <input name="name" defaultValue={fy.name} />
+                  <input name="startDate" type="date" />
+                  <input name="endDate" type="date" />
+                  <button type="submit" className="tinyButton">
+                    Save FY
+                  </button>
+                </form>
+              ) : null}
+
+              {Array.from(fy.organizations.values())
+                .sort((a, b) => a.orgCode.localeCompare(b.orgCode))
+                .map((org) => (
+                  <details key={org.id} className="treeNode childNode" open>
+                    <summary>
+                      <strong>Org:</strong> {org.orgCode} - {org.name}
+                    </summary>
+                    {org.id.startsWith("__no_org__") ? null : (
+                      <form action={updateOrganizationAction} className="inlineEditForm">
+                        <input type="hidden" name="id" value={org.id} />
+                        <input name="name" defaultValue={org.name} />
+                        <input name="orgCode" defaultValue={org.orgCode} />
+                        <select name="fiscalYearId" defaultValue={org.fiscalYearId ?? ""}>
+                          <option value="">No fiscal year</option>
+                          {fiscalYears.map((fyOption) => (
+                            <option key={fyOption.id} value={fyOption.id}>
+                              {fyOption.name}
+                            </option>
+                          ))}
+                        </select>
+                        <button type="submit" className="tinyButton">
+                          Save Org
+                        </button>
+                      </form>
+                    )}
+
+                    {Array.from(org.projects.values())
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((project) => (
+                        <details key={project.id} className="treeNode childNode" open>
+                          <summary>
+                            <strong>Project:</strong> {project.name} {project.season ? `(${project.season})` : ""}
+                          </summary>
+                          <form action={updateProjectAction} className="inlineEditForm">
+                            <input type="hidden" name="id" value={project.id} />
+                            <input name="name" defaultValue={project.name} />
+                            <input name="season" defaultValue={project.season ?? ""} />
+                            <select name="organizationId" defaultValue={org.id.startsWith("__no_org__") ? "" : org.id}>
+                              <option value="">No organization</option>
+                              {organizations.map((orgOption) => (
+                                <option key={orgOption.id} value={orgOption.id}>
+                                  {orgOption.label}
+                                </option>
+                              ))}
+                            </select>
+                            <button type="submit" className="tinyButton">
+                              Save Project
+                            </button>
+                          </form>
+
+                          <div className="tableWrap">
+                            <table>
+                              <thead>
+                                <tr>
+                                  <th>Code</th>
+                                  <th>Category</th>
+                                  <th>Line</th>
+                                  <th>Allocated</th>
+                                  <th>Sort</th>
+                                  <th>Active</th>
+                                  <th>Edit</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {project.rows.map((line, idx) => (
+                                  <tr key={`${project.id}-${line.budgetLineId ?? "none"}-${idx}`}>
+                                    <td>{line.budgetCode ?? "-"}</td>
+                                    <td>{line.budgetCategory ?? "-"}</td>
+                                    <td>{line.budgetLineName ?? "-"}</td>
+                                    <td>{line.allocatedAmount === null ? "-" : formatCurrency(line.allocatedAmount)}</td>
+                                    <td>{line.sortOrder ?? "-"}</td>
+                                    <td>{line.budgetLineId ? "Yes" : "-"}</td>
+                                    <td>
+                                      {line.budgetLineId ? (
+                                        <form action={updateBudgetLineAction} className="inlineEditForm">
+                                          <input type="hidden" name="id" value={line.budgetLineId} />
+                                          <input
+                                            name="allocatedAmount"
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            defaultValue={line.allocatedAmount ?? 0}
+                                          />
+                                          <input
+                                            name="sortOrder"
+                                            type="number"
+                                            step="1"
+                                            min="0"
+                                            defaultValue={line.sortOrder ?? 0}
+                                          />
+                                          <label className="checkboxLabel">
+                                            <input name="active" type="checkbox" defaultChecked />
+                                            Active
+                                          </label>
+                                          <button type="submit" className="tinyButton">
+                                            Save Line
+                                          </button>
+                                        </form>
+                                      ) : (
+                                        "-"
+                                      )}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </details>
+                      ))}
+                  </details>
+                ))}
+            </details>
+          ))}
+        </article>
+
         <article className="panel">
-          <h2>Add Account Code</h2>
-          <p>Admin-managed master list (university-controlled values).</p>
-          <form className="requestForm" action={createAccountCodeAction}>
+          <h2>Current Account Codes</h2>
+          <ul>
+            {accountCodes.map((ac) => (
+              <li key={ac.id}>{ac.label}</li>
+            ))}
+            {accountCodes.length === 0 ? <li>(none)</li> : null}
+          </ul>
+          <form action={createAccountCodeAction} className="requestForm">
             <label>
               Code
               <input name="code" required placeholder="Ex: 11310" />
@@ -177,120 +299,6 @@ export default async function SettingsPage({
               Save Account Code
             </button>
           </form>
-        </article>
-
-        <article className="panel">
-          <h2>Add Budget Line</h2>
-          <p>Select from fixed university account codes.</p>
-          <form className="requestForm" action={addBudgetLineAction}>
-            <label>
-              Project
-              <select name="projectId" required>
-                <option value="">Select project</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name} {project.season ? `(${project.season})` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Account Code
-              <select name="accountCodeId" required>
-                <option value="">Select account code</option>
-                {accountCodes.map((accountCode) => (
-                  <option key={accountCode.id} value={accountCode.id}>
-                    {accountCode.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Allocated Amount
-              <input name="allocatedAmount" type="number" step="0.01" min="0" defaultValue="0" />
-            </label>
-            <label>
-              Sort Order
-              <input name="sortOrder" type="number" step="1" min="0" defaultValue="0" />
-            </label>
-            <button type="submit" className="buttonLink buttonPrimary">
-              Add Budget Line
-            </button>
-          </form>
-        </article>
-
-        <article className="panel">
-          <h2>Current Projects</h2>
-          {projects.length === 0 ? <p>No projects yet. Create your first project above.</p> : null}
-          <ul>
-            {projects.map((project) => (
-              <li key={project.id}>
-                {project.name} {project.season ? `- ${project.season}` : ""}
-              </li>
-            ))}
-          </ul>
-        </article>
-
-        <article className="panel">
-          <h2>Current Fiscal Years</h2>
-          <ul>
-            {fiscalYears.map((fy) => (
-              <li key={fy.id}>{fy.name}</li>
-            ))}
-            {fiscalYears.length === 0 ? <li>(none)</li> : null}
-          </ul>
-        </article>
-
-        <article className="panel">
-          <h2>Current Organizations</h2>
-          <ul>
-            {organizations.map((org) => (
-              <li key={org.id}>{org.label}</li>
-            ))}
-            {organizations.length === 0 ? <li>(none)</li> : null}
-          </ul>
-        </article>
-
-        <article className="panel panelFull">
-          <h2>Hierarchy Reference</h2>
-          <p>Fiscal Year {"->"} Organization {"->"} Project {"->"} Budget Line</p>
-          <div className="tableWrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Fiscal Year</th>
-                  <th>Org Code</th>
-                  <th>Organization</th>
-                  <th>Project</th>
-                  <th>Season</th>
-                  <th>Budget Code</th>
-                  <th>Category</th>
-                  <th>Line</th>
-                  <th>Allocated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {hierarchyRows.length === 0 ? (
-                  <tr>
-                    <td colSpan={9}>(none)</td>
-                  </tr>
-                ) : null}
-                {hierarchyRows.map((row, idx) => (
-                  <tr key={`${row.projectId}-${row.budgetCode ?? "none"}-${idx}`}>
-                    <td>{row.fiscalYearName ?? "-"}</td>
-                    <td>{row.orgCode ?? "-"}</td>
-                    <td>{row.organizationName ?? "-"}</td>
-                    <td>{row.projectName}</td>
-                    <td>{row.season ?? "-"}</td>
-                    <td>{row.budgetCode ?? "-"}</td>
-                    <td>{row.budgetCategory ?? "-"}</td>
-                    <td>{row.budgetLineName ?? "-"}</td>
-                    <td>{row.allocatedAmount === null ? "-" : formatCurrency(row.allocatedAmount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </article>
       </div>
     </section>

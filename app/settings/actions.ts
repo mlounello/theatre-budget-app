@@ -203,6 +203,79 @@ export async function createAccountCodeAction(formData: FormData): Promise<void>
   revalidatePath("/settings");
 }
 
+export async function updateFiscalYearAction(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const id = String(formData.get("id") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  const startDate = String(formData.get("startDate") ?? "").trim();
+  const endDate = String(formData.get("endDate") ?? "").trim();
+
+  if (!id || !name) throw new Error("Fiscal year id and name are required.");
+
+  const { error } = await supabase
+    .from("fiscal_years")
+    .update({ name, start_date: startDate || null, end_date: endDate || null })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
+  revalidatePath("/overview");
+}
+
+export async function updateOrganizationAction(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const id = String(formData.get("id") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  const orgCode = String(formData.get("orgCode") ?? "").trim();
+  const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+
+  if (!id || !name || !orgCode) throw new Error("Organization id, name, and org code are required.");
+
+  const { error } = await supabase
+    .from("organizations")
+    .update({ name, org_code: orgCode, fiscal_year_id: fiscalYearId || null })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
+  revalidatePath("/overview");
+}
+
+export async function updateProjectAction(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const id = String(formData.get("id") ?? "").trim();
+  const name = String(formData.get("name") ?? "").trim();
+  const season = String(formData.get("season") ?? "").trim();
+  const organizationId = String(formData.get("organizationId") ?? "").trim();
+
+  if (!id || !name) throw new Error("Project id and name are required.");
+
+  const { error } = await supabase
+    .from("projects")
+    .update({ name, season: season || null, organization_id: organizationId || null })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
+  revalidatePath("/");
+  revalidatePath("/overview");
+}
+
+export async function updateBudgetLineAction(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const id = String(formData.get("id") ?? "").trim();
+  const allocatedAmount = parseMoney(formData.get("allocatedAmount"));
+  const sortOrder = parseSortOrder(formData.get("sortOrder"));
+  const active = formData.get("active") === "on";
+
+  if (!id) throw new Error("Budget line id is required.");
+
+  const { error } = await supabase
+    .from("project_budget_lines")
+    .update({ allocated_amount: allocatedAmount, sort_order: sortOrder, active })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+  revalidatePath("/settings");
+  revalidatePath("/");
+}
+
 export async function importHierarchyCsvAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();
@@ -268,15 +341,23 @@ export async function importHierarchyCsvAction(formData: FormData): Promise<void
 
       let organizationId: string | null = null;
       if (organizationName && orgCode) {
-        const { data: orgExisting } = await supabase
-          .from("organizations")
-          .select("id")
-          .eq("org_code", orgCode)
-          .eq("name", organizationName)
-          .maybeSingle();
+        let orgLookup = supabase.from("organizations").select("id, name");
+        orgLookup = orgLookup.eq("org_code", orgCode);
+        orgLookup = fiscalYearId ? orgLookup.eq("fiscal_year_id", fiscalYearId) : orgLookup.is("fiscal_year_id", null);
 
+        const { data: orgMatches, error: orgLookupError } = await orgLookup;
+        if (orgLookupError) throw new Error(orgLookupError.message);
+
+        const orgExisting = (orgMatches ?? [])[0];
         if (orgExisting?.id) {
           organizationId = orgExisting.id as string;
+          if ((orgExisting.name as string) !== organizationName) {
+            const { error: orgUpdateError } = await supabase
+              .from("organizations")
+              .update({ name: organizationName })
+              .eq("id", organizationId);
+            if (orgUpdateError) throw new Error(orgUpdateError.message);
+          }
         } else {
           const { data: orgData, error: orgError } = await supabase
             .from("organizations")

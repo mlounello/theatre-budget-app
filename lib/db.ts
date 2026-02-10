@@ -109,15 +109,19 @@ export type OrganizationOverviewRow = {
 };
 
 export type HierarchyRow = {
+  fiscalYearId: string | null;
   fiscalYearName: string | null;
+  organizationId: string | null;
   organizationName: string | null;
   orgCode: string | null;
   projectId: string;
   projectName: string;
   season: string | null;
+  budgetLineId: string | null;
   budgetCode: string | null;
   budgetCategory: string | null;
   budgetLineName: string | null;
+  sortOrder: number | null;
   allocatedAmount: number | null;
 };
 
@@ -442,7 +446,7 @@ export async function getHierarchyRows(): Promise<HierarchyRow[]> {
   const { data: projects, error } = await supabase
     .from("projects")
     .select(
-      "id, name, season, organizations(name, org_code, fiscal_years(name)), project_budget_lines(budget_code, category, line_name, allocated_amount)"
+      "id, name, season, organization_id, organizations(id, name, org_code, fiscal_year_id, fiscal_years(id, name)), project_budget_lines(id, budget_code, category, line_name, allocated_amount, sort_order)"
     )
     .order("name", { ascending: true });
 
@@ -452,24 +456,29 @@ export async function getHierarchyRows(): Promise<HierarchyRow[]> {
 
   for (const project of projects ?? []) {
     const organization = project.organizations as
-      | { name?: string; org_code?: string; fiscal_years?: { name?: string } | null }
+      | { id?: string; name?: string; org_code?: string; fiscal_year_id?: string | null; fiscal_years?: { id?: string; name?: string } | null }
       | null;
     const fiscalYearName = organization?.fiscal_years?.name ?? null;
+    const fiscalYearId = (organization?.fiscal_years?.id as string | null) ?? null;
     const lines = (project.project_budget_lines as
-      | Array<{ budget_code?: string; category?: string; line_name?: string; allocated_amount?: string | number | null }>
+      | Array<{ id?: string; budget_code?: string; category?: string; line_name?: string; allocated_amount?: string | number | null; sort_order?: number | null }>
       | null) ?? [];
 
     if (lines.length === 0) {
       rows.push({
         fiscalYearName,
+        fiscalYearId,
         organizationName: organization?.name ?? null,
+        organizationId: (organization?.id as string | null) ?? null,
         orgCode: organization?.org_code ?? null,
         projectId: project.id as string,
         projectName: project.name as string,
         season: (project.season as string | null) ?? null,
+        budgetLineId: null,
         budgetCode: null,
         budgetCategory: null,
         budgetLineName: null,
+        sortOrder: null,
         allocatedAmount: null
       });
       continue;
@@ -478,14 +487,18 @@ export async function getHierarchyRows(): Promise<HierarchyRow[]> {
     for (const line of lines) {
       rows.push({
         fiscalYearName,
+        fiscalYearId,
         organizationName: organization?.name ?? null,
+        organizationId: (organization?.id as string | null) ?? null,
         orgCode: organization?.org_code ?? null,
         projectId: project.id as string,
         projectName: project.name as string,
         season: (project.season as string | null) ?? null,
+        budgetLineId: (line.id as string | null) ?? null,
         budgetCode: line.budget_code ?? null,
         budgetCategory: line.category ?? null,
         budgetLineName: line.line_name ?? null,
+        sortOrder: (line.sort_order as number | null) ?? null,
         allocatedAmount:
           line.allocated_amount === null || line.allocated_amount === undefined
             ? null

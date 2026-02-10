@@ -346,6 +346,52 @@ th {
   margin-bottom: 0.8rem;
 }
 
+.singlePicker {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.8rem;
+  max-width: 340px;
+  font-family: "Gudea", "Arial", sans-serif;
+}
+
+.singlePicker select {
+  border: 1px solid #cbd6ce;
+  border-radius: 8px;
+  padding: 0.42rem 0.5rem;
+}
+
+.treeNode {
+  border: 1px solid #e3e8e3;
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem;
+  margin-bottom: 0.55rem;
+  background: #fafcfa;
+}
+
+.treeNode > summary {
+  cursor: pointer;
+  font-family: "Gudea", "Arial", sans-serif;
+}
+
+.childNode {
+  margin-left: 0.7rem;
+  margin-top: 0.5rem;
+}
+
+.inlineEditForm {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.45rem;
+  margin: 0.55rem 0;
+}
+
+.inlineEditForm input,
+.inlineEditForm select {
+  border: 1px solid #cbd6ce;
+  border-radius: 8px;
+  padding: 0.38rem 0.45rem;
+}
+
 .authShell {
   display: grid;
   place-items: center;
