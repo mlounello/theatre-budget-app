@@ -46,11 +46,13 @@ type FiscalYearGroup = {
 export default async function SettingsPage({
   searchParams
 }: {
-  searchParams?: Promise<{ import?: string; msg?: string }>;
+  searchParams?: Promise<{ import?: string; msg?: string; ok?: string; error?: string }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const importStatus = resolvedSearchParams?.import;
   const importMessage = resolvedSearchParams?.msg;
+  const okMessage = resolvedSearchParams?.ok;
+  const errorMessage = resolvedSearchParams?.error;
 
   const projects = await getSettingsProjects();
   const templates = await getTemplateNames();
@@ -110,6 +112,8 @@ export default async function SettingsPage({
       <header className="sectionHeader">
         <p className="eyebrow">Admin</p>
         <h1>Project and Access Settings</h1>
+        {okMessage ? <p className="successNote">{okMessage}</p> : null}
+        {errorMessage ? <p className="errorNote">{errorMessage}</p> : null}
         {importStatus === "ok" ? <p className="successNote">CSV import completed.</p> : null}
         {importStatus === "error" ? <p className="errorNote">CSV import failed: {importMessage ?? "Unknown error"}</p> : null}
       </header>
