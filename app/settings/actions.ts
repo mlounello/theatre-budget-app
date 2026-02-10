@@ -34,7 +34,7 @@ export async function createProjectAction(formData: FormData): Promise<void> {
     throw new Error("Project name is required.");
   }
 
-  const { error } = await supabase.rpc("create_project_with_admin", {
+  const { data: newProjectId, error } = await supabase.rpc("create_project_with_admin", {
     p_name: projectName,
     p_season: season || null,
     p_use_template: useTemplate,
@@ -43,6 +43,9 @@ export async function createProjectAction(formData: FormData): Promise<void> {
 
   if (error) {
     throw new Error(error.message);
+  }
+  if (!newProjectId) {
+    throw new Error("Project creation returned no project id.");
   }
 
   revalidatePath("/");
