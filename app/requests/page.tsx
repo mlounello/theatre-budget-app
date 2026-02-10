@@ -6,7 +6,7 @@ import { CreateRequestForm } from "@/app/requests/create-request-form";
 const statuses = ["requested", "encumbered", "pending_cc", "posted", "cancelled"] as const;
 
 export default async function RequestsPage() {
-  const { purchases, budgetLineOptions, accountCodeOptions } = await getRequestsData();
+  const { purchases, budgetLineOptions, accountCodeOptions, canManageSplits } = await getRequestsData();
 
   return (
     <section>
@@ -20,7 +20,11 @@ export default async function RequestsPage() {
 
       <article className="panel requestFormPanel">
         <h2>Create Request</h2>
-        <CreateRequestForm budgetLineOptions={budgetLineOptions} accountCodeOptions={accountCodeOptions} />
+        <CreateRequestForm
+          budgetLineOptions={budgetLineOptions}
+          accountCodeOptions={accountCodeOptions}
+          canManageSplits={canManageSplits}
+        />
       </article>
 
       <div className="tableWrap">

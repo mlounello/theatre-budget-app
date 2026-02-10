@@ -100,3 +100,65 @@ export async function createIncomeEntryAction(formData: FormData): Promise<void>
     redirect(`/income?error=${encodeURIComponent(getErrorMessage(error, "Could not save income entry."))}`);
   }
 }
+
+export async function updateIncomeEntryAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (!user) throw new Error("You must be signed in.");
+
+    const id = String(formData.get("id") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
+    const incomeType = parseIncomeType(String(formData.get("incomeType") ?? "other"));
+    const lineNameInput = String(formData.get("lineName") ?? "").trim();
+    const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
+    const amount = parseMoney(formData.get("amount"));
+    const receivedOn = String(formData.get("receivedOn") ?? "").trim();
+
+    if (!id) throw new Error("Income entry id is required.");
+    if (!organizationId) throw new Error("Organization is required.");
+    if (amount <= 0) throw new Error("Amount must be greater than 0.");
+
+    const lineName = lineNameInput || defaultLineName(incomeType);
+
+    const withType = await supabase
+      .from("income_lines")
+      .update({
+        organization_id: organizationId,
+        project_id: null,
+        line_name: lineName,
+        reference_number: referenceNumber || null,
+        amount,
+        received_on: receivedOn || null,
+        income_type: incomeType
+      })
+      .eq("id", id);
+
+    if (withType.error) {
+      const fallback = await supabase
+        .from("income_lines")
+        .update({
+          organization_id: organizationId,
+          project_id: null,
+          line_name: lineName,
+          reference_number: referenceNumber || null,
+          amount,
+          received_on: receivedOn || null
+        })
+        .eq("id", id);
+
+      if (fallback.error) throw new Error(fallback.error.message);
+    }
+
+    revalidatePath("/");
+    revalidatePath("/overview");
+    revalidatePath("/income");
+    redirect("/income?ok=Income%20entry%20updated.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    redirect(`/income?error=${encodeURIComponent(getErrorMessage(error, "Could not update income entry."))}`);
+  }
+}

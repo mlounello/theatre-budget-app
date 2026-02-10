@@ -287,6 +287,7 @@ export async function getRequestsData(): Promise<{
   purchases: PurchaseRow[];
   budgetLineOptions: ProjectBudgetLineOption[];
   accountCodeOptions: AccountCodeOption[];
+  canManageSplits: boolean;
 }> {
   const supabase = await getSupabaseServerClient();
 
@@ -321,6 +322,21 @@ export async function getRequestsData(): Promise<{
 
   if (accountCodeError) {
     throw accountCodeError;
+  }
+
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  let canManageSplits = false;
+  if (user) {
+    const { data: elevatedRoles } = await supabase
+      .from("project_memberships")
+      .select("role")
+      .eq("user_id", user.id)
+      .in("role", ["admin", "project_manager"])
+      .limit(1);
+    canManageSplits = (elevatedRoles ?? []).length > 0;
   }
 
   const purchases: PurchaseRow[] = (purchasesData ?? []).map((row) => {
@@ -363,7 +379,7 @@ export async function getRequestsData(): Promise<{
     label: `${row.code as string} | ${row.category as string} | ${row.name as string}`
   }));
 
-  return { purchases, budgetLineOptions, accountCodeOptions };
+  return { purchases, budgetLineOptions, accountCodeOptions, canManageSplits };
 }
 
 export async function getCcPendingRows(): Promise<

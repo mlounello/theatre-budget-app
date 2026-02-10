@@ -15,13 +15,14 @@ type AllocationRow = {
 type Props = {
   budgetLineOptions: ProjectBudgetLineOption[];
   accountCodeOptions: AccountCodeOption[];
+  canManageSplits: boolean;
 };
 
 function uid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
-export function CreateRequestForm({ budgetLineOptions, accountCodeOptions }: Props) {
+export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canManageSplits }: Props) {
   const [useSplits, setUseSplits] = useState(false);
   const [rows, setRows] = useState<AllocationRow[]>([
     {
@@ -50,11 +51,13 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions }: Pro
 
   const primaryBudgetLineId = rows[0]?.reportingBudgetLineId ?? "";
 
+  const splitMode = canManageSplits && useSplits;
+
   return (
     <form className="requestForm" action={createRequest}>
       <label>
         Budget Line
-        <select name="budgetLineId" required={!useSplits} disabled={useSplits}>
+        <select name="budgetLineId" required={!splitMode} disabled={splitMode}>
           <option value="">Select budget line</option>
           {budgetLineOptions.map((option) => (
             <option key={option.id} value={option.id}>
@@ -64,12 +67,14 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions }: Pro
         </select>
       </label>
 
-      <label className="checkboxLabel">
-        <input type="checkbox" checked={useSplits} onChange={(event) => setUseSplits(event.target.checked)} />
-        Use split allocations
-      </label>
+      {canManageSplits ? (
+        <label className="checkboxLabel">
+          <input type="checkbox" checked={useSplits} onChange={(event) => setUseSplits(event.target.checked)} />
+          Use split allocations
+        </label>
+      ) : null}
 
-      {useSplits ? (
+      {splitMode ? (
         <div className="splitAllocations">
           <input type="hidden" name="budgetLineId" value={primaryBudgetLineId} />
           <input type="hidden" name="allocationsJson" value={allocationsJson} />

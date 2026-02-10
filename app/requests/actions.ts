@@ -70,6 +70,19 @@ export async function createRequest(formData: FormData): Promise<void> {
     }
   }
 
+  if (allocations.length > 0) {
+    const { data: roleRow, error: roleError } = await supabase
+      .from("project_memberships")
+      .select("role")
+      .eq("project_id", budgetLine.project_id)
+      .eq("user_id", user.id)
+      .single();
+
+    if (roleError || !roleRow || (roleRow.role !== "admin" && roleRow.role !== "project_manager")) {
+      throw new Error("Split allocations can only be created by Project Managers or Admins.");
+    }
+  }
+
   const requestedTotal = allocations.length > 0 ? allocations.reduce((sum, allocation) => sum + allocation.amount, 0) : requestedAmount;
 
   const { data: inserted, error } = await supabase

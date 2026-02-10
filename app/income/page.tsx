@@ -1,4 +1,4 @@
-import { createIncomeEntryAction } from "@/app/income/actions";
+import { createIncomeEntryAction, updateIncomeEntryAction } from "@/app/income/actions";
 import { formatCurrency } from "@/lib/format";
 import { getIncomeRows, getOrganizationOptions, type IncomeRow } from "@/lib/db";
 
@@ -127,12 +127,13 @@ export default async function IncomePage({
               <th>Reference</th>
               <th>Amount</th>
               <th>Received</th>
+              <th>Edit</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7}>No income entries yet.</td>
+                <td colSpan={8}>No income entries yet.</td>
               </tr>
             ) : null}
             {rows.map((row) => (
@@ -144,6 +145,32 @@ export default async function IncomePage({
                 <td>{row.referenceNumber ?? "-"}</td>
                 <td>{formatCurrency(row.amount)}</td>
                 <td>{row.receivedOn ?? "-"}</td>
+                <td>
+                  <form action={updateIncomeEntryAction} className="inlineEditForm">
+                    <input type="hidden" name="id" value={row.id} />
+                    <select name="organizationId" defaultValue={row.organizationId ?? ""} required>
+                      <option value="">Select organization</option>
+                      {organizations.map((organization) => (
+                        <option key={organization.id} value={organization.id}>
+                          {organization.label}
+                        </option>
+                      ))}
+                    </select>
+                    <select name="incomeType" defaultValue={row.incomeType} required>
+                      <option value="starting_budget">Starting Budget</option>
+                      <option value="donation">Donation</option>
+                      <option value="ticket_sales">Ticket Sales</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <input name="lineName" defaultValue={row.lineName} />
+                    <input name="referenceNumber" defaultValue={row.referenceNumber ?? ""} />
+                    <input name="amount" type="number" step="0.01" min="0.01" defaultValue={row.amount} required />
+                    <input name="receivedOn" type="date" defaultValue={row.receivedOn ?? ""} />
+                    <button type="submit" className="tinyButton">
+                      Save
+                    </button>
+                  </form>
+                </td>
               </tr>
             ))}
           </tbody>
