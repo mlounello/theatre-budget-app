@@ -27,13 +27,16 @@ export default async function OverviewPage() {
               <th>Obligated</th>
               <th>Remaining (True)</th>
               <th>Remaining if Requested Approved</th>
-              <th>Income</th>
+              <th>Starting Budget</th>
+              <th>Additional Income</th>
+              <th>Funding Pool</th>
+              <th>Pool Available</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={12}>No organization totals available yet.</td>
+                <td colSpan={15}>No organization totals available yet.</td>
               </tr>
             ) : null}
             {rows.map((row) => (
@@ -51,7 +54,12 @@ export default async function OverviewPage() {
                 <td className={row.remainingIfRequestedApproved < 0 ? "negative" : "positive"}>
                   {formatCurrency(row.remainingIfRequestedApproved)}
                 </td>
-                <td>{formatCurrency(row.incomeTotal)}</td>
+                <td>{formatCurrency(row.startingBudgetTotal)}</td>
+                <td>{formatCurrency(row.additionalIncomeTotal)}</td>
+                <td>{formatCurrency(row.fundingPoolTotal)}</td>
+                <td className={row.fundingPoolAvailable < 0 ? "negative" : "positive"}>
+                  {formatCurrency(row.fundingPoolAvailable)}
+                </td>
               </tr>
             ))}
           </tbody>

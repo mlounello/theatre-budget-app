@@ -109,6 +109,10 @@ export type OrganizationOverviewRow = {
   obligatedTotal: number;
   remainingTrue: number;
   remainingIfRequestedApproved: number;
+  startingBudgetTotal: number;
+  additionalIncomeTotal: number;
+  fundingPoolTotal: number;
+  fundingPoolAvailable: number;
   incomeTotal: number;
 };
 
@@ -492,7 +496,7 @@ export async function getOrganizationOverviewRows(): Promise<OrganizationOvervie
   const { data, error } = await supabase
     .from("v_organization_totals")
     .select(
-      "organization_id, organization_name, org_code, fiscal_year_name, allocated_total, requested_open_total, enc_total, pending_cc_total, ytd_total, obligated_total, remaining_true, remaining_if_requested_approved, income_total"
+      "organization_id, organization_name, org_code, fiscal_year_name, allocated_total, requested_open_total, enc_total, pending_cc_total, ytd_total, obligated_total, remaining_true, remaining_if_requested_approved, starting_budget_total, additional_income_total, funding_pool_total, funding_pool_available, income_total"
     )
     .order("fiscal_year_name", { ascending: true })
     .order("org_code", { ascending: true });
@@ -510,6 +514,10 @@ export async function getOrganizationOverviewRows(): Promise<OrganizationOvervie
     obligatedTotal: asNumber(row.obligated_total as string | number | null),
     remainingTrue: asNumber(row.remaining_true as string | number | null),
     remainingIfRequestedApproved: asNumber(row.remaining_if_requested_approved as string | number | null),
+    startingBudgetTotal: asNumber(row.starting_budget_total as string | number | null),
+    additionalIncomeTotal: asNumber(row.additional_income_total as string | number | null),
+    fundingPoolTotal: asNumber(row.funding_pool_total as string | number | null),
+    fundingPoolAvailable: asNumber(row.funding_pool_available as string | number | null),
     incomeTotal: asNumber(row.income_total as string | number | null)
   }));
 }
