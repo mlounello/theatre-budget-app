@@ -478,6 +478,12 @@ th {
   gap: 0.5rem;
 }
 
+.checkboxStack {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.5rem;
+}
+
 .splitRow {
   display: grid;
   grid-template-columns: 2fr 2fr 1fr 1.3fr auto;
