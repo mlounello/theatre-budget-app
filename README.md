@@ -61,6 +61,7 @@ Run migrations in this order:
 24. `/Users/mikelounello/theatre-budget-app/supabase/migrations/202602111745_procurement_cc_statuses.sql`
 25. `/Users/mikelounello/theatre-budget-app/supabase/migrations/202602112000_negative_amounts_support.sql`
 26. `/Users/mikelounello/theatre-budget-app/supabase/migrations/202602112030_cc_statement_purchase_link.sql`
+27. `/Users/mikelounello/theatre-budget-app/supabase/migrations/202602112045_cc_receipt_statement_link.sql`
 
 ## Google login setup (Supabase)
 In Supabase Dashboard:

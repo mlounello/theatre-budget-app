@@ -268,6 +268,16 @@ export async function deleteStatementMonthAction(formData: FormData): Promise<vo
       throw new Error("Cannot delete a statement month that has linked purchases. Remove purchases first.");
     }
 
+    const { data: linkedReceipts, error: linkedReceiptsError } = await supabase
+      .from("purchase_receipts")
+      .select("id")
+      .eq("cc_statement_month_id", id)
+      .limit(1);
+    if (linkedReceiptsError) throw new Error(linkedReceiptsError.message);
+    if ((linkedReceipts ?? []).length > 0) {
+      throw new Error("Cannot delete a statement month that has linked receipts. Remove receipts first.");
+    }
+
     const { error } = await supabase.from("cc_statement_months").delete().eq("id", id);
     if (error) throw new Error(error.message);
 
@@ -279,7 +289,7 @@ export async function deleteStatementMonthAction(formData: FormData): Promise<vo
   }
 }
 
-export async function assignPurchasesToStatementAction(formData: FormData): Promise<void> {
+export async function assignReceiptsToStatementAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();
     const {
@@ -289,13 +299,13 @@ export async function assignPurchasesToStatementAction(formData: FormData): Prom
     await requireCcManagerRole(supabase, user.id);
 
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
-    const purchaseIds = formData
-      .getAll("purchaseId")
+    const receiptIds = formData
+      .getAll("receiptId")
       .map((value) => String(value).trim())
       .filter(Boolean);
 
     if (!statementMonthId) throw new Error("Statement month is required.");
-    if (purchaseIds.length === 0) throw new Error("Select at least one purchase.");
+    if (receiptIds.length === 0) throw new Error("Select at least one receipt.");
 
     const { data: statementMonth, error: statementMonthError } = await supabase
       .from("cc_statement_months")
@@ -305,43 +315,59 @@ export async function assignPurchasesToStatementAction(formData: FormData): Prom
     if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
     if (statementMonth.posted_at) throw new Error("Statement month is already submitted.");
 
-    const { data: purchases, error: purchasesError } = await supabase
-      .from("purchases")
-      .select("id, status, request_type, is_credit_card, cc_statement_month_id")
-      .in("id", purchaseIds);
-    if (purchasesError) throw new Error(purchasesError.message);
-    if (!purchases || purchases.length !== purchaseIds.length) throw new Error("One or more purchases were not found.");
+    const { data: receipts, error: receiptsError } = await supabase
+      .from("purchase_receipts")
+      .select("id, purchase_id, cc_statement_month_id, purchases!inner(id, status, request_type, is_credit_card, credit_card_id)")
+      .in("id", receiptIds);
+    if (receiptsError) throw new Error(receiptsError.message);
+    if (!receipts || receipts.length !== receiptIds.length) throw new Error("One or more receipts were not found.");
 
-    for (const purchase of purchases) {
+    for (const receipt of receipts) {
+      const purchase = receipt.purchases as
+        | { id?: string; status?: string; request_type?: string; is_credit_card?: boolean | null; credit_card_id?: string | null }
+        | null;
+      if (!purchase) throw new Error("Receipt purchase link is invalid.");
       if ((purchase.request_type as string) !== "expense" || !Boolean(purchase.is_credit_card as boolean | null)) {
-        throw new Error("Only credit-card expense requests can be assigned.");
+        throw new Error("Only receipts from credit-card expense requests can be assigned.");
       }
       if ((purchase.status as string) !== "pending_cc") {
-        throw new Error("Only Pending CC purchases can be assigned.");
+        throw new Error("Only receipts from Pending CC purchases can be assigned.");
       }
-      if ((purchase.cc_statement_month_id as string | null) && (purchase.cc_statement_month_id as string) !== statementMonthId) {
-        throw new Error("One or more purchases are already assigned to another statement month.");
+      if ((receipt.cc_statement_month_id as string | null) && (receipt.cc_statement_month_id as string) !== statementMonthId) {
+        throw new Error("One or more receipts are already assigned to another statement month.");
       }
     }
 
     const { error: updateError } = await supabase
-      .from("purchases")
+      .from("purchase_receipts")
       .update({
-        cc_statement_month_id: statementMonthId,
-        credit_card_id: statementMonth.credit_card_id as string
+        cc_statement_month_id: statementMonthId
       })
-      .in("id", purchaseIds);
+      .in("id", receiptIds);
     if (updateError) throw new Error(updateError.message);
 
+    const purchaseIds = Array.from(
+      new Set(
+        receipts.map((receipt) => (receipt.purchase_id as string | null) ?? "").filter((value) => value.length > 0)
+      )
+    );
+    if (purchaseIds.length > 0) {
+      const { error: purchaseUpdateError } = await supabase
+        .from("purchases")
+        .update({ credit_card_id: statementMonth.credit_card_id as string })
+        .in("id", purchaseIds);
+      if (purchaseUpdateError) throw new Error(purchaseUpdateError.message);
+    }
+
     revalidatePath("/cc");
-    ccSuccess("Purchases added to statement month.");
+    ccSuccess("Receipts added to statement month.");
   } catch (error) {
     rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not add purchases to statement month."));
+    ccError(getErrorMessage(error, "Could not add receipts to statement month."));
   }
 }
 
-export async function unassignPurchaseFromStatementAction(formData: FormData): Promise<void> {
+export async function unassignReceiptFromStatementAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();
     const {
@@ -351,8 +377,8 @@ export async function unassignPurchaseFromStatementAction(formData: FormData): P
     await requireCcManagerRole(supabase, user.id);
 
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
-    const purchaseId = String(formData.get("purchaseId") ?? "").trim();
-    if (!statementMonthId || !purchaseId) throw new Error("Statement month and purchase are required.");
+    const receiptId = String(formData.get("receiptId") ?? "").trim();
+    if (!statementMonthId || !receiptId) throw new Error("Statement month and receipt are required.");
 
     const { data: statementMonth, error: statementMonthError } = await supabase
       .from("cc_statement_months")
@@ -363,17 +389,17 @@ export async function unassignPurchaseFromStatementAction(formData: FormData): P
     if (statementMonth.posted_at) throw new Error("Cannot remove purchases from a submitted statement month.");
 
     const { error: updateError } = await supabase
-      .from("purchases")
+      .from("purchase_receipts")
       .update({ cc_statement_month_id: null })
-      .eq("id", purchaseId)
+      .eq("id", receiptId)
       .eq("cc_statement_month_id", statementMonthId);
     if (updateError) throw new Error(updateError.message);
 
     revalidatePath("/cc");
-    ccSuccess("Purchase removed from statement month.");
+    ccSuccess("Receipt removed from statement month.");
   } catch (error) {
     rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not remove purchase from statement month."));
+    ccError(getErrorMessage(error, "Could not remove receipt from statement month."));
   }
 }
 
@@ -397,16 +423,33 @@ export async function submitStatementMonthAction(formData: FormData): Promise<vo
     if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
     if (statementMonth.posted_at) throw new Error("Statement month is already submitted.");
 
+    const { data: receipts, error: receiptsError } = await supabase
+      .from("purchase_receipts")
+      .select("id, amount_received, purchase_id, purchases!inner(id, project_id, status, estimated_amount, requested_amount, pending_cc_amount, request_type, is_credit_card)")
+      .eq("cc_statement_month_id", statementMonthId);
+    if (receiptsError) throw new Error(receiptsError.message);
+    if (!receipts || receipts.length === 0) throw new Error("No receipts assigned to this statement month.");
+
+    const purchaseIds = Array.from(
+      new Set(
+        receipts
+          .map((receipt) => {
+            const purchase = receipt.purchases as { id?: string } | null;
+            return (purchase?.id as string | undefined) ?? null;
+          })
+          .filter((value): value is string => Boolean(value))
+      )
+    );
+
     const { data: purchases, error: purchasesError } = await supabase
       .from("purchases")
-      .select("id, project_id, status, estimated_amount, requested_amount, pending_cc_amount")
-      .eq("cc_statement_month_id", statementMonthId)
-      .eq("request_type", "expense")
-      .eq("is_credit_card", true);
+      .select("id, status, estimated_amount, requested_amount, pending_cc_amount, request_type, is_credit_card")
+      .in("id", purchaseIds);
     if (purchasesError) throw new Error(purchasesError.message);
-    if (!purchases || purchases.length === 0) throw new Error("No purchases assigned to this statement month.");
+    if (!purchases || purchases.length === 0) throw new Error("No purchases found for assigned receipts.");
 
     for (const purchase of purchases) {
+      if ((purchase.request_type as string) !== "expense" || !Boolean(purchase.is_credit_card as boolean | null)) continue;
       if ((purchase.status as string) !== "pending_cc") continue;
       const pendingAmount = Number(purchase.pending_cc_amount ?? 0);
       const { error: updateError } = await supabase
@@ -442,7 +485,7 @@ export async function submitStatementMonthAction(formData: FormData): Promise<vo
     revalidatePath("/cc");
     revalidatePath("/requests");
     revalidatePath("/");
-    ccSuccess("Statement month submitted and purchases marked Statement Paid.");
+    ccSuccess("Statement month submitted and linked receipts marked Statement Paid.");
   } catch (error) {
     rethrowIfRedirect(error);
     ccError(getErrorMessage(error, "Could not submit statement month."));

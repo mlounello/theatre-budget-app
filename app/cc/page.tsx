@@ -1,10 +1,10 @@
 import {
-  assignPurchasesToStatementAction,
+  assignReceiptsToStatementAction,
   createCreditCardAction,
   deleteCreditCardAction,
   deleteStatementMonthAction,
   submitStatementMonthAction,
-  unassignPurchaseFromStatementAction,
+  unassignReceiptFromStatementAction,
   updateCreditCardAction,
   updateStatementMonthAction
 } from "@/app/cc/actions";
@@ -21,14 +21,16 @@ type StatementMonthRow = {
   postedAt: string | null;
 };
 
-type PendingPurchaseRow = {
+type PendingReceiptRow = {
   id: string;
-  projectId: string;
-  budgetLineId: string;
-  title: string;
-  referenceNumber: string | null;
-  pendingCcAmount: number;
-  creditCardId: string | null;
+  purchaseId: string;
+  amount: number;
+  note: string | null;
+  receiptDate: string;
+  requestTitle: string;
+  requestNumber: string | null;
+  purchasePendingCcAmount: number;
+  purchaseCreditCardId: string | null;
   statementMonthId: string | null;
   projectLabel: string;
   budgetLineLabel: string;
@@ -60,9 +62,13 @@ export default async function CreditCardPage({
       .select("id, credit_card_id, statement_month, posted_at, credit_cards(nickname)")
       .order("statement_month", { ascending: false }),
     supabase
-      .from("purchases")
-      .select("id, project_id, budget_line_id, title, reference_number, requisition_number, pending_cc_amount, credit_card_id, cc_statement_month_id, projects(name, season), project_budget_lines(budget_code, category, line_name)")
-      .eq("status", "pending_cc")
+      .from("purchase_receipts")
+      .select(
+        "id, purchase_id, amount_received, note, created_at, cc_statement_month_id, purchases!inner(id, title, reference_number, requisition_number, pending_cc_amount, credit_card_id, status, request_type, is_credit_card, projects(name, season), project_budget_lines(budget_code, category, line_name))"
+      )
+      .eq("purchases.status", "pending_cc")
+      .eq("purchases.request_type", "expense")
+      .eq("purchases.is_credit_card", true)
       .order("created_at", { ascending: true }),
     supabase.from("project_memberships").select("project_id, role")
   ]);
@@ -100,18 +106,32 @@ export default async function CreditCardPage({
     };
   });
 
-  const pendingPurchases: PendingPurchaseRow[] = (pendingPurchasesResponse.data ?? []).map((row) => {
-    const project = row.projects as { name?: string; season?: string | null } | null;
-    const budgetLine = row.project_budget_lines as { budget_code?: string; category?: string; line_name?: string } | null;
-    const reqOrRef = (row.requisition_number as string | null) ?? (row.reference_number as string | null) ?? null;
+  const pendingReceipts: PendingReceiptRow[] = (pendingPurchasesResponse.data ?? []).map((row) => {
+    const purchase = row.purchases as
+      | {
+          id?: string;
+          title?: string;
+          reference_number?: string | null;
+          requisition_number?: string | null;
+          pending_cc_amount?: number | string | null;
+          credit_card_id?: string | null;
+          projects?: { name?: string; season?: string | null } | null;
+          project_budget_lines?: { budget_code?: string; category?: string; line_name?: string } | null;
+        }
+      | null;
+    const project = purchase?.projects;
+    const budgetLine = purchase?.project_budget_lines;
+    const reqOrRef = (purchase?.requisition_number as string | null) ?? (purchase?.reference_number as string | null) ?? null;
     return {
       id: row.id as string,
-      projectId: row.project_id as string,
-      budgetLineId: row.budget_line_id as string,
-      title: row.title as string,
-      referenceNumber: reqOrRef,
-      pendingCcAmount: Number(row.pending_cc_amount ?? 0),
-      creditCardId: (row.credit_card_id as string | null) ?? null,
+      purchaseId: (row.purchase_id as string) ?? ((purchase?.id as string | undefined) ?? ""),
+      amount: Number(row.amount_received ?? 0),
+      note: (row.note as string | null) ?? null,
+      receiptDate: (row.created_at as string) ?? "",
+      requestTitle: purchase?.title ?? "Request",
+      requestNumber: reqOrRef,
+      purchasePendingCcAmount: Number(purchase?.pending_cc_amount ?? 0),
+      purchaseCreditCardId: (purchase?.credit_card_id as string | null) ?? null,
       statementMonthId: (row.cc_statement_month_id as string | null) ?? null,
       projectLabel: `${project?.name ?? "Unknown Project"}${project?.season ? ` (${project.season})` : ""}`,
       budgetLineLabel: `${budgetLine?.budget_code ?? "-"} | ${budgetLine?.category ?? "-"} | ${budgetLine?.line_name ?? "-"}`
@@ -127,7 +147,7 @@ export default async function CreditCardPage({
       <header className="sectionHeader">
         <p className="eyebrow">Credit Cards</p>
         <h1>Statement Reconciliation</h1>
-        <p className="heroSubtitle">Create monthly statements, add statement lines, then match and post pending purchases.</p>
+        <p className="heroSubtitle">Create monthly statements, assign receipts, then submit statement paid.</p>
         {okMessage ? <p className="successNote">{okMessage}</p> : null}
         {errorMessage ? <p className="errorNote">{errorMessage}</p> : null}
       </header>
@@ -220,13 +240,13 @@ export default async function CreditCardPage({
         {statementMonths.length === 0 ? <p>No statement months yet.</p> : null}
 
         {statementMonths.map((month) => {
-          const assignedPurchases = pendingPurchases.filter((purchase) => purchase.statementMonthId === month.id);
-          const unassignedCandidates = pendingPurchases.filter(
-            (purchase) =>
-              !purchase.statementMonthId &&
-              (purchase.creditCardId === month.creditCardId || purchase.creditCardId === null)
+          const assignedReceipts = pendingReceipts.filter((receipt) => receipt.statementMonthId === month.id);
+          const unassignedCandidates = pendingReceipts.filter(
+            (receipt) =>
+              !receipt.statementMonthId &&
+              (receipt.purchaseCreditCardId === month.creditCardId || receipt.purchaseCreditCardId === null)
           );
-          const assignedTotal = assignedPurchases.reduce((sum, purchase) => sum + purchase.pendingCcAmount, 0);
+          const assignedTotal = assignedReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
           return (
             <details key={month.id} className="treeNode" open>
               <summary>
@@ -269,23 +289,23 @@ export default async function CreditCardPage({
                     </tr>
                   </thead>
                   <tbody>
-                    {assignedPurchases.length === 0 ? (
+                    {assignedReceipts.length === 0 ? (
                       <tr>
-                        <td colSpan={6}>No purchases assigned to this statement month.</td>
+                        <td colSpan={6}>No receipts assigned to this statement month.</td>
                       </tr>
                     ) : null}
-                    {assignedPurchases.map((purchase) => (
-                      <tr key={purchase.id}>
-                        <td>{purchase.projectLabel}</td>
-                        <td>{purchase.budgetLineLabel}</td>
-                        <td>{purchase.referenceNumber ?? "-"}</td>
-                        <td>{purchase.title}</td>
-                        <td>{formatCurrency(purchase.pendingCcAmount)}</td>
+                    {assignedReceipts.map((receipt) => (
+                      <tr key={receipt.id}>
+                        <td>{receipt.projectLabel}</td>
+                        <td>{receipt.budgetLineLabel}</td>
+                        <td>{receipt.requestNumber ?? "-"}</td>
+                        <td>{receipt.requestTitle}</td>
+                        <td>{formatCurrency(receipt.amount)}</td>
                         <td>
                           {!month.postedAt ? (
-                            <form action={unassignPurchaseFromStatementAction} className="inlineEditForm">
+                            <form action={unassignReceiptFromStatementAction} className="inlineEditForm">
                               <input type="hidden" name="statementMonthId" value={month.id} />
-                              <input type="hidden" name="purchaseId" value={purchase.id} />
+                              <input type="hidden" name="receiptId" value={receipt.id} />
                               <button type="submit" className="tinyButton dangerButton">
                                 Remove
                               </button>
@@ -304,21 +324,21 @@ export default async function CreditCardPage({
 
               {!month.postedAt ? (
                 <>
-                  <form action={assignPurchasesToStatementAction} className="requestForm">
+                  <form action={assignReceiptsToStatementAction} className="requestForm">
                     <input type="hidden" name="statementMonthId" value={month.id} />
                     <div className="checkboxStack">
-                      {unassignedCandidates.map((purchase) => (
-                        <label key={purchase.id} className="checkboxLabel">
-                          <input type="checkbox" name="purchaseId" value={purchase.id} />
-                          {purchase.projectLabel} | {purchase.budgetLineLabel} | {purchase.referenceNumber ?? purchase.id.slice(0, 8)} |{" "}
-                          {purchase.title} | {formatCurrency(purchase.pendingCcAmount)}
+                      {unassignedCandidates.map((receipt) => (
+                        <label key={receipt.id} className="checkboxLabel">
+                          <input type="checkbox" name="receiptId" value={receipt.id} />
+                          {receipt.projectLabel} | {receipt.budgetLineLabel} | {receipt.requestNumber ?? receipt.id.slice(0, 8)} |{" "}
+                          {receipt.requestTitle} | {formatCurrency(receipt.amount)}
                         </label>
                       ))}
-                      {unassignedCandidates.length === 0 ? <p>No unassigned Pending CC purchases for this card.</p> : null}
+                      {unassignedCandidates.length === 0 ? <p>No unassigned Pending CC receipts for this card.</p> : null}
                     </div>
                     {unassignedCandidates.length > 0 ? (
                       <button type="submit" className="tinyButton">
-                        Add Selected Purchases
+                        Add Selected Receipts
                       </button>
                     ) : null}
                   </form>
@@ -331,7 +351,7 @@ export default async function CreditCardPage({
                   </form>
                 </>
               ) : (
-                <p className="successNote">Statement submitted and linked purchases marked as Statement Paid.</p>
+                <p className="successNote">Statement submitted and linked receipts marked as Statement Paid.</p>
               )}
             </details>
           );
