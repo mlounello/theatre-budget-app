@@ -10,7 +10,7 @@ import type { ProjectBudgetLineOption, PurchaseRow, RequestReceiptRow } from "@/
 type SortKey =
   | "projectName"
   | "budgetCode"
-  | "referenceNumber"
+  | "requestNumber"
   | "title"
   | "requestType"
   | "status"
@@ -26,7 +26,7 @@ type SortDirection = "asc" | "desc";
 const SORT_KEYS: SortKey[] = [
   "projectName",
   "budgetCode",
-  "referenceNumber",
+  "requestNumber",
   "title",
   "requestType",
   "status",
@@ -46,6 +46,8 @@ function asString(value: string | null | undefined): string {
 function sortRows(rows: PurchaseRow[], key: SortKey, direction: SortDirection): PurchaseRow[] {
   const dir = direction === "asc" ? 1 : -1;
   return [...rows].sort((a, b) => {
+    const aRequestNumber = a.requestType === "requisition" ? a.requisitionNumber : a.referenceNumber;
+    const bRequestNumber = b.requestType === "requisition" ? b.requisitionNumber : b.referenceNumber;
     const cmp =
       key === "estimatedAmount" ||
       key === "requestedAmount" ||
@@ -54,7 +56,9 @@ function sortRows(rows: PurchaseRow[], key: SortKey, direction: SortDirection): 
       key === "postedAmount" ||
       key === "receiptTotal"
         ? (a[key] as number) - (b[key] as number)
-        : asString(a[key] as string | null).localeCompare(asString(b[key] as string | null));
+        : key === "requestNumber"
+          ? asString(aRequestNumber).localeCompare(asString(bRequestNumber))
+          : asString(a[key] as string | null).localeCompare(asString(b[key] as string | null));
     return cmp * dir;
   });
 }
@@ -127,7 +131,7 @@ export function RequestsTable({
           <tr>
             <SortTh label="Project" sortKey="projectName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
             <SortTh label="Code" sortKey="budgetCode" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-            <SortTh label="Reference" sortKey="referenceNumber" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+            <SortTh label="Req/Ref #" sortKey="requestNumber" activeKey={sortKey} direction={direction} onToggle={onToggle} />
             <SortTh label="Title" sortKey="title" activeKey={sortKey} direction={direction} onToggle={onToggle} />
             <SortTh label="Type" sortKey="requestType" activeKey={sortKey} direction={direction} onToggle={onToggle} />
             <SortTh label="Status" sortKey="status" activeKey={sortKey} direction={direction} onToggle={onToggle} />
@@ -158,7 +162,7 @@ export function RequestsTable({
             <tr key={purchase.id}>
               <td>{purchase.projectName}</td>
               <td>{purchase.budgetCode}</td>
-              <td>{purchase.referenceNumber ?? "-"}</td>
+              <td>{purchase.requestType === "requisition" ? (purchase.requisitionNumber ?? "-") : (purchase.referenceNumber ?? "-")}</td>
               <td>{purchase.title}</td>
               <td>
                 {purchase.requestType}

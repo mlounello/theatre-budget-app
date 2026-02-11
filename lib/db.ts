@@ -47,6 +47,7 @@ export type PurchaseRow = {
   category: string;
   title: string;
   referenceNumber: string | null;
+  requisitionNumber: string | null;
   estimatedAmount: number;
   requestedAmount: number;
   encumberedAmount: number;
@@ -398,7 +399,7 @@ export async function getRequestsData(): Promise<{
   const { data: purchasesData, error: purchasesError } = await supabase
     .from("purchases")
     .select(
-      "id, project_id, budget_line_id, title, reference_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, created_at, projects(name), project_budget_lines(budget_code, category)"
+      "id, project_id, budget_line_id, title, reference_number, requisition_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, created_at, projects(name), project_budget_lines(budget_code, category)"
     )
     .order("created_at", { ascending: false })
     .limit(100);
@@ -490,6 +491,7 @@ export async function getRequestsData(): Promise<{
       category: budgetLine?.category ?? "-",
       title: row.title as string,
       referenceNumber: (row.reference_number as string | null) ?? null,
+      requisitionNumber: (row.requisition_number as string | null) ?? null,
       estimatedAmount: asNumber(row.estimated_amount as string | number | null),
       requestedAmount: asNumber(row.requested_amount as string | number | null),
       encumberedAmount: asNumber(row.encumbered_amount as string | number | null),

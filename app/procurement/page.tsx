@@ -51,6 +51,7 @@ export default async function ProcurementPage({
         receipts={receipts}
         vendors={vendors}
         budgetLineOptions={budgetLineOptions}
+        projectOptions={projectOptions}
         canManageProcurement={canManageProcurement}
       />
     </section>

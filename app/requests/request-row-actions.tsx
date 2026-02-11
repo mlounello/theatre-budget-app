@@ -12,15 +12,31 @@ export function RequestRowActions({
   budgetLineOptions: ProjectBudgetLineOption[];
 }) {
   const [open, setOpen] = useState(false);
-  const projectBudgetLines = useMemo(
-    () => budgetLineOptions.filter((line) => line.projectId === purchase.projectId),
-    [budgetLineOptions, purchase.projectId]
-  );
+  const [editProjectId, setEditProjectId] = useState(purchase.projectId);
+  const [editBudgetLineId, setEditBudgetLineId] = useState(purchase.budgetLineId ?? "");
+  const projectBudgetLines = useMemo(() => budgetLineOptions.filter((line) => line.projectId === editProjectId), [budgetLineOptions, editProjectId]);
+  const projectOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const line of budgetLineOptions) {
+      if (!map.has(line.projectId)) {
+        map.set(line.projectId, `${line.projectName}${line.season ? ` (${line.season})` : ""}`);
+      }
+    }
+    return Array.from(map.entries()).map(([id, label]) => ({ id, label }));
+  }, [budgetLineOptions]);
 
   return (
     <>
       <div className="actionCell">
-        <button type="button" className="tinyButton" onClick={() => setOpen(true)}>
+        <button
+          type="button"
+          className="tinyButton"
+          onClick={() => {
+            setEditProjectId(purchase.projectId);
+            setEditBudgetLineId(purchase.budgetLineId ?? "");
+            setOpen(true);
+          }}
+        >
           Edit
         </button>
         <form
@@ -48,16 +64,38 @@ export function RequestRowActions({
             <form action={updateRequestInline} className="requestForm">
               <input type="hidden" name="purchaseId" value={purchase.id} />
               <label>
+                Project
+                <select
+                  name="projectId"
+                  value={editProjectId}
+                  onChange={(event) => {
+                    setEditProjectId(event.target.value);
+                    setEditBudgetLineId("");
+                  }}
+                  required
+                >
+                  {projectOptions.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
                 Title
                 <input name="title" defaultValue={purchase.title} required />
               </label>
               <label>
-                Reference
-                <input name="referenceNumber" defaultValue={purchase.referenceNumber ?? ""} />
+                {purchase.requestType === "requisition" ? "Requisition #" : "Reference #"}
+                {purchase.requestType === "requisition" ? (
+                  <input name="requisitionNumber" defaultValue={purchase.requisitionNumber ?? ""} />
+                ) : (
+                  <input name="referenceNumber" defaultValue={purchase.referenceNumber ?? ""} />
+                )}
               </label>
               <label>
                 Budget Line
-                <select name="budgetLineId" defaultValue={purchase.budgetLineId ?? ""} required>
+                <select name="budgetLineId" value={editBudgetLineId} onChange={(event) => setEditBudgetLineId(event.target.value)} required>
                   {projectBudgetLines.map((line) => (
                     <option key={line.id} value={line.id}>
                       {line.label}

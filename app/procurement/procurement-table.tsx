@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   addProcurementReceiptAction,
@@ -152,12 +152,14 @@ export function ProcurementTable({
   receipts,
   vendors,
   budgetLineOptions,
+  projectOptions,
   canManageProcurement
 }: {
   purchases: ProcurementRow[];
   receipts: ProcurementReceiptRow[];
   vendors: VendorOption[];
   budgetLineOptions: Array<{ id: string; projectId: string; label: string }>;
+  projectOptions: Array<{ id: string; label: string }>;
   canManageProcurement: boolean;
 }) {
   const pathname = usePathname();
@@ -171,7 +173,19 @@ export function ProcurementTable({
   );
   const [direction, setDirection] = useState<SortDirection>(dirFromUrl === "desc" ? "desc" : "asc");
   const editingPurchase = useMemo(() => purchases.find((purchase) => purchase.id === editingId) ?? null, [purchases, editingId]);
+  const [editProjectId, setEditProjectId] = useState("");
+  const [editBudgetLineId, setEditBudgetLineId] = useState("");
   const sortedPurchases = useMemo(() => sortRows(purchases, receipts, sortKey, direction), [purchases, receipts, sortKey, direction]);
+  const editProjectBudgetLines = useMemo(
+    () => budgetLineOptions.filter((line) => line.projectId === editProjectId),
+    [budgetLineOptions, editProjectId]
+  );
+
+  useEffect(() => {
+    if (!editingPurchase) return;
+    setEditProjectId(editingPurchase.projectId);
+    setEditBudgetLineId(editingPurchase.budgetLineId ?? "");
+  }, [editingPurchase]);
 
   function onToggle(key: SortKey): void {
     const nextDirection: SortDirection = sortKey === key ? (direction === "asc" ? "desc" : "asc") : "asc";
@@ -284,16 +298,32 @@ export function ProcurementTable({
                 Track in budget
               </label>
               <label>
+                Project
+                <select
+                  name="projectId"
+                  value={editProjectId}
+                  onChange={(event) => {
+                    setEditProjectId(event.target.value);
+                    setEditBudgetLineId("");
+                  }}
+                  required
+                >
+                  {projectOptions.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
                 Budget Line
-                <select name="budgetLineId" defaultValue={editingPurchase.budgetLineId ?? ""}>
+                <select name="budgetLineId" value={editBudgetLineId} onChange={(event) => setEditBudgetLineId(event.target.value)}>
                   <option value="">No budget line</option>
-                  {budgetLineOptions
-                    .filter((line) => line.projectId === editingPurchase.projectId)
-                    .map((line) => (
-                      <option key={line.id} value={line.id}>
-                        {line.label}
-                      </option>
-                    ))}
+                  {editProjectBudgetLines.map((line) => (
+                    <option key={line.id} value={line.id}>
+                      {line.label}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label>

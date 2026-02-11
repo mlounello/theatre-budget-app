@@ -354,8 +354,12 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
         <input name="title" required placeholder="Ex: Scenic hardware" />
       </label>
       <label>
-        Reference #
-        <input name="referenceNumber" placeholder="EP/EC/J code" />
+        {requestType === "requisition" ? "Requisition #" : "Reference #"}
+        {requestType === "requisition" ? (
+          <input name="requisitionNumber" placeholder="R0012345" />
+        ) : (
+          <input name="referenceNumber" placeholder="EP/EC/J code" />
+        )}
       </label>
       <label>
         Estimated

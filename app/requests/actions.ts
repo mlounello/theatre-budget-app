@@ -48,6 +48,7 @@ export async function createRequest(formData: FormData): Promise<void> {
   const budgetLineId = String(formData.get("budgetLineId") ?? "");
   const title = String(formData.get("title") ?? "").trim();
   const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
+  const requisitionNumber = String(formData.get("requisitionNumber") ?? "").trim();
   const estimatedAmount = parseMoney(formData.get("estimatedAmount"));
   const requestedAmount = parseMoney(formData.get("requestedAmount"));
   const requestTypeRaw = String(formData.get("requestType") ?? "requisition").trim().toLowerCase();
@@ -115,7 +116,8 @@ export async function createRequest(formData: FormData): Promise<void> {
       budget_line_id: budgetLine.id,
       entered_by_user_id: user.id,
       title,
-      reference_number: referenceNumber || null,
+      reference_number: requestType === "requisition" ? null : referenceNumber || null,
+      requisition_number: requestType === "requisition" ? requisitionNumber || null : null,
       estimated_amount: estimatedAmount,
       requested_amount: requestedTotal,
       encumbered_amount: 0,
@@ -551,9 +553,11 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
   if (!user) throw new Error("You must be signed in.");
 
   const purchaseId = String(formData.get("purchaseId") ?? "").trim();
+  const projectId = String(formData.get("projectId") ?? "").trim();
   const budgetLineId = String(formData.get("budgetLineId") ?? "").trim();
   const title = String(formData.get("title") ?? "").trim();
   const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
+  const requisitionNumber = String(formData.get("requisitionNumber") ?? "").trim();
   const estimatedAmount = parseMoney(formData.get("estimatedAmount"));
   const requestedAmount = parseMoney(formData.get("requestedAmount"));
   const requestTypeRaw = String(formData.get("requestType") ?? "requisition").trim().toLowerCase();
@@ -562,6 +566,7 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
   const isCreditCard = requestType === "expense" ? formData.get("isCreditCard") === "on" : false;
 
   if (!purchaseId) throw new Error("Purchase ID required.");
+  if (!projectId) throw new Error("Project is required.");
   if (!budgetLineId) throw new Error("Budget line is required.");
   if (!title) throw new Error("Title is required.");
 
@@ -574,12 +579,12 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
 
   const { data: budgetLine, error: budgetLineError } = await supabase
     .from("project_budget_lines")
-    .select("id, project_id")
+    .select("id, project_id, account_code_id")
     .eq("id", budgetLineId)
     .single();
   if (budgetLineError || !budgetLine) throw new Error("Invalid budget line.");
-  if ((budgetLine.project_id as string) !== (existing.project_id as string)) {
-    throw new Error("Budget line must belong to the same project.");
+  if ((budgetLine.project_id as string) !== projectId) {
+    throw new Error("Budget line must belong to the selected project.");
   }
 
   const nextRequested = requestedAmount;
@@ -588,9 +593,11 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
     ? ((existing.status as PurchaseStatus) === "posted" ? "posted_to_account" : "requested")
     : null;
   const nextValues = {
+    project_id: projectId,
     budget_line_id: budgetLineId,
     title,
-    reference_number: referenceNumber || null,
+    reference_number: requestType === "requisition" ? null : referenceNumber || null,
+    requisition_number: requestType === "requisition" ? requisitionNumber || null : null,
     estimated_amount: estimatedAmount,
     requested_amount: existing.status === "requested" ? nextRequested : nextRequested,
     request_type: requestType,
@@ -601,28 +608,26 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
   const { error: updateError } = await supabase.from("purchases").update(nextValues).eq("id", purchaseId);
   if (updateError) throw new Error(updateError.message);
 
-  if (existing.status === "requested") {
-    const { data: allocations, error: allocationsError } = await supabase
-      .from("purchase_allocations")
-      .select("id")
-      .eq("purchase_id", purchaseId);
-    if (allocationsError) throw new Error(allocationsError.message);
-    const count = (allocations ?? []).length;
-    if (count > 0) {
-      const eachAmount = nextRequested / count;
-      const updates = (allocations ?? []).map((row, index) => ({
-        id: row.id as string,
-        amount: index === count - 1 ? Number((nextRequested - eachAmount * (count - 1)).toFixed(2)) : Number(eachAmount.toFixed(2))
-      }));
-      for (const item of updates) {
-        const { error: allocationUpdateError } = await supabase
-          .from("purchase_allocations")
-          .update({ amount: item.amount })
-          .eq("id", item.id);
-        if (allocationUpdateError) throw new Error(allocationUpdateError.message);
-      }
-    }
-  }
+  const allocationAmount =
+    (existing.status as PurchaseStatus) === "encumbered"
+      ? Number(existing.encumbered_amount ?? 0)
+      : (existing.status as PurchaseStatus) === "pending_cc"
+        ? Number(existing.pending_cc_amount ?? 0)
+        : (existing.status as PurchaseStatus) === "posted"
+          ? Number(existing.posted_amount ?? 0)
+          : nextRequested;
+
+  const { error: deleteAllocationsError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", purchaseId);
+  if (deleteAllocationsError) throw new Error(deleteAllocationsError.message);
+
+  const { error: insertAllocationError } = await supabase.from("purchase_allocations").insert({
+    purchase_id: purchaseId,
+    reporting_budget_line_id: budgetLineId,
+    account_code_id: (budgetLine.account_code_id as string | null) ?? null,
+    amount: allocationAmount,
+    reporting_bucket: "direct"
+  });
+  if (insertAllocationError) throw new Error(insertAllocationError.message);
 
   revalidatePath("/requests");
   revalidatePath("/");

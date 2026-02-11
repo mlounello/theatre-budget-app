@@ -198,6 +198,7 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
   try {
     const supabase = await getSupabaseServerClient();
     const id = String(formData.get("id") ?? "").trim();
+    const projectId = String(formData.get("projectId") ?? "").trim();
     const budgetTracked = formData.get("budgetTracked") === "on";
     const budgetLineId = String(formData.get("budgetLineId") ?? "").trim();
     const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
@@ -221,6 +222,7 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
       .eq("id", id)
       .single();
     if (existingError || !existing) throw new Error("Purchase not found.");
+    const nextProjectId = projectId || (existing.project_id as string);
 
     const isCreditCardPurchase =
       (existing.request_type as string | null) === "expense" && Boolean(existing.is_credit_card as boolean | null);
@@ -256,8 +258,8 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
         .eq("id", budgetLineId)
         .single();
       if (lineError || !line) throw new Error("Invalid budget line.");
-      if ((line.project_id as string) !== (existing.project_id as string)) {
-        throw new Error("Budget line must belong to the same project.");
+      if ((line.project_id as string) !== nextProjectId) {
+        throw new Error("Budget line must belong to the selected project.");
       }
       verifiedBudgetLine = { id: line.id as string, account_code_id: (line.account_code_id as string | null) ?? null };
     }
@@ -265,6 +267,7 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
     const { error } = await supabase
       .from("purchases")
       .update({
+        project_id: nextProjectId,
         budget_tracked: budgetTracked,
         budget_line_id: budgetTracked ? verifiedBudgetLine?.id ?? budgetLineId : null,
         procurement_status: procurementStatus,
@@ -293,38 +296,25 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
       const { error: deleteAllocationsError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", id);
       if (deleteAllocationsError) throw new Error(deleteAllocationsError.message);
     } else {
-      const { data: currentAllocations, error: currentAllocationsError } = await supabase
-        .from("purchase_allocations")
-        .select("id")
-        .eq("purchase_id", id);
-      if (currentAllocationsError) throw new Error(currentAllocationsError.message);
-
-      if ((currentAllocations ?? []).length === 0 && verifiedBudgetLine) {
+      const { error: deleteAllocationsError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", id);
+      if (deleteAllocationsError) throw new Error(deleteAllocationsError.message);
+      if (verifiedBudgetLine) {
+        const allocationAmount =
+          nextBudgetStatus === "encumbered"
+            ? nextEncumberedAmount
+            : nextBudgetStatus === "pending_cc"
+              ? nextPendingCcAmount
+              : nextBudgetStatus === "posted"
+                ? nextPostedAmount
+                : nextRequestedAmount;
         const { error: createAllocationError } = await supabase.from("purchase_allocations").insert({
           purchase_id: id,
           reporting_budget_line_id: verifiedBudgetLine.id,
           account_code_id: verifiedBudgetLine.account_code_id,
-          amount: nextRequested,
+          amount: allocationAmount,
           reporting_bucket: "direct"
         });
         if (createAllocationError) throw new Error(createAllocationError.message);
-      } else if ((currentAllocations ?? []).length === 1) {
-        const allocationId = currentAllocations?.[0]?.id as string | undefined;
-        if (allocationId) {
-          const allocationAmount =
-            nextBudgetStatus === "encumbered"
-              ? nextEncumberedAmount
-              : nextBudgetStatus === "pending_cc"
-                ? nextPendingCcAmount
-                : nextBudgetStatus === "posted"
-                  ? nextPostedAmount
-                  : nextRequestedAmount;
-          const { error: updateAllocationError } = await supabase
-            .from("purchase_allocations")
-            .update({ amount: allocationAmount })
-            .eq("id", allocationId);
-          if (updateAllocationError) throw new Error(updateAllocationError.message);
-        }
       }
     }
 
@@ -332,6 +322,7 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
     revalidatePath("/requests");
     revalidatePath("/");
     revalidatePath(`/projects/${existing.project_id as string}`);
+    revalidatePath(`/projects/${nextProjectId}`);
     ok("Procurement details updated.");
   } catch (error) {
     rethrowIfRedirect(error);
