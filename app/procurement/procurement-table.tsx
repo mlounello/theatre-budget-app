@@ -8,7 +8,7 @@ import {
   updateProcurementAction
 } from "@/app/procurement/actions";
 import { formatCurrency } from "@/lib/format";
-import type { ProcurementReceiptRow, ProcurementRow, VendorOption } from "@/lib/db";
+import type { AccountCodeOption, ProcurementReceiptRow, ProcurementRow, ProductionCategoryOption, VendorOption } from "@/lib/db";
 
 const PROCUREMENT_STATUSES = [
   { value: "requested", label: "Requested" },
@@ -37,7 +37,8 @@ function procurementLabel(value: string, isCreditCard: boolean): string {
 
 type SortKey =
   | "projectName"
-  | "budgetCode"
+  | "productionCategoryName"
+  | "bannerAccountCode"
   | "title"
   | "requisitionNumber"
   | "poNumber"
@@ -50,7 +51,8 @@ type SortKey =
 type SortDirection = "asc" | "desc";
 const SORT_KEYS: SortKey[] = [
   "projectName",
-  "budgetCode",
+  "productionCategoryName",
+  "bannerAccountCode",
   "title",
   "requisitionNumber",
   "poNumber",
@@ -99,10 +101,12 @@ function sortRows(rows: ProcurementRow[], receipts: ProcurementReceiptRow[], key
         ? aOrderValue
         : key === "receiptTotal"
           ? (receiptMap.get(a.id) ?? 0)
-          : key === "projectName"
-            ? asString(a.projectName)
-            : key === "budgetCode"
-              ? asString(a.budgetCode)
+            : key === "projectName"
+              ? asString(a.projectName)
+            : key === "productionCategoryName"
+              ? asString(a.productionCategoryName)
+              : key === "bannerAccountCode"
+                ? asString(a.bannerAccountCode)
               : key === "title"
                 ? asString(a.title)
                 : key === "requisitionNumber"
@@ -119,10 +123,12 @@ function sortRows(rows: ProcurementRow[], receipts: ProcurementReceiptRow[], key
         ? bOrderValue
         : key === "receiptTotal"
           ? (receiptMap.get(b.id) ?? 0)
-          : key === "projectName"
-            ? asString(b.projectName)
-            : key === "budgetCode"
-              ? asString(b.budgetCode)
+            : key === "projectName"
+              ? asString(b.projectName)
+            : key === "productionCategoryName"
+              ? asString(b.productionCategoryName)
+              : key === "bannerAccountCode"
+                ? asString(b.bannerAccountCode)
               : key === "title"
                 ? asString(b.title)
                 : key === "requisitionNumber"
@@ -169,6 +175,8 @@ export function ProcurementTable({
   vendors,
   budgetLineOptions,
   projectOptions,
+  accountCodeOptions,
+  productionCategoryOptions,
   canManageProcurement
 }: {
   purchases: ProcurementRow[];
@@ -176,6 +184,8 @@ export function ProcurementTable({
   vendors: VendorOption[];
   budgetLineOptions: Array<{ id: string; projectId: string; label: string }>;
   projectOptions: Array<{ id: string; label: string }>;
+  accountCodeOptions: AccountCodeOption[];
+  productionCategoryOptions: ProductionCategoryOption[];
   canManageProcurement: boolean;
 }) {
   const pathname = usePathname();
@@ -191,6 +201,8 @@ export function ProcurementTable({
   const editingPurchase = useMemo(() => purchases.find((purchase) => purchase.id === editingId) ?? null, [purchases, editingId]);
   const [editProjectId, setEditProjectId] = useState("");
   const [editBudgetLineId, setEditBudgetLineId] = useState("");
+  const [editProductionCategoryId, setEditProductionCategoryId] = useState("");
+  const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState("");
   const sortedPurchases = useMemo(() => sortRows(purchases, receipts, sortKey, direction), [purchases, receipts, sortKey, direction]);
   const editProjectBudgetLines = useMemo(
     () => budgetLineOptions.filter((line) => line.projectId === editProjectId),
@@ -201,6 +213,8 @@ export function ProcurementTable({
     if (!editingPurchase) return;
     setEditProjectId(editingPurchase.projectId);
     setEditBudgetLineId(editingPurchase.budgetLineId ?? "");
+    setEditProductionCategoryId(editingPurchase.productionCategoryId ?? "");
+    setEditBannerAccountCodeId(editingPurchase.bannerAccountCodeId ?? "");
   }, [editingPurchase]);
 
   function onToggle(key: SortKey): void {
@@ -225,7 +239,20 @@ export function ProcurementTable({
           <thead>
             <tr>
               <SortTh label="Project" sortKey="projectName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-              <SortTh label="Budget Line" sortKey="budgetCode" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh
+                label="Department"
+                sortKey="productionCategoryName"
+                activeKey={sortKey}
+                direction={direction}
+                onToggle={onToggle}
+              />
+              <SortTh
+                label="Banner Code"
+                sortKey="bannerAccountCode"
+                activeKey={sortKey}
+                direction={direction}
+                onToggle={onToggle}
+              />
               <SortTh label="Title" sortKey="title" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <SortTh label="Req #" sortKey="requisitionNumber" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <SortTh label="PO #" sortKey="poNumber" activeKey={sortKey} direction={direction} onToggle={onToggle} />
@@ -246,7 +273,7 @@ export function ProcurementTable({
           <tbody>
             {sortedPurchases.length === 0 ? (
               <tr>
-                <td colSpan={11}>No procurement records yet.</td>
+                <td colSpan={12}>No procurement records yet.</td>
               </tr>
             ) : null}
             {sortedPurchases.map((purchase) => {
@@ -268,11 +295,8 @@ export function ProcurementTable({
                     {purchase.projectName}
                     {purchase.season ? <div>{purchase.season}</div> : null}
                   </td>
-                  <td>
-                    {purchase.budgetTracked
-                      ? `${purchase.budgetCode ?? "-"} | ${purchase.category ?? "-"}`
-                      : "Off-budget procurement"}
-                  </td>
+                  <td>{purchase.productionCategoryName ?? purchase.category ?? "-"}</td>
+                  <td>{purchase.bannerAccountCode ?? purchase.budgetCode ?? "-"}</td>
                   <td>{purchase.title}</td>
                   <td>{purchase.requisitionNumber ?? "-"}</td>
                   <td>{purchase.poNumber ?? "-"}</td>
@@ -334,10 +358,41 @@ export function ProcurementTable({
               <label>
                 Budget Line
                 <select name="budgetLineId" value={editBudgetLineId} onChange={(event) => setEditBudgetLineId(event.target.value)}>
-                  <option value="">No budget line</option>
+                  <option value="">Auto from department</option>
                   {editProjectBudgetLines.map((line) => (
                     <option key={line.id} value={line.id}>
                       {line.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Department (Production Category)
+                <select
+                  name="productionCategoryId"
+                  value={editProductionCategoryId}
+                  onChange={(event) => setEditProductionCategoryId(event.target.value)}
+                  required
+                >
+                  <option value="">Select department</option>
+                  {productionCategoryOptions.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Banner Account Code
+                <select
+                  name="bannerAccountCodeId"
+                  value={editBannerAccountCodeId}
+                  onChange={(event) => setEditBannerAccountCodeId(event.target.value)}
+                >
+                  <option value="">Unassigned</option>
+                  {accountCodeOptions.map((accountCode) => (
+                    <option key={accountCode.id} value={accountCode.id}>
+                      {accountCode.label}
                     </option>
                   ))}
                 </select>

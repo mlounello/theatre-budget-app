@@ -12,7 +12,8 @@ export default async function ProcurementPage({
   const okMessage = resolvedSearchParams?.ok;
   const errorMessage = resolvedSearchParams?.error;
 
-  const { purchases, receipts, budgetLineOptions, projectOptions, vendors, canManageProcurement } = await getProcurementData();
+  const { purchases, receipts, budgetLineOptions, projectOptions, vendors, accountCodeOptions, productionCategoryOptions, canManageProcurement } =
+    await getProcurementData();
 
   return (
     <section>
@@ -28,7 +29,13 @@ export default async function ProcurementPage({
         <div className="panelGrid">
           <article className="panel">
             <h2>Add Order</h2>
-            <CreateOrderForm projectOptions={projectOptions} budgetLineOptions={budgetLineOptions} vendors={vendors} />
+            <CreateOrderForm
+              projectOptions={projectOptions}
+              budgetLineOptions={budgetLineOptions}
+              vendors={vendors}
+              accountCodeOptions={accountCodeOptions}
+              productionCategoryOptions={productionCategoryOptions}
+            />
           </article>
 
           <article className="panel">
@@ -52,6 +59,8 @@ export default async function ProcurementPage({
         vendors={vendors}
         budgetLineOptions={budgetLineOptions}
         projectOptions={projectOptions}
+        accountCodeOptions={accountCodeOptions}
+        productionCategoryOptions={productionCategoryOptions}
         canManageProcurement={canManageProcurement}
       />
     </section>

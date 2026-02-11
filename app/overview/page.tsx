@@ -1,8 +1,12 @@
-import { getOrganizationOverviewRows } from "@/lib/db";
+import { getBannerCodeActualRows, getCategoryActualRows, getOrganizationOverviewRows } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
 
 export default async function OverviewPage() {
-  const rows = await getOrganizationOverviewRows();
+  const [rows, categoryActuals, bannerActuals] = await Promise.all([
+    getOrganizationOverviewRows(),
+    getCategoryActualRows(),
+    getBannerCodeActualRows()
+  ]);
 
   return (
     <section>
@@ -65,6 +69,92 @@ export default async function OverviewPage() {
           </tbody>
         </table>
       </div>
+
+      <article className="panel">
+        <h2>Actuals by Production Department</h2>
+        <div className="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>FY</th>
+                <th>Org</th>
+                <th>Project</th>
+                <th>Department</th>
+                <th>Requested</th>
+                <th>ENC</th>
+                <th>Pending CC</th>
+                <th>Posted</th>
+                <th>Obligated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {categoryActuals.length === 0 ? (
+                <tr>
+                  <td colSpan={9}>No category actuals yet.</td>
+                </tr>
+              ) : null}
+              {categoryActuals.map((row, index) => (
+                <tr key={`${row.projectName}-${row.productionCategory}-${index}`}>
+                  <td>{row.fiscalYearName ?? "-"}</td>
+                  <td>{row.orgCode ?? "-"}</td>
+                  <td>{row.projectName}</td>
+                  <td>{row.productionCategory}</td>
+                  <td>{formatCurrency(row.requestedTotal)}</td>
+                  <td>{formatCurrency(row.encTotal)}</td>
+                  <td>{formatCurrency(row.pendingCcTotal)}</td>
+                  <td>{formatCurrency(row.postedTotal)}</td>
+                  <td>{formatCurrency(row.obligatedTotal)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </article>
+
+      <article className="panel">
+        <h2>Actuals by Banner Account Code</h2>
+        <div className="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>FY</th>
+                <th>Org</th>
+                <th>Project</th>
+                <th>Banner Code</th>
+                <th>Banner Category</th>
+                <th>Banner Name</th>
+                <th>Requested</th>
+                <th>ENC</th>
+                <th>Pending CC</th>
+                <th>Posted</th>
+                <th>Obligated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bannerActuals.length === 0 ? (
+                <tr>
+                  <td colSpan={11}>No Banner-code actuals yet.</td>
+                </tr>
+              ) : null}
+              {bannerActuals.map((row, index) => (
+                <tr key={`${row.projectName}-${row.bannerAccountCode}-${index}`}>
+                  <td>{row.fiscalYearName ?? "-"}</td>
+                  <td>{row.orgCode ?? "-"}</td>
+                  <td>{row.projectName}</td>
+                  <td>{row.bannerAccountCode}</td>
+                  <td>{row.bannerCategory}</td>
+                  <td>{row.bannerName}</td>
+                  <td>{formatCurrency(row.requestedTotal)}</td>
+                  <td>{formatCurrency(row.encTotal)}</td>
+                  <td>{formatCurrency(row.pendingCcTotal)}</td>
+                  <td>{formatCurrency(row.postedTotal)}</td>
+                  <td>{formatCurrency(row.obligatedTotal)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </article>
     </section>
   );
 }

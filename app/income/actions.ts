@@ -56,6 +56,8 @@ export async function createIncomeEntryAction(formData: FormData): Promise<void>
     if (!user) throw new Error("You must be signed in.");
 
     const organizationId = String(formData.get("organizationId") ?? "").trim();
+    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
     const incomeType = parseIncomeType(String(formData.get("incomeType") ?? "other"));
     const lineNameInput = String(formData.get("lineName") ?? "").trim();
     const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
@@ -70,6 +72,8 @@ export async function createIncomeEntryAction(formData: FormData): Promise<void>
     const withType = await supabase.from("income_lines").insert({
       organization_id: organizationId,
       project_id: null,
+      production_category_id: productionCategoryId || null,
+      banner_account_code_id: bannerAccountCodeId || null,
       line_name: lineName,
       reference_number: referenceNumber || null,
       amount,
@@ -82,6 +86,8 @@ export async function createIncomeEntryAction(formData: FormData): Promise<void>
       const fallback = await supabase.from("income_lines").insert({
         organization_id: organizationId,
         project_id: null,
+        production_category_id: productionCategoryId || null,
+        banner_account_code_id: bannerAccountCodeId || null,
         line_name: lineName,
         reference_number: referenceNumber || null,
         amount,
@@ -112,6 +118,8 @@ export async function updateIncomeEntryAction(formData: FormData): Promise<void>
 
     const id = String(formData.get("id") ?? "").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
+    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
     const incomeType = parseIncomeType(String(formData.get("incomeType") ?? "other"));
     const lineNameInput = String(formData.get("lineName") ?? "").trim();
     const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
@@ -129,6 +137,8 @@ export async function updateIncomeEntryAction(formData: FormData): Promise<void>
       .update({
         organization_id: organizationId,
         project_id: null,
+        production_category_id: productionCategoryId || null,
+        banner_account_code_id: bannerAccountCodeId || null,
         line_name: lineName,
         reference_number: referenceNumber || null,
         amount,
@@ -143,6 +153,8 @@ export async function updateIncomeEntryAction(formData: FormData): Promise<void>
         .update({
           organization_id: organizationId,
           project_id: null,
+          production_category_id: productionCategoryId || null,
+          banner_account_code_id: bannerAccountCodeId || null,
           line_name: lineName,
           reference_number: referenceNumber || null,
           amount,

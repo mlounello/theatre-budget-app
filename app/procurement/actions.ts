@@ -103,6 +103,8 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
 
     const projectId = String(formData.get("projectId") ?? "").trim();
     const budgetLineId = String(formData.get("budgetLineId") ?? "").trim();
+    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
     const budgetTracked = formData.get("budgetTracked") === "on";
     const title = String(formData.get("title") ?? "").trim();
     const orderValueRaw = String(formData.get("orderValue") ?? "").trim();
@@ -112,17 +114,25 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
     const poNumber = String(formData.get("poNumber") ?? "").trim();
     const vendorId = String(formData.get("vendorId") ?? "").trim();
 
-    if (!projectId || !title) throw new Error("Project and title are required.");
+    if (!projectId || !productionCategoryId || !title) throw new Error("Project, department, and title are required.");
     if (orderValueRaw === "" || orderValue === 0) throw new Error("Order value must be non-zero.");
     await ensureProjectCreateAccess(supabase, user.id, projectId);
 
     let line: { id: string; project_id: string; account_code_id: string | null } | null = null;
     if (budgetTracked) {
-      if (!budgetLineId) throw new Error("Budget line is required when budget tracking is enabled.");
+      let resolvedBudgetLineId = budgetLineId;
+      if (!resolvedBudgetLineId) {
+        const { data: ensuredLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {
+          p_project_id: projectId,
+          p_production_category_id: productionCategoryId
+        });
+        if (ensureLineError || !ensuredLineId) throw new Error(ensureLineError?.message ?? "Could not resolve reporting line.");
+        resolvedBudgetLineId = ensuredLineId as string;
+      }
       const { data: lineData, error: lineError } = await supabase
         .from("project_budget_lines")
         .select("id, project_id, account_code_id")
-        .eq("id", budgetLineId)
+        .eq("id", resolvedBudgetLineId)
         .single();
       if (lineError || !lineData) throw new Error("Invalid budget line.");
       if ((lineData.project_id as string) !== projectId) throw new Error("Budget line must belong to the selected project.");
@@ -138,6 +148,8 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
       .insert({
         project_id: projectId,
         budget_line_id: line?.id ?? null,
+        production_category_id: productionCategoryId,
+        banner_account_code_id: bannerAccountCodeId || null,
         budget_tracked: budgetTracked,
         entered_by_user_id: user.id,
         title,
@@ -161,12 +173,13 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
 
     if (budgetTracked && line) {
       const { error: allocationError } = await supabase.from("purchase_allocations").insert({
-        purchase_id: purchase.id,
-        reporting_budget_line_id: line.id,
-        account_code_id: line.account_code_id,
-        amount: orderValue,
-        reporting_bucket: "direct"
-      });
+          purchase_id: purchase.id,
+          reporting_budget_line_id: line.id,
+          account_code_id: bannerAccountCodeId || line.account_code_id,
+          production_category_id: productionCategoryId,
+          amount: orderValue,
+          reporting_bucket: "direct"
+        });
       if (allocationError) throw new Error(allocationError.message);
     }
 
@@ -200,6 +213,8 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
     const supabase = await getSupabaseServerClient();
     const id = String(formData.get("id") ?? "").trim();
     const projectId = String(formData.get("projectId") ?? "").trim();
+    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
     const budgetTracked = formData.get("budgetTracked") === "on";
     const budgetLineId = String(formData.get("budgetLineId") ?? "").trim();
     const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
@@ -251,13 +266,23 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
             : "requested"
       : null;
 
+    if (!productionCategoryId) throw new Error("Department is required.");
+
     let verifiedBudgetLine: { id: string; account_code_id: string | null } | null = null;
     if (budgetTracked) {
-      if (!budgetLineId) throw new Error("Budget line is required when budget tracking is enabled.");
+      let resolvedBudgetLineId = budgetLineId;
+      if (!resolvedBudgetLineId) {
+        const { data: ensuredLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {
+          p_project_id: nextProjectId,
+          p_production_category_id: productionCategoryId
+        });
+        if (ensureLineError || !ensuredLineId) throw new Error(ensureLineError?.message ?? "Could not resolve reporting line.");
+        resolvedBudgetLineId = ensuredLineId as string;
+      }
       const { data: line, error: lineError } = await supabase
         .from("project_budget_lines")
         .select("id, project_id, account_code_id")
-        .eq("id", budgetLineId)
+        .eq("id", resolvedBudgetLineId)
         .single();
       if (lineError || !line) throw new Error("Invalid budget line.");
       if ((line.project_id as string) !== nextProjectId) {
@@ -272,6 +297,8 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
         project_id: nextProjectId,
         budget_tracked: budgetTracked,
         budget_line_id: budgetTracked ? verifiedBudgetLine?.id ?? budgetLineId : null,
+        production_category_id: productionCategoryId,
+        banner_account_code_id: bannerAccountCodeId || null,
         procurement_status: procurementStatus,
         status: nextBudgetStatus,
         reference_number: referenceNumber || null,
@@ -312,7 +339,8 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
         const { error: createAllocationError } = await supabase.from("purchase_allocations").insert({
           purchase_id: id,
           reporting_budget_line_id: verifiedBudgetLine.id,
-          account_code_id: verifiedBudgetLine.account_code_id,
+          account_code_id: bannerAccountCodeId || verifiedBudgetLine.account_code_id,
+          production_category_id: productionCategoryId,
           amount: allocationAmount,
           reporting_bucket: "direct"
         });

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { deleteIncomeEntryAction, updateIncomeEntryAction } from "@/app/income/actions";
 import { formatCurrency } from "@/lib/format";
-import type { IncomeRow, OrganizationOption } from "@/lib/db";
+import type { AccountCodeOption, IncomeRow, OrganizationOption, ProductionCategoryOption } from "@/lib/db";
 
 function typeLabel(type: IncomeRow["incomeType"]): string {
   if (type === "starting_budget") return "Starting Budget";
@@ -13,9 +13,28 @@ function typeLabel(type: IncomeRow["incomeType"]): string {
   return "Other";
 }
 
-type SortKey = "projectName" | "organizationLabel" | "incomeType" | "lineName" | "referenceNumber" | "amount" | "receivedOn";
+type SortKey =
+  | "projectName"
+  | "organizationLabel"
+  | "productionCategoryName"
+  | "bannerAccountCode"
+  | "incomeType"
+  | "lineName"
+  | "referenceNumber"
+  | "amount"
+  | "receivedOn";
 type SortDirection = "asc" | "desc";
-const SORT_KEYS: SortKey[] = ["projectName", "organizationLabel", "incomeType", "lineName", "referenceNumber", "amount", "receivedOn"];
+const SORT_KEYS: SortKey[] = [
+  "projectName",
+  "organizationLabel",
+  "productionCategoryName",
+  "bannerAccountCode",
+  "incomeType",
+  "lineName",
+  "referenceNumber",
+  "amount",
+  "receivedOn"
+];
 
 function asString(value: string | null | undefined): string {
   return (value ?? "").toLowerCase();
@@ -54,7 +73,17 @@ function SortTh({
   );
 }
 
-export function IncomeTable({ rows, organizations }: { rows: IncomeRow[]; organizations: OrganizationOption[] }) {
+export function IncomeTable({
+  rows,
+  organizations,
+  accountCodeOptions,
+  productionCategoryOptions
+}: {
+  rows: IncomeRow[];
+  organizations: OrganizationOption[];
+  accountCodeOptions: AccountCodeOption[];
+  productionCategoryOptions: ProductionCategoryOption[];
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -97,6 +126,20 @@ export function IncomeTable({ rows, organizations }: { rows: IncomeRow[]; organi
                 direction={direction}
                 onToggle={onToggle}
               />
+              <SortTh
+                label="Department"
+                sortKey="productionCategoryName"
+                activeKey={sortKey}
+                direction={direction}
+                onToggle={onToggle}
+              />
+              <SortTh
+                label="Banner Code"
+                sortKey="bannerAccountCode"
+                activeKey={sortKey}
+                direction={direction}
+                onToggle={onToggle}
+              />
               <SortTh label="Type" sortKey="incomeType" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <SortTh label="Description" sortKey="lineName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <SortTh label="Reference" sortKey="referenceNumber" activeKey={sortKey} direction={direction} onToggle={onToggle} />
@@ -108,13 +151,15 @@ export function IncomeTable({ rows, organizations }: { rows: IncomeRow[]; organi
           <tbody>
             {sortedRows.length === 0 ? (
               <tr>
-                <td colSpan={8}>No income entries yet.</td>
+                <td colSpan={10}>No income entries yet.</td>
               </tr>
             ) : null}
             {sortedRows.map((row) => (
               <tr key={row.id}>
                 <td>{row.projectName ?? "-"}</td>
                 <td>{row.organizationLabel}</td>
+                <td>{row.productionCategoryName ?? "-"}</td>
+                <td>{row.bannerAccountCode ?? "-"}</td>
                 <td>{typeLabel(row.incomeType)}</td>
                 <td>{row.lineName}</td>
                 <td>{row.referenceNumber ?? "-"}</td>
@@ -167,6 +212,28 @@ export function IncomeTable({ rows, organizations }: { rows: IncomeRow[]; organi
                   <option value="donation">Donation</option>
                   <option value="ticket_sales">Ticket Sales</option>
                   <option value="other">Other</option>
+                </select>
+              </label>
+              <label>
+                Production Category
+                <select name="productionCategoryId" defaultValue={editingRow.productionCategoryId ?? ""}>
+                  <option value="">Unassigned</option>
+                  {productionCategoryOptions.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Banner Account Code
+                <select name="bannerAccountCodeId" defaultValue={editingRow.bannerAccountCodeId ?? ""}>
+                  <option value="">Unassigned</option>
+                  {accountCodeOptions.map((accountCode) => (
+                    <option key={accountCode.id} value={accountCode.id}>
+                      {accountCode.label}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label>

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createRequest } from "@/app/requests/actions";
-import type { AccountCodeOption, ProjectBudgetLineOption } from "@/lib/db";
+import type { AccountCodeOption, ProcurementProjectOption, ProductionCategoryOption, ProjectBudgetLineOption } from "@/lib/db";
 
 type AllocationRow = {
   id: string;
@@ -14,7 +14,9 @@ type AllocationRow = {
 
 type Props = {
   budgetLineOptions: ProjectBudgetLineOption[];
+  projectOptions: ProcurementProjectOption[];
   accountCodeOptions: AccountCodeOption[];
+  productionCategoryOptions: ProductionCategoryOption[];
   canManageSplits: boolean;
 };
 
@@ -25,12 +27,20 @@ function uid(): string {
 const NONE_FISCAL_YEAR = "__none_fiscal_year__";
 const NONE_ORGANIZATION = "__none_organization__";
 
-export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canManageSplits }: Props) {
+export function CreateRequestForm({
+  budgetLineOptions,
+  projectOptions,
+  accountCodeOptions,
+  productionCategoryOptions,
+  canManageSplits
+}: Props) {
   const [useSplits, setUseSplits] = useState(false);
   const [selectedFiscalYear, setSelectedFiscalYear] = useState("");
   const [selectedOrganization, setSelectedOrganization] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedBudgetLineId, setSelectedBudgetLineId] = useState("");
+  const [selectedProductionCategoryId, setSelectedProductionCategoryId] = useState("");
+  const [selectedBannerAccountCodeId, setSelectedBannerAccountCodeId] = useState("");
   const [requestType, setRequestType] = useState<"requisition" | "expense" | "contract">("requisition");
   const [isCreditCard, setIsCreditCard] = useState(false);
   const [rows, setRows] = useState<AllocationRow[]>([
@@ -66,6 +76,8 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
     const org = window.localStorage.getItem("tba_requests_org_id");
     const project = window.localStorage.getItem("tba_requests_project_id");
     const line = window.localStorage.getItem("tba_requests_budget_line_id");
+    const productionCategory = window.localStorage.getItem("tba_requests_production_category_id");
+    const bannerAccountCode = window.localStorage.getItem("tba_requests_banner_account_code_id");
     const type = window.localStorage.getItem("tba_requests_request_type");
     const cc = window.localStorage.getItem("tba_requests_is_credit_card");
     const splits = window.localStorage.getItem("tba_requests_use_splits");
@@ -73,6 +85,8 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
     if (org) setSelectedOrganization(org);
     if (project) setSelectedProjectId(project);
     if (line) setSelectedBudgetLineId(line);
+    if (productionCategory) setSelectedProductionCategoryId(productionCategory);
+    if (bannerAccountCode) setSelectedBannerAccountCodeId(bannerAccountCode);
     if (type === "expense" || type === "contract" || type === "requisition") setRequestType(type);
     if (cc === "1") setIsCreditCard(true);
     if (splits === "1") setUseSplits(true);
@@ -84,20 +98,37 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
     window.localStorage.setItem("tba_requests_org_id", selectedOrganization);
     window.localStorage.setItem("tba_requests_project_id", selectedProjectId);
     window.localStorage.setItem("tba_requests_budget_line_id", selectedBudgetLineId);
+    window.localStorage.setItem("tba_requests_production_category_id", selectedProductionCategoryId);
+    window.localStorage.setItem("tba_requests_banner_account_code_id", selectedBannerAccountCodeId);
     window.localStorage.setItem("tba_requests_request_type", requestType);
     window.localStorage.setItem("tba_requests_is_credit_card", isCreditCard ? "1" : "0");
     window.localStorage.setItem("tba_requests_use_splits", useSplits ? "1" : "0");
-  }, [isCreditCard, requestType, selectedBudgetLineId, selectedFiscalYear, selectedOrganization, selectedProjectId, useSplits]);
+  }, [
+    isCreditCard,
+    requestType,
+    selectedBannerAccountCodeId,
+    selectedBudgetLineId,
+    selectedFiscalYear,
+    selectedOrganization,
+    selectedProductionCategoryId,
+    selectedProjectId,
+    useSplits
+  ]);
 
   const fiscalYearOptions = useMemo(() => {
     const map = new Map<string, string>();
+    for (const option of projectOptions) {
+      const key = option.fiscalYearId ?? NONE_FISCAL_YEAR;
+      const label = option.fiscalYearId ?? "No Fiscal Year";
+      if (!map.has(key)) map.set(key, label);
+    }
     for (const option of budgetLineOptions) {
       const key = option.fiscalYearId ?? NONE_FISCAL_YEAR;
       const label = option.fiscalYearName ?? "No Fiscal Year";
       if (!map.has(key)) map.set(key, label);
     }
     return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
-  }, [budgetLineOptions]);
+  }, [projectOptions, budgetLineOptions]);
 
   const organizationOptions = useMemo(() => {
     const map = new Map<string, { label: string; fiscalYearKey: string }>();
@@ -109,31 +140,33 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
         : "No Organization";
       if (!map.has(orgKey)) map.set(orgKey, { label, fiscalYearKey: fiscalKey });
     }
-    return Array.from(map.entries())
-      .filter(([, value]) => !selectedFiscalYear || value.fiscalYearKey === selectedFiscalYear)
-      .map(([value, meta]) => ({ value, label: meta.label }));
-  }, [budgetLineOptions, selectedFiscalYear]);
-
-  const projectOptions = useMemo(() => {
-    const map = new Map<string, { label: string; fiscalYearKey: string; organizationKey: string }>();
-    for (const option of budgetLineOptions) {
+    for (const option of projectOptions) {
       const orgKey = option.organizationId ?? NONE_ORGANIZATION;
       const fiscalKey = option.fiscalYearId ?? NONE_FISCAL_YEAR;
-      const label = `${option.projectName}${option.season ? ` (${option.season})` : ""}`;
-      if (!map.has(option.projectId)) map.set(option.projectId, { label, fiscalYearKey: fiscalKey, organizationKey: orgKey });
+      if (!map.has(orgKey)) {
+        map.set(orgKey, {
+          label: orgKey === NONE_ORGANIZATION ? "No Organization" : orgKey,
+          fiscalYearKey: fiscalKey
+        });
+      }
     }
     return Array.from(map.entries())
       .filter(([, value]) => !selectedFiscalYear || value.fiscalYearKey === selectedFiscalYear)
-      .filter(([, value]) => !selectedOrganization || value.organizationKey === selectedOrganization)
       .map(([value, meta]) => ({ value, label: meta.label }));
-  }, [budgetLineOptions, selectedFiscalYear, selectedOrganization]);
+  }, [budgetLineOptions, projectOptions, selectedFiscalYear]);
+
+  const filteredProjectOptions = useMemo(
+    () =>
+      projectOptions.filter((project) => {
+        const fyMatch = !selectedFiscalYear || (project.fiscalYearId ?? NONE_FISCAL_YEAR) === selectedFiscalYear;
+        const orgMatch = !selectedOrganization || (project.organizationId ?? NONE_ORGANIZATION) === selectedOrganization;
+        return fyMatch && orgMatch;
+      }),
+    [projectOptions, selectedFiscalYear, selectedOrganization]
+  );
 
   const filteredBudgetLineOptions = useMemo(
-    () =>
-      budgetLineOptions.filter((option) => {
-        if (!selectedProjectId) return false;
-        return option.projectId === selectedProjectId;
-      }),
+    () => budgetLineOptions.filter((option) => option.projectId === selectedProjectId),
     [budgetLineOptions, selectedProjectId]
   );
 
@@ -183,6 +216,7 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
       <label>
         Project
         <select
+          name="projectId"
           value={selectedProjectId}
           onChange={(event) => {
             setSelectedProjectId(event.target.value);
@@ -192,8 +226,8 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
           required
         >
           <option value="">Select project</option>
-          {projectOptions.map((option) => (
-            <option key={option.value} value={option.value}>
+          {filteredProjectOptions.map((option) => (
+            <option key={option.id} value={option.id}>
               {option.label}
             </option>
           ))}
@@ -201,22 +235,57 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
       </label>
 
       <label>
-        Budget Line
+        Production Category
         <select
-          name={splitMode ? undefined : "budgetLineId"}
-          value={selectedBudgetLineId}
-          onChange={(event) => setSelectedBudgetLineId(event.target.value)}
+          name="productionCategoryId"
+          value={selectedProductionCategoryId}
+          onChange={(event) => setSelectedProductionCategoryId(event.target.value)}
           required
-          disabled={!selectedProjectId}
         >
-          <option value="">Select budget line</option>
-          {filteredBudgetLineOptions.map((option) => (
+          <option value="">Select category</option>
+          {productionCategoryOptions.map((option) => (
+            <option key={option.id} value={option.id}>
+              {option.name}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label>
+        Banner Account Code (optional)
+        <select
+          name="bannerAccountCodeId"
+          value={selectedBannerAccountCodeId}
+          onChange={(event) => setSelectedBannerAccountCodeId(event.target.value)}
+        >
+          <option value="">Unassigned</option>
+          {accountCodeOptions.map((option) => (
             <option key={option.id} value={option.id}>
               {option.label}
             </option>
           ))}
         </select>
       </label>
+
+      {splitMode ? (
+        <label>
+          Reporting Line (for split mode)
+          <select
+            name="budgetLineId"
+            value={selectedBudgetLineId}
+            onChange={(event) => setSelectedBudgetLineId(event.target.value)}
+            required
+            disabled={!selectedProjectId}
+          >
+            <option value="">Select budget line</option>
+            {filteredBudgetLineOptions.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
 
       <label>
         Request Type
@@ -260,7 +329,6 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
 
       {splitMode ? (
         <div className="splitAllocations">
-          <input type="hidden" name="budgetLineId" value={selectedBudgetLineId} />
           <input type="hidden" name="allocationsJson" value={allocationsJson} />
           {rows.map((row, index) => (
             <div key={row.id} className="splitRow">

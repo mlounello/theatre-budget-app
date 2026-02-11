@@ -2,7 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createProcurementOrderAction } from "@/app/procurement/actions";
-import type { ProcurementBudgetLineOption, ProcurementProjectOption, VendorOption } from "@/lib/db";
+import type {
+  AccountCodeOption,
+  ProcurementBudgetLineOption,
+  ProcurementProjectOption,
+  ProductionCategoryOption,
+  VendorOption
+} from "@/lib/db";
 
 const NONE_FISCAL_YEAR = "__none_fiscal_year__";
 const NONE_ORGANIZATION = "__none_organization__";
@@ -10,11 +16,15 @@ const NONE_ORGANIZATION = "__none_organization__";
 export function CreateOrderForm({
   projectOptions,
   budgetLineOptions,
-  vendors
+  vendors,
+  accountCodeOptions,
+  productionCategoryOptions
 }: {
   projectOptions: ProcurementProjectOption[];
   budgetLineOptions: ProcurementBudgetLineOption[];
   vendors: VendorOption[];
+  accountCodeOptions: AccountCodeOption[];
+  productionCategoryOptions: ProductionCategoryOption[];
 }) {
   const [projectId, setProjectId] = useState("");
   const [fiscalYearId, setFiscalYearId] = useState("");
@@ -22,6 +32,8 @@ export function CreateOrderForm({
   const [budgetTracked, setBudgetTracked] = useState(true);
   const [budgetLineId, setBudgetLineId] = useState("");
   const [vendorId, setVendorId] = useState("");
+  const [productionCategoryId, setProductionCategoryId] = useState("");
+  const [bannerAccountCodeId, setBannerAccountCodeId] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -31,12 +43,16 @@ export function CreateOrderForm({
     const tracked = window.localStorage.getItem("tba_procurement_budget_tracked");
     const line = window.localStorage.getItem("tba_procurement_budget_line_id");
     const vendor = window.localStorage.getItem("tba_procurement_vendor_id");
+    const productionCategory = window.localStorage.getItem("tba_procurement_production_category_id");
+    const bannerCode = window.localStorage.getItem("tba_procurement_banner_account_code_id");
     if (fy) setFiscalYearId(fy);
     if (org) setOrganizationId(org);
     if (project) setProjectId(project);
     if (tracked === "0") setBudgetTracked(false);
     if (line) setBudgetLineId(line);
     if (vendor) setVendorId(vendor);
+    if (productionCategory) setProductionCategoryId(productionCategory);
+    if (bannerCode) setBannerAccountCodeId(bannerCode);
   }, []);
 
   useEffect(() => {
@@ -47,7 +63,9 @@ export function CreateOrderForm({
     window.localStorage.setItem("tba_procurement_budget_tracked", budgetTracked ? "1" : "0");
     window.localStorage.setItem("tba_procurement_budget_line_id", budgetLineId);
     window.localStorage.setItem("tba_procurement_vendor_id", vendorId);
-  }, [budgetLineId, budgetTracked, fiscalYearId, organizationId, projectId, vendorId]);
+    window.localStorage.setItem("tba_procurement_production_category_id", productionCategoryId);
+    window.localStorage.setItem("tba_procurement_banner_account_code_id", bannerAccountCodeId);
+  }, [budgetLineId, budgetTracked, fiscalYearId, organizationId, projectId, vendorId, productionCategoryId, bannerAccountCodeId]);
 
   const fiscalYearOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -146,6 +164,28 @@ export function CreateOrderForm({
           ))}
         </select>
       </label>
+      <label>
+        Department (Production Category)
+        <select name="productionCategoryId" value={productionCategoryId} onChange={(event) => setProductionCategoryId(event.target.value)} required>
+          <option value="">Select department</option>
+          {productionCategoryOptions.map((category) => (
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Banner Account Code (optional)
+        <select name="bannerAccountCodeId" value={bannerAccountCodeId} onChange={(event) => setBannerAccountCodeId(event.target.value)}>
+          <option value="">Unassigned</option>
+          {accountCodeOptions.map((accountCode) => (
+            <option key={accountCode.id} value={accountCode.id}>
+              {accountCode.label}
+            </option>
+          ))}
+        </select>
+      </label>
       <label className="checkboxLabel">
         <input
           name="budgetTracked"
@@ -159,15 +199,14 @@ export function CreateOrderForm({
         Track in budget
       </label>
       <label>
-        Budget Line
+        Reporting Line (optional)
         <select
           name="budgetLineId"
           value={budgetLineId}
           onChange={(event) => setBudgetLineId(event.target.value)}
-          required={budgetTracked}
           disabled={!projectId || !budgetTracked}
         >
-          <option value="">Select budget line</option>
+          <option value="">Auto from department</option>
           {filteredBudgetLines.map((line) => (
             <option key={line.id} value={line.id}>
               {line.label}
@@ -182,10 +221,6 @@ export function CreateOrderForm({
       <label>
         Order Value
         <input name="orderValue" type="number" step="0.01" required />
-      </label>
-      <label>
-        Reference #
-        <input name="referenceNumber" placeholder="Optional" />
       </label>
       <label>
         Requisition #

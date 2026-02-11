@@ -1,7 +1,7 @@
 import { createIncomeEntryAction } from "@/app/income/actions";
 import { IncomeTable } from "@/app/income/income-table";
 import { formatCurrency } from "@/lib/format";
-import { getIncomeRows, getOrganizationOptions } from "@/lib/db";
+import { getAccountCodeOptions, getIncomeRows, getOrganizationOptions, getProductionCategoryOptions } from "@/lib/db";
 
 export default async function IncomePage({
   searchParams
@@ -14,7 +14,12 @@ export default async function IncomePage({
   const selectedFiscalYearId = (resolvedSearchParams?.fy ?? "").trim();
   const selectedOrganizationId = (resolvedSearchParams?.org ?? "").trim();
 
-  const [organizations, rows] = await Promise.all([getOrganizationOptions(), getIncomeRows()]);
+  const [organizations, rows, accountCodeOptions, productionCategoryOptions] = await Promise.all([
+    getOrganizationOptions(),
+    getIncomeRows(),
+    getAccountCodeOptions(),
+    getProductionCategoryOptions()
+  ]);
 
   const fiscalYearOptions = Array.from(
     new Map(
@@ -150,6 +155,28 @@ export default async function IncomePage({
               <option value="other">Other</option>
             </select>
           </label>
+          <label>
+            Production Category (optional)
+            <select name="productionCategoryId" defaultValue="">
+              <option value="">Unassigned</option>
+              {productionCategoryOptions.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Banner Account Code (optional)
+            <select name="bannerAccountCodeId" defaultValue="">
+              <option value="">Unassigned</option>
+              {accountCodeOptions.map((accountCode) => (
+                <option key={accountCode.id} value={accountCode.id}>
+                  {accountCode.label}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <label>
             Description
@@ -229,7 +256,12 @@ export default async function IncomePage({
         </div>
       </article>
 
-      <IncomeTable rows={filteredRows} organizations={organizations} />
+      <IncomeTable
+        rows={filteredRows}
+        organizations={organizations}
+        accountCodeOptions={accountCodeOptions}
+        productionCategoryOptions={productionCategoryOptions}
+      />
     </section>
   );
 }

@@ -43,6 +43,10 @@ export type PurchaseRow = {
   projectId: string;
   projectName: string;
   budgetLineId: string | null;
+  productionCategoryId: string | null;
+  productionCategoryName: string | null;
+  bannerAccountCodeId: string | null;
+  bannerAccountCode: string | null;
   budgetCode: string;
   category: string;
   title: string;
@@ -77,6 +81,10 @@ export type ProcurementRow = {
   projectName: string;
   season: string | null;
   budgetLineId: string | null;
+  productionCategoryId: string | null;
+  productionCategoryName: string | null;
+  bannerAccountCodeId: string | null;
+  bannerAccountCode: string | null;
   budgetCode: string | null;
   category: string | null;
   lineName: string | null;
@@ -138,6 +146,12 @@ export type ProcurementProjectOption = {
   label: string;
   organizationId: string | null;
   fiscalYearId: string | null;
+};
+
+export type ProductionCategoryOption = {
+  id: string;
+  name: string;
+  sortOrder: number;
 };
 
 export type ProjectBudgetLineOption = {
@@ -216,12 +230,44 @@ export type OrganizationOverviewRow = {
   incomeTotal: number;
 };
 
+export type CategoryActualRow = {
+  fiscalYearName: string | null;
+  orgCode: string | null;
+  organizationName: string | null;
+  projectName: string;
+  productionCategory: string;
+  requestedTotal: number;
+  encTotal: number;
+  pendingCcTotal: number;
+  postedTotal: number;
+  obligatedTotal: number;
+};
+
+export type BannerCodeActualRow = {
+  fiscalYearName: string | null;
+  orgCode: string | null;
+  organizationName: string | null;
+  projectName: string;
+  bannerAccountCode: string;
+  bannerCategory: string;
+  bannerName: string;
+  requestedTotal: number;
+  encTotal: number;
+  pendingCcTotal: number;
+  postedTotal: number;
+  obligatedTotal: number;
+};
+
 export type IncomeRow = {
   id: string;
   organizationId: string | null;
   organizationLabel: string;
   projectId: string | null;
   projectName: string | null;
+  productionCategoryId: string | null;
+  productionCategoryName: string | null;
+  bannerAccountCodeId: string | null;
+  bannerAccountCode: string | null;
   incomeType: "starting_budget" | "donation" | "ticket_sales" | "other";
   lineName: string;
   referenceNumber: string | null;
@@ -391,7 +437,9 @@ export async function getRequestsData(): Promise<{
   purchases: PurchaseRow[];
   receipts: RequestReceiptRow[];
   budgetLineOptions: ProjectBudgetLineOption[];
+  projectOptions: ProcurementProjectOption[];
   accountCodeOptions: AccountCodeOption[];
+  productionCategoryOptions: ProductionCategoryOption[];
   canManageSplits: boolean;
 }> {
   const supabase = await getSupabaseServerClient();
@@ -399,7 +447,7 @@ export async function getRequestsData(): Promise<{
   const { data: purchasesData, error: purchasesError } = await supabase
     .from("purchases")
     .select(
-      "id, project_id, budget_line_id, title, reference_number, requisition_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, created_at, projects(name), project_budget_lines(budget_code, category)"
+      "id, project_id, budget_line_id, production_category_id, banner_account_code_id, title, reference_number, requisition_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, created_at, projects(name), production_categories(name), account_codes(code), project_budget_lines(budget_code, category)"
     )
     .order("created_at", { ascending: false })
     .limit(100);
@@ -463,6 +511,14 @@ export async function getRequestsData(): Promise<{
     throw accountCodeError;
   }
 
+  const { data: productionCategoryData, error: productionCategoryError } = await supabase
+    .from("production_categories")
+    .select("id, name, sort_order")
+    .eq("active", true)
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+  if (productionCategoryError) throw productionCategoryError;
+
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -481,12 +537,18 @@ export async function getRequestsData(): Promise<{
   const purchases: PurchaseRow[] = (purchasesData ?? []).map((row) => {
     const project = row.projects as { name?: string } | null;
     const budgetLine = row.project_budget_lines as { budget_code?: string; category?: string } | null;
+    const productionCategory = row.production_categories as { name?: string } | null;
+    const accountCode = row.account_codes as { code?: string } | null;
 
     return {
       id: row.id as string,
       projectId: row.project_id as string,
       projectName: project?.name ?? "Unknown Project",
       budgetLineId: (row.budget_line_id as string | null) ?? null,
+      productionCategoryId: (row.production_category_id as string | null) ?? null,
+      productionCategoryName: productionCategory?.name ?? null,
+      bannerAccountCodeId: (row.banner_account_code_id as string | null) ?? null,
+      bannerAccountCode: accountCode?.code ?? null,
       budgetCode: budgetLine?.budget_code ?? "OFF-BUDGET",
       category: budgetLine?.category ?? "-",
       title: row.title as string,
@@ -562,7 +624,30 @@ export async function getRequestsData(): Promise<{
     label: `${row.code as string} | ${row.category as string} | ${row.name as string}`
   }));
 
-  return { purchases, receipts: requestReceipts, budgetLineOptions, accountCodeOptions, canManageSplits };
+  const projectOptions: ProcurementProjectOption[] = Array.from(projectLookup.entries()).map(([id, row]) => ({
+    id,
+    label: `${row.projectName}${row.season ? ` (${row.season})` : ""}`,
+    organizationId: row.organizationId,
+    fiscalYearId: row.fiscalYearId
+  }));
+
+  const productionCategoryOptions: ProductionCategoryOption[] = (
+    (productionCategoryData as Array<{ id?: unknown; name?: unknown; sort_order?: unknown }> | null) ?? []
+  ).map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    sortOrder: (row.sort_order as number | null) ?? 0
+  }));
+
+  return {
+    purchases,
+    receipts: requestReceipts,
+    budgetLineOptions,
+    projectOptions,
+    accountCodeOptions,
+    productionCategoryOptions,
+    canManageSplits
+  };
 }
 
 export async function getProcurementData(): Promise<{
@@ -571,15 +656,18 @@ export async function getProcurementData(): Promise<{
   budgetLineOptions: ProcurementBudgetLineOption[];
   projectOptions: ProcurementProjectOption[];
   vendors: VendorOption[];
+  accountCodeOptions: AccountCodeOption[];
+  productionCategoryOptions: ProductionCategoryOption[];
   canManageProcurement: boolean;
 }> {
   const supabase = await getSupabaseServerClient();
 
-  const [purchasesResponse, linesResponse, vendorsResponse, receiptsResponse, projectsResponse] = await Promise.all([
+  const [purchasesResponse, linesResponse, vendorsResponse, receiptsResponse, projectsResponse, accountCodeResponse, categoryResponse] =
+    await Promise.all([
     supabase
       .from("purchases")
       .select(
-        "id, project_id, budget_line_id, budget_tracked, title, reference_number, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, procurement_status, ordered_on, received_on, paid_on, vendor_id, notes, created_at, projects(name, season), project_budget_lines(budget_code, category, line_name), vendors(id, name)"
+        "id, project_id, budget_line_id, production_category_id, banner_account_code_id, budget_tracked, title, reference_number, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, procurement_status, ordered_on, received_on, paid_on, vendor_id, notes, created_at, projects(name, season), production_categories(name), account_codes(code), project_budget_lines(budget_code, category, line_name), vendors(id, name)"
       )
       .order("created_at", { ascending: false })
       .limit(200),
@@ -595,7 +683,14 @@ export async function getProcurementData(): Promise<{
       .from("purchase_receipts")
       .select("id, purchase_id, note, amount_received, fully_received, attachment_url, created_at")
       .order("created_at", { ascending: false }),
-    supabase.from("projects").select("id, name, season, organization_id").order("name", { ascending: true })
+    supabase.from("projects").select("id, name, season, organization_id").order("name", { ascending: true }),
+    supabase.from("account_codes").select("id, code, category, name").eq("active", true).order("code", { ascending: true }),
+    supabase
+      .from("production_categories")
+      .select("id, name, sort_order")
+      .eq("active", true)
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true })
   ]);
 
   if (purchasesResponse.error) throw purchasesResponse.error;
@@ -603,6 +698,8 @@ export async function getProcurementData(): Promise<{
   if (vendorsResponse.error) throw vendorsResponse.error;
   if (receiptsResponse.error) throw receiptsResponse.error;
   if (projectsResponse.error) throw projectsResponse.error;
+  if (accountCodeResponse.error) throw accountCodeResponse.error;
+  if (categoryResponse.error) throw categoryResponse.error;
 
   const {
     data: { user }
@@ -626,12 +723,18 @@ export async function getProcurementData(): Promise<{
     const project = row.projects as { name?: string; season?: string | null } | null;
     const budgetLine = row.project_budget_lines as { budget_code?: string; category?: string; line_name?: string } | null;
     const vendor = row.vendors as { id?: string; name?: string } | null;
+    const productionCategory = row.production_categories as { name?: string } | null;
+    const accountCode = row.account_codes as { code?: string } | null;
     return {
       id: row.id as string,
       projectId: row.project_id as string,
       projectName: project?.name ?? "Unknown Project",
       season: project?.season ?? null,
-      budgetLineId: row.budget_line_id as string,
+      budgetLineId: (row.budget_line_id as string | null) ?? null,
+      productionCategoryId: (row.production_category_id as string | null) ?? null,
+      productionCategoryName: productionCategory?.name ?? null,
+      bannerAccountCodeId: (row.banner_account_code_id as string | null) ?? null,
+      bannerAccountCode: accountCode?.code ?? null,
       budgetCode: budgetLine?.budget_code ?? null,
       category: budgetLine?.category ?? null,
       lineName: budgetLine?.line_name ?? null,
@@ -734,6 +837,24 @@ export async function getProcurementData(): Promise<{
     name: row.name as string
   }));
 
+  const accountCodeOptions: AccountCodeOption[] = (
+    (accountCodeResponse.data as Array<{ id?: unknown; code?: unknown; category?: unknown; name?: unknown }> | null) ?? []
+  ).map((row) => ({
+    id: row.id as string,
+    code: row.code as string,
+    category: row.category as string,
+    name: row.name as string,
+    label: `${row.code as string} | ${row.category as string} | ${row.name as string}`
+  }));
+
+  const productionCategoryOptions: ProductionCategoryOption[] = (
+    (categoryResponse.data as Array<{ id?: unknown; name?: unknown; sort_order?: unknown }> | null) ?? []
+  ).map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    sortOrder: (row.sort_order as number | null) ?? 0
+  }));
+
   const receipts: ProcurementReceiptRow[] = (receiptsResponse.data ?? []).map((row) => ({
     id: row.id as string,
     purchaseId: row.purchase_id as string,
@@ -744,7 +865,16 @@ export async function getProcurementData(): Promise<{
     createdAt: row.created_at as string
   }));
 
-  return { purchases, receipts, budgetLineOptions, projectOptions: normalizedProjectOptions, vendors, canManageProcurement };
+  return {
+    purchases,
+    receipts,
+    budgetLineOptions,
+    projectOptions: normalizedProjectOptions,
+    vendors,
+    accountCodeOptions,
+    productionCategoryOptions,
+    canManageProcurement
+  };
 }
 
 export async function getCcPendingRows(): Promise<
@@ -834,6 +964,24 @@ export async function getAccountCodesAdmin(): Promise<AccountCodeAdminRow[]> {
   }));
 }
 
+export async function getProductionCategoryOptions(): Promise<ProductionCategoryOption[]> {
+  const supabase = await getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("production_categories")
+    .select("id, name, sort_order")
+    .eq("active", true)
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    sortOrder: (row.sort_order as number | null) ?? 0
+  }));
+}
+
 export async function getFiscalYearOptions(): Promise<FiscalYearOption[]> {
   const supabase = await getSupabaseServerClient();
   const { data, error } = await supabase
@@ -903,6 +1051,66 @@ export async function getOrganizationOverviewRows(): Promise<OrganizationOvervie
     fundingPoolAvailable: asNumber(row.funding_pool_available as string | number | null),
     incomeTotal: asNumber(row.income_total as string | number | null)
   }));
+}
+
+export async function getCategoryActualRows(): Promise<CategoryActualRow[]> {
+  const supabase = await getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("v_actuals_by_category")
+    .select(
+      "project_id, production_category, requested_total, enc_total, pending_cc_total, posted_total, obligated_total, projects(name, organizations(name, org_code, fiscal_years(name)))"
+    )
+    .order("production_category", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row) => {
+    const project = row.projects as
+      | { name?: string; organizations?: { name?: string; org_code?: string; fiscal_years?: { name?: string } | null } | null }
+      | null;
+    const org = project?.organizations ?? null;
+    return {
+      fiscalYearName: (org?.fiscal_years?.name as string | undefined) ?? null,
+      orgCode: (org?.org_code as string | undefined) ?? null,
+      organizationName: (org?.name as string | undefined) ?? null,
+      projectName: (project?.name as string | undefined) ?? "Unknown Project",
+      productionCategory: row.production_category as string,
+      requestedTotal: asNumber(row.requested_total as string | number | null),
+      encTotal: asNumber(row.enc_total as string | number | null),
+      pendingCcTotal: asNumber(row.pending_cc_total as string | number | null),
+      postedTotal: asNumber(row.posted_total as string | number | null),
+      obligatedTotal: asNumber(row.obligated_total as string | number | null)
+    };
+  });
+}
+
+export async function getBannerCodeActualRows(): Promise<BannerCodeActualRow[]> {
+  const supabase = await getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("v_actuals_by_banner_code")
+    .select(
+      "project_id, banner_account_code, banner_category, banner_name, requested_total, enc_total, pending_cc_total, posted_total, obligated_total, projects(name, organizations(name, org_code, fiscal_years(name)))"
+    )
+    .order("banner_account_code", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row) => {
+    const project = row.projects as
+      | { name?: string; organizations?: { name?: string; org_code?: string; fiscal_years?: { name?: string } | null } | null }
+      | null;
+    const org = project?.organizations ?? null;
+    return {
+      fiscalYearName: (org?.fiscal_years?.name as string | undefined) ?? null,
+      orgCode: (org?.org_code as string | undefined) ?? null,
+      organizationName: (org?.name as string | undefined) ?? null,
+      projectName: (project?.name as string | undefined) ?? "Unknown Project",
+      bannerAccountCode: row.banner_account_code as string,
+      bannerCategory: row.banner_category as string,
+      bannerName: row.banner_name as string,
+      requestedTotal: asNumber(row.requested_total as string | number | null),
+      encTotal: asNumber(row.enc_total as string | number | null),
+      pendingCcTotal: asNumber(row.pending_cc_total as string | number | null),
+      postedTotal: asNumber(row.posted_total as string | number | null),
+      obligatedTotal: asNumber(row.obligated_total as string | number | null)
+    };
+  });
 }
 
 export async function getHierarchyRows(): Promise<HierarchyRow[]> {
@@ -1022,7 +1230,7 @@ export async function getIncomeRows(): Promise<IncomeRow[]> {
   const withType = await supabase
     .from("income_lines")
     .select(
-      "id, project_id, organization_id, line_name, reference_number, amount, received_on, created_at, income_type, projects(name), organizations(name, org_code, fiscal_years(name))"
+      "id, project_id, organization_id, production_category_id, banner_account_code_id, line_name, reference_number, amount, received_on, created_at, income_type, projects(name), organizations(name, org_code, fiscal_years(name)), production_categories(name), account_codes(code)"
     )
     .order("created_at", { ascending: false })
     .limit(500);
@@ -1044,6 +1252,10 @@ export async function getIncomeRows(): Promise<IncomeRow[]> {
         organizationLabel,
         projectId: (row.project_id as string | null) ?? null,
         projectName: project?.name ?? null,
+        productionCategoryId: null,
+        productionCategoryName: null,
+        bannerAccountCodeId: null,
+        bannerAccountCode: null,
         incomeType: "other",
         lineName: (row.line_name as string) ?? "Income",
         referenceNumber: (row.reference_number as string | null) ?? null,
@@ -1057,6 +1269,8 @@ export async function getIncomeRows(): Promise<IncomeRow[]> {
   return (withType.data ?? []).map((row) => {
     const project = row.projects as { name?: string } | null;
     const org = row.organizations as { name?: string; org_code?: string; fiscal_years?: { name?: string } | null } | null;
+    const productionCategory = row.production_categories as { name?: string } | null;
+    const accountCode = row.account_codes as { code?: string } | null;
     const orgLabel = org
       ? `${org.org_code ?? ""} | ${org.name ?? "Organization"}${org.fiscal_years?.name ? ` (${org.fiscal_years.name})` : ""}`
       : "Unassigned Organization";
@@ -1075,6 +1289,10 @@ export async function getIncomeRows(): Promise<IncomeRow[]> {
       organizationLabel: orgLabel,
       projectId: (row.project_id as string | null) ?? null,
       projectName: project?.name ?? null,
+      productionCategoryId: (row.production_category_id as string | null) ?? null,
+      productionCategoryName: productionCategory?.name ?? null,
+      bannerAccountCodeId: (row.banner_account_code_id as string | null) ?? null,
+      bannerAccountCode: accountCode?.code ?? null,
       incomeType,
       lineName: (row.line_name as string) ?? "Income",
       referenceNumber: (row.reference_number as string | null) ?? null,

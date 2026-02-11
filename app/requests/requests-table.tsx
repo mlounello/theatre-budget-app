@@ -5,11 +5,19 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CcReconcileModal } from "@/app/requests/cc-reconcile-modal";
 import { RequestRowActions } from "@/app/requests/request-row-actions";
 import { formatCurrency } from "@/lib/format";
-import type { ProjectBudgetLineOption, PurchaseRow, RequestReceiptRow } from "@/lib/db";
+import type {
+  AccountCodeOption,
+  ProcurementProjectOption,
+  ProductionCategoryOption,
+  ProjectBudgetLineOption,
+  PurchaseRow,
+  RequestReceiptRow
+} from "@/lib/db";
 
 type SortKey =
   | "projectName"
-  | "budgetCode"
+  | "productionCategoryName"
+  | "bannerAccountCode"
   | "requestNumber"
   | "title"
   | "requestType"
@@ -25,7 +33,8 @@ type SortKey =
 type SortDirection = "asc" | "desc";
 const SORT_KEYS: SortKey[] = [
   "projectName",
-  "budgetCode",
+  "productionCategoryName",
+  "bannerAccountCode",
   "requestNumber",
   "title",
   "requestType",
@@ -57,8 +66,8 @@ function sortRows(rows: PurchaseRow[], key: SortKey, direction: SortDirection): 
       key === "receiptTotal"
         ? (a[key] as number) - (b[key] as number)
         : key === "requestNumber"
-          ? asString(aRequestNumber).localeCompare(asString(bRequestNumber))
-          : asString(a[key] as string | null).localeCompare(asString(b[key] as string | null));
+            ? asString(aRequestNumber).localeCompare(asString(bRequestNumber))
+            : asString(a[key] as string | null).localeCompare(asString(b[key] as string | null));
     return cmp * dir;
   });
 }
@@ -89,11 +98,17 @@ function SortTh({
 export function RequestsTable({
   purchases,
   receipts,
-  budgetLineOptions
+  budgetLineOptions,
+  projectOptions,
+  accountCodeOptions,
+  productionCategoryOptions
 }: {
   purchases: PurchaseRow[];
   receipts: RequestReceiptRow[];
   budgetLineOptions: ProjectBudgetLineOption[];
+  projectOptions: ProcurementProjectOption[];
+  accountCodeOptions: AccountCodeOption[];
+  productionCategoryOptions: ProductionCategoryOption[];
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -130,7 +145,20 @@ export function RequestsTable({
         <thead>
           <tr>
             <SortTh label="Project" sortKey="projectName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-            <SortTh label="Code" sortKey="budgetCode" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+            <SortTh
+              label="Department"
+              sortKey="productionCategoryName"
+              activeKey={sortKey}
+              direction={direction}
+              onToggle={onToggle}
+            />
+            <SortTh
+              label="Banner Code"
+              sortKey="bannerAccountCode"
+              activeKey={sortKey}
+              direction={direction}
+              onToggle={onToggle}
+            />
             <SortTh label="Req/Ref #" sortKey="requestNumber" activeKey={sortKey} direction={direction} onToggle={onToggle} />
             <SortTh label="Title" sortKey="title" activeKey={sortKey} direction={direction} onToggle={onToggle} />
             <SortTh label="Type" sortKey="requestType" activeKey={sortKey} direction={direction} onToggle={onToggle} />
@@ -155,13 +183,14 @@ export function RequestsTable({
         <tbody>
           {sortedPurchases.length === 0 ? (
             <tr>
-              <td colSpan={15}>No purchases yet. Create your first request above.</td>
+              <td colSpan={16}>No purchases yet. Create your first request above.</td>
             </tr>
           ) : null}
           {sortedPurchases.map((purchase) => (
             <tr key={purchase.id}>
               <td>{purchase.projectName}</td>
-              <td>{purchase.budgetCode}</td>
+              <td>{purchase.productionCategoryName ?? purchase.category ?? "-"}</td>
+              <td>{purchase.bannerAccountCode ?? purchase.budgetCode}</td>
               <td>{purchase.requestType === "requisition" ? (purchase.requisitionNumber ?? "-") : (purchase.referenceNumber ?? "-")}</td>
               <td>{purchase.title}</td>
               <td>
@@ -191,7 +220,13 @@ export function RequestsTable({
                 <CcReconcileModal purchase={purchase} receipts={receipts} />
               </td>
               <td>
-                <RequestRowActions purchase={purchase} budgetLineOptions={budgetLineOptions} />
+                <RequestRowActions
+                  purchase={purchase}
+                  budgetLineOptions={budgetLineOptions}
+                  projectOptions={projectOptions}
+                  accountCodeOptions={accountCodeOptions}
+                  productionCategoryOptions={productionCategoryOptions}
+                />
               </td>
             </tr>
           ))}

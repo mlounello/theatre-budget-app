@@ -3,7 +3,8 @@ import { CreateRequestForm } from "@/app/requests/create-request-form";
 import { RequestsTable } from "@/app/requests/requests-table";
 
 export default async function RequestsPage() {
-  const { purchases, receipts, budgetLineOptions, accountCodeOptions, canManageSplits } = await getRequestsData();
+  const { purchases, receipts, budgetLineOptions, projectOptions, accountCodeOptions, productionCategoryOptions, canManageSplits } =
+    await getRequestsData();
 
   return (
     <section>
@@ -19,12 +20,21 @@ export default async function RequestsPage() {
         <h2>Create Request</h2>
         <CreateRequestForm
           budgetLineOptions={budgetLineOptions}
+          projectOptions={projectOptions}
           accountCodeOptions={accountCodeOptions}
+          productionCategoryOptions={productionCategoryOptions}
           canManageSplits={canManageSplits}
         />
       </article>
 
-      <RequestsTable purchases={purchases} receipts={receipts} budgetLineOptions={budgetLineOptions} />
+      <RequestsTable
+        purchases={purchases}
+        receipts={receipts}
+        budgetLineOptions={budgetLineOptions}
+        accountCodeOptions={accountCodeOptions}
+        projectOptions={projectOptions}
+        productionCategoryOptions={productionCategoryOptions}
+      />
     </section>
   );
 }
