@@ -20,8 +20,17 @@ const PROCUREMENT_STATUSES = [
   { value: "cancelled", label: "Cancelled" }
 ] as const;
 
-function procurementLabel(value: string): string {
-  const found = PROCUREMENT_STATUSES.find((status) => status.value === value);
+const CC_PROCUREMENT_STATUSES = [
+  { value: "requested", label: "Requested" },
+  { value: "receipts_uploaded", label: "Receipts Uploaded" },
+  { value: "statement_paid", label: "Statement Paid" },
+  { value: "posted_to_account", label: "Posted To Account" },
+  { value: "cancelled", label: "Cancelled" }
+] as const;
+
+function procurementLabel(value: string, isCreditCard: boolean): string {
+  const list = isCreditCard ? CC_PROCUREMENT_STATUSES : PROCUREMENT_STATUSES;
+  const found = list.find((status) => status.value === value);
   return found?.label ?? value;
 }
 
@@ -86,7 +95,9 @@ export function ProcurementTable({
                   <td>{purchase.vendorName ?? "-"}</td>
                   <td>{formatCurrency(purchase.requestedAmount)}</td>
                   <td>
-                    <span className={`statusChip status-${purchase.procurementStatus}`}>{procurementLabel(purchase.procurementStatus)}</span>
+                    <span className={`statusChip status-${purchase.procurementStatus}`}>
+                      {procurementLabel(purchase.procurementStatus, purchase.requestType === "expense" && purchase.isCreditCard)}
+                    </span>
                   </td>
                   <td>
                     <span className={`statusChip status-${purchase.budgetStatus}`}>{purchase.budgetStatus}</span>
@@ -134,7 +145,10 @@ export function ProcurementTable({
               <label>
                 Procurement Status
                 <select name="procurementStatus" defaultValue={editingPurchase.procurementStatus}>
-                  {PROCUREMENT_STATUSES.map((status) => (
+                  {(editingPurchase.requestType === "expense" && editingPurchase.isCreditCard
+                    ? CC_PROCUREMENT_STATUSES
+                    : PROCUREMENT_STATUSES
+                  ).map((status) => (
                     <option key={status.value} value={status.value}>
                       {status.label}
                     </option>

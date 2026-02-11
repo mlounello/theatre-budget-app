@@ -91,6 +91,9 @@ export type ProcurementRow = {
   pendingCcAmount: number;
   postedAmount: number;
   budgetStatus: PurchaseStatus;
+  requestType: "requisition" | "expense" | "contract";
+  isCreditCard: boolean;
+  ccWorkflowStatus: "requested" | "receipts_uploaded" | "statement_paid" | "posted_to_account" | null;
   procurementStatus: string;
   orderedOn: string | null;
   receivedOn: string | null;
@@ -574,7 +577,7 @@ export async function getProcurementData(): Promise<{
     supabase
       .from("purchases")
       .select(
-        "id, project_id, budget_line_id, budget_tracked, title, reference_number, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, procurement_status, ordered_on, received_on, paid_on, vendor_id, notes, created_at, projects(name, season), project_budget_lines(budget_code, category, line_name), vendors(id, name)"
+        "id, project_id, budget_line_id, budget_tracked, title, reference_number, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, procurement_status, ordered_on, received_on, paid_on, vendor_id, notes, created_at, projects(name, season), project_budget_lines(budget_code, category, line_name), vendors(id, name)"
       )
       .order("created_at", { ascending: false })
       .limit(200),
@@ -642,6 +645,14 @@ export async function getProcurementData(): Promise<{
       pendingCcAmount: asNumber(row.pending_cc_amount as string | number | null),
       postedAmount: asNumber(row.posted_amount as string | number | null),
       budgetStatus: row.status as PurchaseStatus,
+      requestType: ((row.request_type as string | null) ?? "requisition") as "requisition" | "expense" | "contract",
+      isCreditCard: Boolean(row.is_credit_card as boolean | null),
+      ccWorkflowStatus: (row.cc_workflow_status as
+        | "requested"
+        | "receipts_uploaded"
+        | "statement_paid"
+        | "posted_to_account"
+        | null) ?? null,
       procurementStatus: (row.procurement_status as string | null) ?? "requested",
       orderedOn: (row.ordered_on as string | null) ?? null,
       receivedOn: (row.received_on as string | null) ?? null,

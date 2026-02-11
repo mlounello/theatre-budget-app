@@ -16,7 +16,9 @@ const PROCUREMENT_STATUSES = [
   "cancelled"
 ] as const;
 
-type ProcurementStatus = (typeof PROCUREMENT_STATUSES)[number];
+const CC_PROCUREMENT_STATUSES = ["requested", "receipts_uploaded", "statement_paid", "posted_to_account", "cancelled"] as const;
+
+type ProcurementStatus = (typeof PROCUREMENT_STATUSES)[number] | (typeof CC_PROCUREMENT_STATUSES)[number];
 
 function parseMoney(value: FormDataEntryValue | null): number {
   if (typeof value !== "string" || value.trim() === "") return 0;
@@ -24,15 +26,21 @@ function parseMoney(value: FormDataEntryValue | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function parseStatus(value: FormDataEntryValue | null): ProcurementStatus {
+function parseStatus(value: FormDataEntryValue | null, isCreditCardPurchase: boolean): ProcurementStatus {
   const normalized = String(value ?? "").trim().toLowerCase();
-  if (PROCUREMENT_STATUSES.includes(normalized as ProcurementStatus)) {
+  const allowed = new Set<string>(isCreditCardPurchase ? CC_PROCUREMENT_STATUSES : PROCUREMENT_STATUSES);
+  if (allowed.has(normalized)) {
     return normalized as ProcurementStatus;
   }
   return "requested";
 }
 
-function toBudgetStatus(procurementStatus: ProcurementStatus): PurchaseStatus {
+function toBudgetStatus(procurementStatus: ProcurementStatus, isCreditCardPurchase: boolean): PurchaseStatus {
+  if (isCreditCardPurchase) {
+    if (procurementStatus === "posted_to_account") return "posted";
+    if (procurementStatus === "cancelled") return "cancelled";
+    return "pending_cc";
+  }
   if (procurementStatus === "requested") return "requested";
   if (procurementStatus === "paid") return "posted";
   if (procurementStatus === "cancelled") return "cancelled";
@@ -190,7 +198,6 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
   try {
     const supabase = await getSupabaseServerClient();
     const id = String(formData.get("id") ?? "").trim();
-    const procurementStatus = parseStatus(formData.get("procurementStatus"));
     const budgetTracked = formData.get("budgetTracked") === "on";
     const budgetLineId = String(formData.get("budgetLineId") ?? "").trim();
     const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
@@ -208,17 +215,29 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
 
     const { data: existing, error: existingError } = await supabase
       .from("purchases")
-      .select("id, project_id, status, requested_amount, budget_tracked, budget_line_id")
+      .select("id, project_id, status, request_type, is_credit_card, requested_amount, budget_tracked, budget_line_id")
       .eq("id", id)
       .single();
     if (existingError || !existing) throw new Error("Purchase not found.");
 
+    const isCreditCardPurchase =
+      (existing.request_type as string | null) === "expense" && Boolean(existing.is_credit_card as boolean | null);
+    const procurementStatus = parseStatus(formData.get("procurementStatus"), isCreditCardPurchase);
     const nextRequested = orderValue > 0 ? orderValue : Number(existing.requested_amount ?? 0);
-    const nextBudgetStatus = toBudgetStatus(procurementStatus);
+    const nextBudgetStatus = toBudgetStatus(procurementStatus, isCreditCardPurchase);
     const nextRequestedAmount = nextBudgetStatus === "requested" ? nextRequested : 0;
     const nextEncumberedAmount = nextBudgetStatus === "encumbered" ? nextRequested : 0;
+    const nextPendingCcAmount = nextBudgetStatus === "pending_cc" ? nextRequested : 0;
     const nextPostedAmount = nextBudgetStatus === "posted" ? nextRequested : 0;
-    const nextPendingCcAmount = 0;
+    const nextCcWorkflowStatus = isCreditCardPurchase
+      ? procurementStatus === "posted_to_account"
+        ? "posted_to_account"
+        : procurementStatus === "statement_paid"
+          ? "statement_paid"
+          : procurementStatus === "receipts_uploaded"
+            ? "receipts_uploaded"
+            : "requested"
+      : null;
 
     let verifiedBudgetLine: { id: string; account_code_id: string | null } | null = null;
     if (budgetTracked) {
@@ -256,7 +275,8 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
         encumbered_amount: nextEncumberedAmount,
         pending_cc_amount: nextPendingCcAmount,
         posted_amount: nextPostedAmount,
-        posted_date: nextBudgetStatus === "posted" ? paidOn || receivedOn || new Date().toISOString().slice(0, 10) : null
+        posted_date: nextBudgetStatus === "posted" ? paidOn || receivedOn || new Date().toISOString().slice(0, 10) : null,
+        cc_workflow_status: nextCcWorkflowStatus
       })
       .eq("id", id);
     if (error) throw new Error(error.message);
