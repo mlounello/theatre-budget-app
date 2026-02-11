@@ -1,7 +1,8 @@
 import { formatCurrency } from "@/lib/format";
 import { getRequestsData } from "@/lib/db";
-import { addRequestReceipt, reconcileRequestToPendingCc, updatePurchaseStatus } from "@/app/requests/actions";
+import { updatePurchaseStatus } from "@/app/requests/actions";
 import { CreateRequestForm } from "@/app/requests/create-request-form";
+import { CcReconcileModal } from "@/app/requests/cc-reconcile-modal";
 
 const statuses = ["requested", "encumbered", "pending_cc", "posted", "cancelled"] as const;
 
@@ -35,6 +36,7 @@ export default async function RequestsPage() {
               <th>Code</th>
               <th>Reference</th>
               <th>Title</th>
+              <th>Type</th>
               <th>Status</th>
               <th>Estimated</th>
               <th>Requested</th>
@@ -49,7 +51,7 @@ export default async function RequestsPage() {
           <tbody>
             {purchases.length === 0 ? (
               <tr>
-                <td colSpan={13}>No purchases yet. Create your first request above.</td>
+                <td colSpan={14}>No purchases yet. Create your first request above.</td>
               </tr>
             ) : null}
             {purchases.map((purchase) => (
@@ -58,6 +60,10 @@ export default async function RequestsPage() {
                 <td>{purchase.budgetCode}</td>
                 <td>{purchase.referenceNumber ?? "-"}</td>
                 <td>{purchase.title}</td>
+                <td>
+                  {purchase.requestType}
+                  {purchase.requestType === "expense" ? (purchase.isCreditCard ? " (cc)" : " (reimb)") : ""}
+                </td>
                 <td>
                   <span className={`statusChip status-${purchase.status}`}>{purchase.status}</span>
                 </td>
@@ -102,27 +108,7 @@ export default async function RequestsPage() {
                   </form>
                 </td>
                 <td>
-                  <form
-                    action={addRequestReceipt}
-                    className="inlineStatusForm"
-                    style={{ marginBottom: "0.4rem" }}
-                    encType="multipart/form-data"
-                  >
-                    <input type="hidden" name="purchaseId" value={purchase.id} />
-                    <input name="amountReceived" type="number" step="0.01" min="0.01" placeholder="Receipt $" required />
-                    <input name="note" placeholder="Receipt note" />
-                    <input name="receiptUrl" placeholder="Receipt URL (optional)" />
-                    <input name="receiptFile" type="file" accept=".pdf,.png,.jpg,.jpeg,.webp" />
-                    <button type="submit" className="tinyButton">
-                      Add Receipt
-                    </button>
-                  </form>
-                  <form action={reconcileRequestToPendingCc} className="inlineStatusForm">
-                    <input type="hidden" name="purchaseId" value={purchase.id} />
-                    <button type="submit" className="tinyButton">
-                      Reconcile to Pending CC
-                    </button>
-                  </form>
+                  <CcReconcileModal purchase={purchase} />
                 </td>
               </tr>
             ))}

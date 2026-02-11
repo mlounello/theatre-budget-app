@@ -31,6 +31,8 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
   const [selectedOrganization, setSelectedOrganization] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedBudgetLineId, setSelectedBudgetLineId] = useState("");
+  const [requestType, setRequestType] = useState<"requisition" | "expense" | "contract">("requisition");
+  const [isCreditCard, setIsCreditCard] = useState(false);
   const [rows, setRows] = useState<AllocationRow[]>([
     {
       id: uid(),
@@ -186,6 +188,39 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
           ))}
         </select>
       </label>
+
+      <label>
+        Request Type
+        <select
+          name="requestType"
+          value={requestType}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (value === "expense" || value === "contract") {
+              setRequestType(value);
+            } else {
+              setRequestType("requisition");
+            }
+            if (value !== "expense") setIsCreditCard(false);
+          }}
+        >
+          <option value="requisition">Requisition (PO)</option>
+          <option value="expense">Expense (CC/Reimbursement)</option>
+          <option value="contract">Contract (Check Request)</option>
+        </select>
+      </label>
+
+      {requestType === "expense" ? (
+        <label className="checkboxLabel">
+          <input
+            name="isCreditCard"
+            type="checkbox"
+            checked={isCreditCard}
+            onChange={(event) => setIsCreditCard(event.target.checked)}
+          />
+          Credit Card Expense
+        </label>
+      ) : null}
 
       {canManageSplits ? (
         <label className="checkboxLabel">

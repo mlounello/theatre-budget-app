@@ -54,6 +54,8 @@ export type PurchaseRow = {
   postedAmount: number;
   receiptTotal: number;
   receiptCount: number;
+  requestType: "requisition" | "expense" | "contract";
+  isCreditCard: boolean;
   status: PurchaseStatus;
   createdAt: string;
 };
@@ -382,7 +384,7 @@ export async function getRequestsData(): Promise<{
   const { data: purchasesData, error: purchasesError } = await supabase
     .from("purchases")
     .select(
-      "id, project_id, budget_line_id, title, reference_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, created_at, projects(name), project_budget_lines(budget_code, category)"
+      "id, project_id, budget_line_id, title, reference_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, created_at, projects(name), project_budget_lines(budget_code, category)"
     )
     .order("created_at", { ascending: false })
     .limit(100);
@@ -472,6 +474,8 @@ export async function getRequestsData(): Promise<{
       postedAmount: asNumber(row.posted_amount as string | number | null),
       receiptTotal: receiptsByPurchase.get(row.id as string)?.total ?? 0,
       receiptCount: receiptsByPurchase.get(row.id as string)?.count ?? 0,
+      requestType: ((row.request_type as string | null) ?? "requisition") as "requisition" | "expense" | "contract",
+      isCreditCard: Boolean(row.is_credit_card as boolean | null),
       status: row.status as PurchaseStatus,
       createdAt: row.created_at as string
     };

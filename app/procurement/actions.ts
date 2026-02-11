@@ -138,6 +138,8 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
         vendor_id: vendorId || null,
         estimated_amount: orderValue,
         requested_amount: orderValue,
+        request_type: "requisition",
+        is_credit_card: false,
         status: "requested",
         procurement_status: "requested"
       })

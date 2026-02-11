@@ -50,6 +50,10 @@ export async function createRequest(formData: FormData): Promise<void> {
   const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
   const estimatedAmount = parseMoney(formData.get("estimatedAmount"));
   const requestedAmount = parseMoney(formData.get("requestedAmount"));
+  const requestTypeRaw = String(formData.get("requestType") ?? "requisition").trim().toLowerCase();
+  const requestType =
+    requestTypeRaw === "expense" || requestTypeRaw === "contract" ? requestTypeRaw : ("requisition" as const);
+  const isCreditCard = requestType === "expense" ? formData.get("isCreditCard") === "on" : false;
   const allocationsJson = String(formData.get("allocationsJson") ?? "").trim();
 
   if (!budgetLineId || !title) {
@@ -113,6 +117,8 @@ export async function createRequest(formData: FormData): Promise<void> {
       reference_number: referenceNumber || null,
       estimated_amount: estimatedAmount,
       requested_amount: requestedTotal,
+      request_type: requestType,
+      is_credit_card: isCreditCard,
       status: "requested"
     })
     .select("id")
@@ -275,10 +281,13 @@ export async function addRequestReceipt(formData: FormData): Promise<void> {
 
   const { data: purchase, error: purchaseError } = await supabase
     .from("purchases")
-    .select("id, project_id")
+    .select("id, project_id, request_type, is_credit_card")
     .eq("id", purchaseId)
     .single();
   if (purchaseError || !purchase) throw new Error("Purchase not found.");
+  if ((purchase.request_type as string) !== "expense" || !Boolean(purchase.is_credit_card as boolean | null)) {
+    throw new Error("Receipts in this flow are only for credit-card expenses.");
+  }
 
   let attachmentUrl: string | null = receiptUrl || null;
 
@@ -327,10 +336,13 @@ export async function reconcileRequestToPendingCc(formData: FormData): Promise<v
 
   const { data: purchase, error: purchaseError } = await supabase
     .from("purchases")
-    .select("id, project_id, status, estimated_amount, requested_amount")
+    .select("id, project_id, status, estimated_amount, requested_amount, request_type, is_credit_card")
     .eq("id", purchaseId)
     .single();
   if (purchaseError || !purchase) throw new Error("Purchase not found.");
+  if ((purchase.request_type as string) !== "expense" || !Boolean(purchase.is_credit_card as boolean | null)) {
+    throw new Error("Only credit-card expense requests can be reconciled to Pending CC.");
+  }
 
   await requirePmOrAdmin(supabase, purchase.project_id as string, user.id);
 
