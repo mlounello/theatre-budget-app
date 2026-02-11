@@ -2,7 +2,11 @@ import {
   addStatementLineAction,
   confirmStatementLineMatchAction,
   createCreditCardAction,
-  createStatementMonthAction
+  createStatementMonthAction,
+  deleteCreditCardAction,
+  deleteStatementMonthAction,
+  updateCreditCardAction,
+  updateStatementMonthAction
 } from "@/app/cc/actions";
 import { getCcPendingRows, getSettingsProjects } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
@@ -10,8 +14,6 @@ import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 type StatementMonthRow = {
   id: string;
-  projectId: string;
-  projectName: string;
   creditCardId: string;
   creditCardName: string;
   statementMonth: string;
@@ -22,6 +24,7 @@ type StatementLineRow = {
   id: string;
   statementMonthId: string;
   projectBudgetLineId: string;
+  projectLabel: string;
   budgetCode: string;
   category: string;
   lineName: string;
@@ -65,11 +68,11 @@ export default async function CreditCardPage({
     supabase.from("credit_cards").select("id, nickname, masked_number, active").order("nickname", { ascending: true }),
     supabase
       .from("cc_statement_months")
-      .select("id, project_id, credit_card_id, statement_month, posted_at, projects(name), credit_cards(nickname)")
+      .select("id, credit_card_id, statement_month, posted_at, credit_cards(nickname)")
       .order("statement_month", { ascending: false }),
     supabase
       .from("cc_statement_lines")
-      .select("id, statement_month_id, project_budget_line_id, amount, note, matched_purchase_ids, project_budget_lines(budget_code, category, line_name)")
+      .select("id, statement_month_id, project_budget_line_id, amount, note, matched_purchase_ids, project_budget_lines(project_id, budget_code, category, line_name, projects(name, season))")
       .order("created_at", { ascending: false }),
     supabase
       .from("purchases")
@@ -110,12 +113,9 @@ export default async function CreditCardPage({
   }));
 
   const statementMonths: StatementMonthRow[] = (monthsResponse.data ?? []).map((row) => {
-    const project = row.projects as { name?: string } | null;
     const card = row.credit_cards as { nickname?: string } | null;
     return {
       id: row.id as string,
-      projectId: row.project_id as string,
-      projectName: project?.name ?? "Unknown Project",
       creditCardId: row.credit_card_id as string,
       creditCardName: card?.nickname ?? "Unknown Card",
       statementMonth: row.statement_month as string,
@@ -124,11 +124,15 @@ export default async function CreditCardPage({
   });
 
   const statementLines: StatementLineRow[] = (linesResponse.data ?? []).map((row) => {
-    const budgetLine = row.project_budget_lines as { budget_code?: string; category?: string; line_name?: string } | null;
+    const budgetLine = row.project_budget_lines as
+      | { project_id?: string; budget_code?: string; category?: string; line_name?: string; projects?: { name?: string; season?: string | null } | null }
+      | null;
+    const project = budgetLine?.projects;
     return {
       id: row.id as string,
       statementMonthId: row.statement_month_id as string,
       projectBudgetLineId: row.project_budget_line_id as string,
+      projectLabel: `${project?.name ?? "Unknown Project"}${project?.season ? ` (${project.season})` : ""}`,
       budgetCode: budgetLine?.budget_code ?? "-",
       category: budgetLine?.category ?? "-",
       lineName: budgetLine?.line_name ?? "-",
@@ -148,10 +152,14 @@ export default async function CreditCardPage({
     creditCardId: (row.credit_card_id as string | null) ?? null
   }));
 
+  const projectNameById = new Map(
+    projects.map((project) => [project.id, `${project.name}${project.season ? ` (${project.season})` : ""}`])
+  );
+
   const budgetLines = (budgetLinesResponse.data ?? []).map((row) => ({
     id: row.id as string,
     projectId: row.project_id as string,
-    label: `${row.budget_code as string} | ${row.category as string} | ${row.line_name as string}`
+    label: `${projectNameById.get(row.project_id as string) ?? "Unknown Project"} | ${row.budget_code as string} | ${row.category as string} | ${row.line_name as string}`
   }));
 
   return (
@@ -166,7 +174,7 @@ export default async function CreditCardPage({
 
       <div className="panelGrid">
         <article className="panel">
-          <h2>Add Credit Card</h2>
+          <h2>Credit Cards</h2>
           <form action={createCreditCardAction} className="requestForm">
             <label>
               Card Nickname
@@ -184,22 +192,63 @@ export default async function CreditCardPage({
               Save Card
             </button>
           </form>
+
+          <div className="tableWrap" style={{ marginTop: "0.75rem" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Nickname</th>
+                  <th>Masked</th>
+                  <th>Active</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cards.length === 0 ? (
+                  <tr>
+                    <td colSpan={4}>No cards yet.</td>
+                  </tr>
+                ) : null}
+                {cards.map((card) => (
+                  <tr key={card.id}>
+                    <td>{card.nickname}</td>
+                    <td>{card.maskedNumber ?? "-"}</td>
+                    <td>{card.active ? "Yes" : "No"}</td>
+                    <td>
+                      <details>
+                        <summary className="tinyButton" style={{ display: "inline-block", listStyle: "none", cursor: "pointer" }}>
+                          Edit
+                        </summary>
+                        <form action={updateCreditCardAction} className="inlineEditForm" style={{ marginTop: "0.4rem" }}>
+                          <input type="hidden" name="id" value={card.id} />
+                          <input name="nickname" defaultValue={card.nickname} required />
+                          <input name="maskedNumber" defaultValue={card.maskedNumber ?? ""} placeholder="****1234" />
+                          <label className="checkboxLabel">
+                            <input name="active" type="checkbox" defaultChecked={card.active} />
+                            Active
+                          </label>
+                          <button type="submit" className="tinyButton">
+                            Save
+                          </button>
+                        </form>
+                      </details>
+                      <form action={deleteCreditCardAction} className="inlineEditForm">
+                        <input type="hidden" name="id" value={card.id} />
+                        <button type="submit" className="tinyButton dangerButton">
+                          Trash
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </article>
 
         <article className="panel">
           <h2>Open Statement Month</h2>
           <form action={createStatementMonthAction} className="requestForm">
-            <label>
-              Project
-              <select name="projectId" required>
-                <option value="">Select project</option>
-                {manageableProjects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name} {project.season ? `(${project.season})` : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
             <label>
               Credit Card
               <select name="creditCardId" required>
@@ -220,8 +269,8 @@ export default async function CreditCardPage({
             <button type="submit" className="buttonLink buttonPrimary">
               Save Statement Month
             </button>
-            {manageableProjects.length === 0 ? (
-              <p className="errorNote">No projects available. You need Admin or Project Manager access to create statements.</p>
+            {manageableProjects.length === 0 && !hasGlobalAdmin ? (
+              <p className="errorNote">You need Admin or Project Manager access to manage statements.</p>
             ) : null}
           </form>
         </article>
@@ -236,21 +285,41 @@ export default async function CreditCardPage({
           return (
             <details key={month.id} className="treeNode" open>
               <summary>
-                <strong>{month.statementMonth.slice(0, 7)}</strong> | {month.projectName} | {month.creditCardName} |{" "}
+                <strong>{month.statementMonth.slice(0, 7)}</strong> | {month.creditCardName} |{" "}
                 {month.postedAt ? "Posted" : "Open"}
               </summary>
+
+              <form action={updateStatementMonthAction} className="inlineEditForm" style={{ marginBottom: "0.45rem" }}>
+                <input type="hidden" name="id" value={month.id} />
+                <input type="month" name="statementMonth" defaultValue={month.statementMonth.slice(0, 7)} required />
+                <select name="creditCardId" defaultValue={month.creditCardId} required>
+                  {cards.map((card) => (
+                    <option key={card.id} value={card.id}>
+                      {card.nickname} {card.maskedNumber ? `(${card.maskedNumber})` : ""}
+                    </option>
+                  ))}
+                </select>
+                <button type="submit" className="tinyButton">
+                  Save Month
+                </button>
+              </form>
+
+              <form action={deleteStatementMonthAction} className="inlineEditForm" style={{ marginBottom: "0.45rem" }}>
+                <input type="hidden" name="id" value={month.id} />
+                <button type="submit" className="tinyButton dangerButton">
+                  Trash Statement Month
+                </button>
+              </form>
 
               <form action={addStatementLineAction} className="inlineEditForm">
                 <input type="hidden" name="statementMonthId" value={month.id} />
                 <select name="projectBudgetLineId" required>
                   <option value="">Budget line</option>
-                  {budgetLines
-                    .filter((line) => line.projectId === month.projectId)
-                    .map((line) => (
-                      <option key={line.id} value={line.id}>
-                        {line.label}
-                      </option>
-                    ))}
+                  {budgetLines.map((line) => (
+                    <option key={line.id} value={line.id}>
+                      {line.label}
+                    </option>
+                  ))}
                 </select>
                 <input name="amount" type="number" step="0.01" min="0.01" placeholder="Amount" required />
                 <input name="note" placeholder="Optional note" />
@@ -278,7 +347,6 @@ export default async function CreditCardPage({
                     {monthLines.map((line) => {
                       const candidates = pendingPurchases.filter(
                         (purchase) =>
-                          purchase.projectId === month.projectId &&
                           purchase.budgetLineId === line.projectBudgetLineId &&
                           (purchase.creditCardId === month.creditCardId || purchase.creditCardId === null)
                       );
@@ -290,7 +358,7 @@ export default async function CreditCardPage({
                       return (
                         <tr key={line.id}>
                           <td>
-                            {line.budgetCode} | {line.category} | {line.lineName}
+                            {line.projectLabel} | {line.budgetCode} | {line.category} | {line.lineName}
                           </td>
                           <td>{formatCurrency(line.amount)}</td>
                           <td>{line.note ?? "-"}</td>
@@ -317,7 +385,7 @@ export default async function CreditCardPage({
                                 </div>
                                 {candidates.length > 0 ? (
                                   <button type="submit" className="tinyButton">
-                                    Confirm Match and Post
+                                    Confirm Statement Paid
                                   </button>
                                 ) : null}
                               </form>
@@ -343,7 +411,7 @@ export default async function CreditCardPage({
         <table>
           <thead>
             <tr>
-              <th>Project ID</th>
+              <th>Project</th>
               <th>Budget Code</th>
               <th>Card</th>
               <th>Pending CC Total</th>
@@ -357,7 +425,7 @@ export default async function CreditCardPage({
             ) : null}
             {rows.map((row, idx) => (
               <tr key={`${row.projectId}-${row.budgetCode}-${row.creditCardName ?? "na"}-${idx}`}>
-                <td>{row.projectId}</td>
+                <td>{projectNameById.get(row.projectId) ?? row.projectId}</td>
                 <td>{row.budgetCode}</td>
                 <td>{row.creditCardName ?? "Unassigned"}</td>
                 <td>{formatCurrency(row.pendingCcTotal)}</td>

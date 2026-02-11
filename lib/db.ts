@@ -741,17 +741,20 @@ export async function getCcPendingRows(): Promise<
   const { data, error } = await supabase
     .from("v_cc_pending_by_code")
     .select("project_id, budget_code, credit_card_name, pending_cc_total")
+    .gt("pending_cc_total", 0)
     .order("project_id", { ascending: true })
     .order("budget_code", { ascending: true });
 
   if (error) throw error;
 
-  return (data ?? []).map((row) => ({
-    projectId: row.project_id as string,
-    budgetCode: row.budget_code as string,
-    creditCardName: (row.credit_card_name as string | null) ?? null,
-    pendingCcTotal: asNumber(row.pending_cc_total as string | number | null)
-  }));
+  return (data ?? [])
+    .map((row) => ({
+      projectId: row.project_id as string,
+      budgetCode: row.budget_code as string,
+      creditCardName: (row.credit_card_name as string | null) ?? null,
+      pendingCcTotal: asNumber(row.pending_cc_total as string | number | null)
+    }))
+    .filter((row) => row.pendingCcTotal > 0);
 }
 
 export async function getSettingsProjects(): Promise<SettingsProject[]> {
