@@ -553,14 +553,17 @@ export async function getProcurementData(): Promise<{
   } = await supabase.auth.getUser();
 
   let canManageProcurement = false;
+  let manageableProjectIds = new Set<string>();
   if (user) {
     const { data: elevatedRoles } = await supabase
       .from("project_memberships")
-      .select("role")
+      .select("project_id, role")
       .eq("user_id", user.id)
-      .in("role", ["admin", "project_manager"])
-      .limit(1);
+      .in("role", ["admin", "project_manager"]);
     canManageProcurement = (elevatedRoles ?? []).length > 0;
+    manageableProjectIds = new Set(
+      (elevatedRoles as Array<{ project_id?: unknown }> | null)?.map((row) => row.project_id as string) ?? []
+    );
   }
 
   const purchases: ProcurementRow[] = (purchasesResponse.data ?? []).map((row) => {
@@ -599,7 +602,7 @@ export async function getProcurementData(): Promise<{
     };
   });
 
-  const budgetLineOptions: ProcurementBudgetLineOption[] = (linesResponse.data ?? []).map((row) => {
+  const budgetLineOptionsRaw: ProcurementBudgetLineOption[] = (linesResponse.data ?? []).map((row) => {
     const project = row.projects as
       | {
           name?: string;
@@ -626,13 +629,19 @@ export async function getProcurementData(): Promise<{
       label: `${project?.name ?? "Unknown"}${project?.season ? ` (${project.season})` : ""} | ${row.budget_code as string} | ${row.category as string} | ${row.line_name as string}`
     };
   });
+  const budgetLineOptions = canManageProcurement
+    ? budgetLineOptionsRaw.filter((option) => manageableProjectIds.has(option.projectId))
+    : budgetLineOptionsRaw;
 
-  const projectOptions: ProcurementProjectOption[] = (projectsResponse.data ?? []).map((row) => ({
+  const projectOptionsRaw: ProcurementProjectOption[] = (projectsResponse.data ?? []).map((row) => ({
     id: row.id as string,
     label: `${row.name as string}${(row.season as string | null) ? ` (${row.season as string})` : ""}`,
     organizationId: (row.organization_id as string | null) ?? null,
     fiscalYearId: null
   }));
+  const projectOptions = canManageProcurement
+    ? projectOptionsRaw.filter((project) => manageableProjectIds.has(project.id))
+    : projectOptionsRaw;
 
   const projectWithHierarchy = new Map<
     string,

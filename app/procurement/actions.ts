@@ -59,6 +59,24 @@ function fail(message: string): never {
   redirect(`/procurement?error=${encodeURIComponent(message)}`);
 }
 
+async function ensureProjectCreateAccess(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  userId: string,
+  projectId: string
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("project_memberships")
+    .select("role")
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const role = (data?.role as string | undefined) ?? null;
+  if (!role || !["admin", "project_manager", "buyer"].includes(role)) {
+    throw new Error("You do not have permission to create purchases for this project.");
+  }
+}
+
 export async function createProcurementOrderAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();
@@ -79,6 +97,7 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
 
     if (!projectId || !title) throw new Error("Project and title are required.");
     if (orderValue <= 0) throw new Error("Order value must be greater than 0.");
+    await ensureProjectCreateAccess(supabase, user.id, projectId);
 
     let line: { id: string; project_id: string; account_code_id: string | null } | null = null;
     if (budgetTracked) {
@@ -309,6 +328,22 @@ export async function deleteProcurementReceiptAction(formData: FormData): Promis
 export async function createVendorAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+
+    const { data: membership, error: membershipError } = await supabase
+      .from("project_memberships")
+      .select("id")
+      .eq("user_id", user.id)
+      .in("role", ["admin", "project_manager"])
+      .limit(1);
+    if (membershipError) throw new Error(membershipError.message);
+    if ((membership ?? []).length === 0) {
+      throw new Error("Only Admin or Project Manager can add vendors.");
+    }
+
     const name = String(formData.get("name") ?? "").trim();
     if (!name) throw new Error("Vendor name is required.");
 

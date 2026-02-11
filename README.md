@@ -80,6 +80,11 @@ This automatically assigns you as project `admin` for newly created projects.
 - Fill rows and upload in `CSV Import`
 - Import upserts: fiscal years, organizations, projects, account codes, and project budget lines
 
+## One-time procurement catch-up import
+- Template CSV: `/Users/mikelounello/theatre-budget-app/source-sheets/procurement-purchases-import-template.csv`
+- Mapping guide: `/Users/mikelounello/theatre-budget-app/docs/procurement-import-mapping.md`
+- SQL import script: `/Users/mikelounello/theatre-budget-app/supabase/manual/procurement_import.sql`
+
 ## Current implemented slice
 - Google OAuth login + callback + signout
 - Auth-protected routes with middleware
