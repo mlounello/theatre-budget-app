@@ -38,7 +38,6 @@ export function CreateRequestForm({
   const [selectedFiscalYear, setSelectedFiscalYear] = useState("");
   const [selectedOrganization, setSelectedOrganization] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
-  const [selectedBudgetLineId, setSelectedBudgetLineId] = useState("");
   const [selectedProductionCategoryId, setSelectedProductionCategoryId] = useState("");
   const [selectedBannerAccountCodeId, setSelectedBannerAccountCodeId] = useState("");
   const [requestType, setRequestType] = useState<"requisition" | "expense" | "contract">("requisition");
@@ -75,7 +74,6 @@ export function CreateRequestForm({
     const fy = window.localStorage.getItem("tba_requests_fiscal_year_id");
     const org = window.localStorage.getItem("tba_requests_org_id");
     const project = window.localStorage.getItem("tba_requests_project_id");
-    const line = window.localStorage.getItem("tba_requests_budget_line_id");
     const productionCategory = window.localStorage.getItem("tba_requests_production_category_id");
     const bannerAccountCode = window.localStorage.getItem("tba_requests_banner_account_code_id");
     const type = window.localStorage.getItem("tba_requests_request_type");
@@ -84,7 +82,6 @@ export function CreateRequestForm({
     if (fy) setSelectedFiscalYear(fy);
     if (org) setSelectedOrganization(org);
     if (project) setSelectedProjectId(project);
-    if (line) setSelectedBudgetLineId(line);
     if (productionCategory) setSelectedProductionCategoryId(productionCategory);
     if (bannerAccountCode) setSelectedBannerAccountCodeId(bannerAccountCode);
     if (type === "expense" || type === "contract" || type === "requisition") setRequestType(type);
@@ -97,7 +94,6 @@ export function CreateRequestForm({
     window.localStorage.setItem("tba_requests_fiscal_year_id", selectedFiscalYear);
     window.localStorage.setItem("tba_requests_org_id", selectedOrganization);
     window.localStorage.setItem("tba_requests_project_id", selectedProjectId);
-    window.localStorage.setItem("tba_requests_budget_line_id", selectedBudgetLineId);
     window.localStorage.setItem("tba_requests_production_category_id", selectedProductionCategoryId);
     window.localStorage.setItem("tba_requests_banner_account_code_id", selectedBannerAccountCodeId);
     window.localStorage.setItem("tba_requests_request_type", requestType);
@@ -107,7 +103,6 @@ export function CreateRequestForm({
     isCreditCard,
     requestType,
     selectedBannerAccountCodeId,
-    selectedBudgetLineId,
     selectedFiscalYear,
     selectedOrganization,
     selectedProductionCategoryId,
@@ -180,7 +175,6 @@ export function CreateRequestForm({
             setSelectedFiscalYear(event.target.value);
             setSelectedOrganization("");
             setSelectedProjectId("");
-            setSelectedBudgetLineId("");
             setRows([{ id: uid(), reportingBudgetLineId: "", accountCodeId: "", amount: "", reportingBucket: "direct" }]);
           }}
         >
@@ -200,7 +194,6 @@ export function CreateRequestForm({
           onChange={(event) => {
             setSelectedOrganization(event.target.value);
             setSelectedProjectId("");
-            setSelectedBudgetLineId("");
             setRows([{ id: uid(), reportingBudgetLineId: "", accountCodeId: "", amount: "", reportingBucket: "direct" }]);
           }}
         >
@@ -220,7 +213,6 @@ export function CreateRequestForm({
           value={selectedProjectId}
           onChange={(event) => {
             setSelectedProjectId(event.target.value);
-            setSelectedBudgetLineId("");
             setRows([{ id: uid(), reportingBudgetLineId: "", accountCodeId: "", amount: "", reportingBucket: "direct" }]);
           }}
           required
@@ -266,26 +258,6 @@ export function CreateRequestForm({
           ))}
         </select>
       </label>
-
-      {splitMode ? (
-        <label>
-          Reporting Line (for split mode)
-          <select
-            name="budgetLineId"
-            value={selectedBudgetLineId}
-            onChange={(event) => setSelectedBudgetLineId(event.target.value)}
-            required
-            disabled={!selectedProjectId}
-          >
-            <option value="">Select budget line</option>
-            {filteredBudgetLineOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
 
       <label>
         Request Type

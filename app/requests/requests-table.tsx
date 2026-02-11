@@ -9,7 +9,6 @@ import type {
   AccountCodeOption,
   ProcurementProjectOption,
   ProductionCategoryOption,
-  ProjectBudgetLineOption,
   PurchaseRow,
   RequestReceiptRow
 } from "@/lib/db";
@@ -98,14 +97,12 @@ function SortTh({
 export function RequestsTable({
   purchases,
   receipts,
-  budgetLineOptions,
   projectOptions,
   accountCodeOptions,
   productionCategoryOptions
 }: {
   purchases: PurchaseRow[];
   receipts: RequestReceiptRow[];
-  budgetLineOptions: ProjectBudgetLineOption[];
   projectOptions: ProcurementProjectOption[];
   accountCodeOptions: AccountCodeOption[];
   productionCategoryOptions: ProductionCategoryOption[];
@@ -222,7 +219,6 @@ export function RequestsTable({
               <td>
                 <RequestRowActions
                   purchase={purchase}
-                  budgetLineOptions={budgetLineOptions}
                   projectOptions={projectOptions}
                   accountCodeOptions={accountCodeOptions}
                   productionCategoryOptions={productionCategoryOptions}

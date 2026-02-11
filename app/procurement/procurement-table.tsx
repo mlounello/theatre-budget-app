@@ -173,7 +173,6 @@ export function ProcurementTable({
   purchases,
   receipts,
   vendors,
-  budgetLineOptions,
   projectOptions,
   accountCodeOptions,
   productionCategoryOptions,
@@ -182,7 +181,6 @@ export function ProcurementTable({
   purchases: ProcurementRow[];
   receipts: ProcurementReceiptRow[];
   vendors: VendorOption[];
-  budgetLineOptions: Array<{ id: string; projectId: string; label: string }>;
   projectOptions: Array<{ id: string; label: string }>;
   accountCodeOptions: AccountCodeOption[];
   productionCategoryOptions: ProductionCategoryOption[];
@@ -200,19 +198,12 @@ export function ProcurementTable({
   const [direction, setDirection] = useState<SortDirection>(dirFromUrl === "desc" ? "desc" : "asc");
   const editingPurchase = useMemo(() => purchases.find((purchase) => purchase.id === editingId) ?? null, [purchases, editingId]);
   const [editProjectId, setEditProjectId] = useState("");
-  const [editBudgetLineId, setEditBudgetLineId] = useState("");
   const [editProductionCategoryId, setEditProductionCategoryId] = useState("");
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState("");
   const sortedPurchases = useMemo(() => sortRows(purchases, receipts, sortKey, direction), [purchases, receipts, sortKey, direction]);
-  const editProjectBudgetLines = useMemo(
-    () => budgetLineOptions.filter((line) => line.projectId === editProjectId),
-    [budgetLineOptions, editProjectId]
-  );
-
   useEffect(() => {
     if (!editingPurchase) return;
     setEditProjectId(editingPurchase.projectId);
-    setEditBudgetLineId(editingPurchase.budgetLineId ?? "");
     setEditProductionCategoryId(editingPurchase.productionCategoryId ?? "");
     setEditBannerAccountCodeId(editingPurchase.bannerAccountCodeId ?? "");
   }, [editingPurchase]);
@@ -344,7 +335,6 @@ export function ProcurementTable({
                   value={editProjectId}
                   onChange={(event) => {
                     setEditProjectId(event.target.value);
-                    setEditBudgetLineId("");
                   }}
                   required
                 >
@@ -355,17 +345,7 @@ export function ProcurementTable({
                   ))}
                 </select>
               </label>
-              <label>
-                Budget Line
-                <select name="budgetLineId" value={editBudgetLineId} onChange={(event) => setEditBudgetLineId(event.target.value)}>
-                  <option value="">Auto from department</option>
-                  {editProjectBudgetLines.map((line) => (
-                    <option key={line.id} value={line.id}>
-                      {line.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <input type="hidden" name="budgetLineId" value="" />
               <label>
                 Department (Production Category)
                 <select

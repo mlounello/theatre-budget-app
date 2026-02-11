@@ -30,7 +30,6 @@ export default async function RequestsPage() {
       <RequestsTable
         purchases={purchases}
         receipts={receipts}
-        budgetLineOptions={budgetLineOptions}
         accountCodeOptions={accountCodeOptions}
         projectOptions={projectOptions}
         productionCategoryOptions={productionCategoryOptions}

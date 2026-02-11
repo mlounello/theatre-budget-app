@@ -1,28 +1,24 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { deleteRequestAction, updateRequestInline } from "@/app/requests/actions";
-import type { AccountCodeOption, ProcurementProjectOption, ProductionCategoryOption, ProjectBudgetLineOption, PurchaseRow } from "@/lib/db";
+import type { AccountCodeOption, ProcurementProjectOption, ProductionCategoryOption, PurchaseRow } from "@/lib/db";
 
 export function RequestRowActions({
   purchase,
-  budgetLineOptions,
   projectOptions,
   accountCodeOptions,
   productionCategoryOptions
 }: {
   purchase: PurchaseRow;
-  budgetLineOptions: ProjectBudgetLineOption[];
   projectOptions: ProcurementProjectOption[];
   accountCodeOptions: AccountCodeOption[];
   productionCategoryOptions: ProductionCategoryOption[];
 }) {
   const [open, setOpen] = useState(false);
   const [editProjectId, setEditProjectId] = useState(purchase.projectId);
-  const [editBudgetLineId, setEditBudgetLineId] = useState(purchase.budgetLineId ?? "");
   const [editProductionCategoryId, setEditProductionCategoryId] = useState(purchase.productionCategoryId ?? "");
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState(purchase.bannerAccountCodeId ?? "");
-  const projectBudgetLines = useMemo(() => budgetLineOptions.filter((line) => line.projectId === editProjectId), [budgetLineOptions, editProjectId]);
 
   return (
     <>
@@ -32,7 +28,6 @@ export function RequestRowActions({
           className="tinyButton"
           onClick={() => {
             setEditProjectId(purchase.projectId);
-            setEditBudgetLineId(purchase.budgetLineId ?? "");
             setEditProductionCategoryId(purchase.productionCategoryId ?? "");
             setEditBannerAccountCodeId(purchase.bannerAccountCodeId ?? "");
             setOpen(true);
@@ -71,7 +66,6 @@ export function RequestRowActions({
                   value={editProjectId}
                   onChange={(event) => {
                     setEditProjectId(event.target.value);
-                    setEditBudgetLineId("");
                   }}
                   required
                 >
@@ -125,17 +119,7 @@ export function RequestRowActions({
                   <input name="referenceNumber" defaultValue={purchase.referenceNumber ?? ""} />
                 )}
               </label>
-              <label>
-                Budget Line
-                <select name="budgetLineId" value={editBudgetLineId} onChange={(event) => setEditBudgetLineId(event.target.value)}>
-                  <option value="">Auto from category</option>
-                  {projectBudgetLines.map((line) => (
-                    <option key={line.id} value={line.id}>
-                      {line.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <input type="hidden" name="budgetLineId" value="" />
               <label>
                 Type
                 <select name="requestType" defaultValue={purchase.requestType}>

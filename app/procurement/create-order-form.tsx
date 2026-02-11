@@ -30,7 +30,6 @@ export function CreateOrderForm({
   const [fiscalYearId, setFiscalYearId] = useState("");
   const [organizationId, setOrganizationId] = useState("");
   const [budgetTracked, setBudgetTracked] = useState(true);
-  const [budgetLineId, setBudgetLineId] = useState("");
   const [vendorId, setVendorId] = useState("");
   const [productionCategoryId, setProductionCategoryId] = useState("");
   const [bannerAccountCodeId, setBannerAccountCodeId] = useState("");
@@ -41,7 +40,6 @@ export function CreateOrderForm({
     const org = window.localStorage.getItem("tba_procurement_org_id");
     const project = window.localStorage.getItem("tba_procurement_project_id");
     const tracked = window.localStorage.getItem("tba_procurement_budget_tracked");
-    const line = window.localStorage.getItem("tba_procurement_budget_line_id");
     const vendor = window.localStorage.getItem("tba_procurement_vendor_id");
     const productionCategory = window.localStorage.getItem("tba_procurement_production_category_id");
     const bannerCode = window.localStorage.getItem("tba_procurement_banner_account_code_id");
@@ -49,7 +47,6 @@ export function CreateOrderForm({
     if (org) setOrganizationId(org);
     if (project) setProjectId(project);
     if (tracked === "0") setBudgetTracked(false);
-    if (line) setBudgetLineId(line);
     if (vendor) setVendorId(vendor);
     if (productionCategory) setProductionCategoryId(productionCategory);
     if (bannerCode) setBannerAccountCodeId(bannerCode);
@@ -61,11 +58,10 @@ export function CreateOrderForm({
     window.localStorage.setItem("tba_procurement_org_id", organizationId);
     window.localStorage.setItem("tba_procurement_project_id", projectId);
     window.localStorage.setItem("tba_procurement_budget_tracked", budgetTracked ? "1" : "0");
-    window.localStorage.setItem("tba_procurement_budget_line_id", budgetLineId);
     window.localStorage.setItem("tba_procurement_vendor_id", vendorId);
     window.localStorage.setItem("tba_procurement_production_category_id", productionCategoryId);
     window.localStorage.setItem("tba_procurement_banner_account_code_id", bannerAccountCodeId);
-  }, [budgetLineId, budgetTracked, fiscalYearId, organizationId, projectId, vendorId, productionCategoryId, bannerAccountCodeId]);
+  }, [budgetTracked, fiscalYearId, organizationId, projectId, vendorId, productionCategoryId, bannerAccountCodeId]);
 
   const fiscalYearOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -109,11 +105,6 @@ export function CreateOrderForm({
     [projectOptions, fiscalYearId, organizationId]
   );
 
-  const filteredBudgetLines = useMemo(
-    () => budgetLineOptions.filter((line) => line.projectId === projectId),
-    [budgetLineOptions, projectId]
-  );
-
   return (
     <form action={createProcurementOrderAction} className="requestForm">
       <label>
@@ -124,7 +115,6 @@ export function CreateOrderForm({
             setFiscalYearId(event.target.value);
             setOrganizationId("");
             setProjectId("");
-            setBudgetLineId("");
           }}
         >
           <option value="">Select fiscal year</option>
@@ -142,7 +132,6 @@ export function CreateOrderForm({
           onChange={(event) => {
             setOrganizationId(event.target.value);
             setProjectId("");
-            setBudgetLineId("");
           }}
         >
           <option value="">Select organization</option>
@@ -193,27 +182,11 @@ export function CreateOrderForm({
           checked={budgetTracked}
           onChange={(event) => {
             setBudgetTracked(event.target.checked);
-            if (!event.target.checked) setBudgetLineId("");
           }}
         />
         Track in budget
       </label>
-      <label>
-        Reporting Line (optional)
-        <select
-          name="budgetLineId"
-          value={budgetLineId}
-          onChange={(event) => setBudgetLineId(event.target.value)}
-          disabled={!projectId || !budgetTracked}
-        >
-          <option value="">Auto from department</option>
-          {filteredBudgetLines.map((line) => (
-            <option key={line.id} value={line.id}>
-              {line.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <input type="hidden" name="budgetLineId" value="" />
       <label>
         Title
         <input name="title" placeholder="Order title" required />
