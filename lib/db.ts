@@ -192,6 +192,13 @@ export type AccountCodeAdminRow = {
   active: boolean;
 };
 
+export type ProductionCategoryAdminRow = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  active: boolean;
+};
+
 export type FiscalYearOption = {
   id: string;
   name: string;
@@ -979,6 +986,24 @@ export async function getProductionCategoryOptions(): Promise<ProductionCategory
     id: row.id as string,
     name: row.name as string,
     sortOrder: (row.sort_order as number | null) ?? 0
+  }));
+}
+
+export async function getProductionCategoriesAdmin(): Promise<ProductionCategoryAdminRow[]> {
+  const supabase = await getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("production_categories")
+    .select("id, name, sort_order, active")
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    sortOrder: (row.sort_order as number | null) ?? 0,
+    active: Boolean(row.active as boolean | null)
   }));
 }
 

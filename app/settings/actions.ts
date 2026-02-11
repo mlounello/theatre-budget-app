@@ -267,6 +267,44 @@ export async function createAccountCodeAction(formData: FormData): Promise<void>
   }
 }
 
+export async function createProductionCategoryAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const name = String(formData.get("name") ?? "").trim();
+    const sortOrderRaw = String(formData.get("sortOrder") ?? "").trim();
+    const active = formData.get("active") === "on";
+
+    if (!name) throw new Error("Category name is required.");
+
+    let sortOrder = 0;
+    if (sortOrderRaw) {
+      const parsed = Number.parseInt(sortOrderRaw, 10);
+      if (!Number.isFinite(parsed)) throw new Error("Sort order must be a number.");
+      sortOrder = parsed;
+    } else {
+      const { data: maxSortRows, error: maxSortError } = await supabase
+        .from("production_categories")
+        .select("sort_order")
+        .order("sort_order", { ascending: false })
+        .limit(1);
+      if (maxSortError) throw new Error(maxSortError.message);
+      sortOrder = ((maxSortRows?.[0]?.sort_order as number | null) ?? -1) + 1;
+    }
+
+    const { error } = await supabase.from("production_categories").insert({ name, sort_order: sortOrder, active });
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/settings");
+    revalidatePath("/requests");
+    revalidatePath("/procurement");
+    revalidatePath("/income");
+    settingsSuccess("Production category saved.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not save production category."));
+  }
+}
+
 export async function updateAccountCodeAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();
@@ -295,6 +333,37 @@ export async function updateAccountCodeAction(formData: FormData): Promise<void>
   } catch (error) {
     rethrowIfRedirect(error);
     settingsError(getErrorMessage(error, "Could not update account code."));
+  }
+}
+
+export async function updateProductionCategoryAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const id = String(formData.get("id") ?? "").trim();
+    const name = String(formData.get("name") ?? "").trim();
+    const sortOrderRaw = String(formData.get("sortOrder") ?? "").trim();
+    const active = String(formData.get("active") ?? "true").trim() === "true";
+
+    if (!id || !name) throw new Error("Category id and name are required.");
+
+    const updateValues: { name: string; active: boolean; sort_order?: number } = { name, active };
+    if (sortOrderRaw !== "") {
+      const parsed = Number.parseInt(sortOrderRaw, 10);
+      if (!Number.isFinite(parsed)) throw new Error("Sort order must be a number.");
+      updateValues.sort_order = parsed;
+    }
+
+    const { error } = await supabase.from("production_categories").update(updateValues).eq("id", id);
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/settings");
+    revalidatePath("/requests");
+    revalidatePath("/procurement");
+    revalidatePath("/income");
+    settingsSuccess("Production category updated.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not update production category."));
   }
 }
 
@@ -332,6 +401,54 @@ export async function deleteAccountCodeAction(formData: FormData): Promise<void>
   } catch (error) {
     rethrowIfRedirect(error);
     settingsError(getErrorMessage(error, "Could not delete account code."));
+  }
+}
+
+export async function deleteProductionCategoryAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const id = String(formData.get("id") ?? "").trim();
+    if (!id) throw new Error("Category id is required.");
+
+    const [
+      { count: pblCount, error: pblError },
+      { count: allocationCount, error: allocationError },
+      { count: purchaseCount, error: purchaseError },
+      { count: incomeCount, error: incomeError }
+    ] = await Promise.all([
+      supabase.from("project_budget_lines").select("id", { head: true, count: "exact" }).eq("production_category_id", id),
+      supabase.from("purchase_allocations").select("id", { head: true, count: "exact" }).eq("production_category_id", id),
+      supabase.from("purchases").select("id", { head: true, count: "exact" }).eq("production_category_id", id),
+      supabase.from("income_lines").select("id", { head: true, count: "exact" }).eq("production_category_id", id)
+    ]);
+    if (pblError) throw new Error(pblError.message);
+    if (allocationError) throw new Error(allocationError.message);
+    if (purchaseError) throw new Error(purchaseError.message);
+    if (incomeError) throw new Error(incomeError.message);
+
+    const inUse = (pblCount ?? 0) > 0 || (allocationCount ?? 0) > 0 || (purchaseCount ?? 0) > 0 || (incomeCount ?? 0) > 0;
+
+    if (inUse) {
+      const { error: deactivateError } = await supabase.from("production_categories").update({ active: false }).eq("id", id);
+      if (deactivateError) throw new Error(deactivateError.message);
+      revalidatePath("/settings");
+      revalidatePath("/requests");
+      revalidatePath("/procurement");
+      revalidatePath("/income");
+      settingsSuccess("Category is in use and was deactivated.");
+    }
+
+    const { error } = await supabase.from("production_categories").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/settings");
+    revalidatePath("/requests");
+    revalidatePath("/procurement");
+    revalidatePath("/income");
+    settingsSuccess("Production category deleted.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not delete production category."));
   }
 }
 
@@ -430,6 +547,7 @@ export async function updateBudgetLineAction(formData: FormData): Promise<void> 
       sort_order?: number;
       active: boolean;
       account_code_id?: string;
+      production_category_id?: string | null;
       budget_code?: string;
       category?: string;
       line_name?: string;
@@ -442,6 +560,11 @@ export async function updateBudgetLineAction(formData: FormData): Promise<void> 
 
     if (sortOrder !== undefined) {
       nextValues.sort_order = sortOrder;
+    }
+
+    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    if (productionCategoryId) {
+      nextValues.production_category_id = productionCategoryId;
     }
 
     if (accountCodeId) {
@@ -489,6 +612,7 @@ export async function addBudgetLineAction(formData: FormData): Promise<void> {
 
     const projectId = String(formData.get("projectId") ?? "").trim();
     const accountCodeId = String(formData.get("accountCodeId") ?? "").trim();
+    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const allocatedAmount = parseMoney(formData.get("allocatedAmount"));
     if (!projectId || !accountCodeId) throw new Error("Project and account code are required.");
 
@@ -516,6 +640,7 @@ export async function addBudgetLineAction(formData: FormData): Promise<void> {
         .from("project_budget_lines")
         .update({
           account_code_id: accountCode.id,
+          production_category_id: productionCategoryId || null,
           allocated_amount: allocatedAmount,
           active: true
         })
@@ -538,6 +663,7 @@ export async function addBudgetLineAction(formData: FormData): Promise<void> {
         category: accountCode.category,
         line_name: accountCode.name,
         account_code_id: accountCode.id,
+        production_category_id: productionCategoryId || null,
         allocated_amount: allocatedAmount,
         sort_order: nextSort,
         active: true

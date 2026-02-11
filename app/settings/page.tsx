@@ -1,8 +1,10 @@
 import {
   addBudgetLineAction,
   createAccountCodeAction,
+  deleteProductionCategoryAction,
   deleteAccountCodeAction,
   importHierarchyCsvAction,
+  updateProductionCategoryAction,
   updateAccountCodeAction,
   updateBudgetLineAction,
   updateFiscalYearAction,
@@ -20,6 +22,8 @@ import {
   getFiscalYearOptions,
   getHierarchyRows,
   getOrganizationOptions,
+  getProductionCategoriesAdmin,
+  getProductionCategoryOptions,
   getSettingsProjects,
   getTemplateNames,
   type HierarchyRow
@@ -60,7 +64,7 @@ export default async function SettingsPage({
     msg?: string;
     ok?: string;
     error?: string;
-    editType?: "fy" | "org" | "project" | "line" | "account";
+    editType?: "fy" | "org" | "project" | "line" | "account" | "production_category";
     editId?: string;
   }>;
 }) {
@@ -76,6 +80,8 @@ export default async function SettingsPage({
   const templates = await getTemplateNames();
   const accountCodes = await getAccountCodeOptions();
   const allAccountCodes = await getAccountCodesAdmin();
+  const productionCategories = await getProductionCategoryOptions();
+  const allProductionCategories = await getProductionCategoriesAdmin();
   const fiscalYears = await getFiscalYearOptions();
   const organizations = await getOrganizationOptions();
   const hierarchyRows = await getHierarchyRows();
@@ -165,6 +171,9 @@ export default async function SettingsPage({
   const editingLine = editType === "line" && editId ? budgetLineLookup.get(editId) : null;
   const accountCodeLookup = new Map(allAccountCodes.map((row) => [row.id, row] as const));
   const editingAccountCode = editType === "account" && editId ? accountCodeLookup.get(editId) : null;
+  const productionCategoryLookup = new Map(allProductionCategories.map((row) => [row.id, row] as const));
+  const editingProductionCategory =
+    editType === "production_category" && editId ? productionCategoryLookup.get(editId) : null;
 
   return (
     <section>
@@ -184,6 +193,7 @@ export default async function SettingsPage({
           templates={templates}
           projects={projects}
           accountCodes={accountCodes}
+          productionCategories={productionCategories}
         />
 
         <article className="panel panelFull">
@@ -353,6 +363,50 @@ export default async function SettingsPage({
                 ))}
             </details>
           ))}
+        </article>
+
+        <article className="panel panelFull">
+          <h2>Current Production Categories</h2>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Sort</th>
+                  <th>Active</th>
+                  <th>Edit</th>
+                  <th>Trash</th>
+                </tr>
+              </thead>
+              <tbody>
+                {allProductionCategories.map((category) => (
+                  <tr key={category.id}>
+                    <td>{category.name}</td>
+                    <td>{category.sortOrder}</td>
+                    <td>{category.active ? "Yes" : "No"}</td>
+                    <td>
+                      <a className="tinyButton" href={`/settings?editType=production_category&editId=${category.id}`}>
+                        Edit
+                      </a>
+                    </td>
+                    <td>
+                      <form action={deleteProductionCategoryAction}>
+                        <input type="hidden" name="id" value={category.id} />
+                        <button type="submit" className="tinyButton">
+                          Trash
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+                {allProductionCategories.length === 0 ? (
+                  <tr>
+                    <td colSpan={5}>(none)</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
         </article>
 
         <article className="panel panelFull">
@@ -566,6 +620,17 @@ export default async function SettingsPage({
                 </select>
               </label>
               <label>
+                Department
+                <select name="productionCategoryId" defaultValue="">
+                  <option value="">(unchanged)</option>
+                  {productionCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
                 Allocated
                 <input
                   name="allocatedAmount"
@@ -627,6 +692,40 @@ export default async function SettingsPage({
                 </a>
                 <button type="submit" className="buttonLink buttonPrimary">
                   Save Account Code
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {editingProductionCategory ? (
+        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit production category">
+          <div className="modalPanel">
+            <h2>Edit Production Category</h2>
+            <form action={updateProductionCategoryAction} className="requestForm">
+              <input type="hidden" name="id" value={editingProductionCategory.id} />
+              <label>
+                Name
+                <input name="name" defaultValue={editingProductionCategory.name} required />
+              </label>
+              <label>
+                Sort Order
+                <input name="sortOrder" type="number" step="1" defaultValue={editingProductionCategory.sortOrder} />
+              </label>
+              <label>
+                Active
+                <select name="active" defaultValue={editingProductionCategory.active ? "true" : "false"}>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              </label>
+              <div className="modalActions">
+                <a className="tinyButton" href="/settings">
+                  Cancel
+                </a>
+                <button type="submit" className="buttonLink buttonPrimary">
+                  Save Category
                 </button>
               </div>
             </form>

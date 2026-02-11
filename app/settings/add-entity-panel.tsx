@@ -6,9 +6,16 @@ import {
   createAccountCodeAction,
   createFiscalYearAction,
   createOrganizationAction,
+  createProductionCategoryAction,
   createProjectAction
 } from "@/app/settings/actions";
-import type { AccountCodeOption, FiscalYearOption, OrganizationOption, SettingsProject } from "@/lib/db";
+import type {
+  AccountCodeOption,
+  FiscalYearOption,
+  OrganizationOption,
+  ProductionCategoryOption,
+  SettingsProject
+} from "@/lib/db";
 
 type Props = {
   fiscalYears: FiscalYearOption[];
@@ -16,11 +23,12 @@ type Props = {
   templates: string[];
   projects: SettingsProject[];
   accountCodes: AccountCodeOption[];
+  productionCategories: ProductionCategoryOption[];
 };
 
-type EntityType = "fiscal_year" | "organization" | "project" | "account_code" | "budget_line";
+type EntityType = "fiscal_year" | "organization" | "project" | "production_category" | "account_code" | "budget_line";
 
-export function AddEntityPanel({ fiscalYears, organizations, templates, projects, accountCodes }: Props) {
+export function AddEntityPanel({ fiscalYears, organizations, templates, projects, accountCodes, productionCategories }: Props) {
   const [entityType, setEntityType] = useState<EntityType>("project");
 
   return (
@@ -34,6 +42,7 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
           <option value="fiscal_year">Fiscal Year</option>
           <option value="organization">Organization</option>
           <option value="project">Project</option>
+          <option value="production_category">Production Category</option>
           <option value="account_code">Account Code</option>
           <option value="budget_line">Budget Line</option>
         </select>
@@ -151,6 +160,26 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
         </form>
       ) : null}
 
+      {entityType === "production_category" ? (
+        <form className="requestForm" action={createProductionCategoryAction}>
+          <label>
+            Category Name
+            <input name="name" required placeholder="Ex: Marketing" />
+          </label>
+          <label>
+            Sort Order
+            <input name="sortOrder" type="number" step="1" placeholder="Optional" />
+          </label>
+          <label className="checkboxLabel">
+            <input name="active" type="checkbox" defaultChecked />
+            Active
+          </label>
+          <button type="submit" className="buttonLink buttonPrimary">
+            Save Category
+          </button>
+        </form>
+      ) : null}
+
       {entityType === "budget_line" ? (
         <form className="requestForm" action={addBudgetLineAction}>
           <label>
@@ -160,6 +189,17 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
               {projects.map((project) => (
                 <option key={project.id} value={project.id}>
                   {project.name} {project.season ? `(${project.season})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Department
+            <select name="productionCategoryId">
+              <option value="">(optional)</option>
+              {productionCategories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
                 </option>
               ))}
             </select>
