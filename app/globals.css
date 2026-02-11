@@ -29,6 +29,16 @@ body {
   overflow-y: scroll;
 }
 
+html {
+  width: 100%;
+  min-height: 100%;
+}
+
+body {
+  width: 100%;
+  min-height: 100vh;
+}
+
 h1,
 h2,
 h3 {
@@ -48,9 +58,10 @@ th {
 }
 
 .page {
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 1.5rem 1rem 3rem;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: clamp(1rem, 2vw, 1.5rem) clamp(0.75rem, 2.2vw, 1.5rem) 3rem;
 }
 
 .topNav {
@@ -60,9 +71,10 @@ th {
 }
 
 .topNavInner {
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 1rem;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 1rem clamp(0.75rem, 2.2vw, 1.5rem);
   display: flex;
   justify-content: space-between;
   gap: 1rem;
@@ -129,9 +141,10 @@ th {
 }
 
 .userBar {
-  max-width: 1240px;
-  margin: 0 auto;
-  padding: 0 1rem 0.6rem;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0 clamp(0.75rem, 2.2vw, 1.5rem) 0.6rem;
 }
 
 .userBarText {
@@ -272,7 +285,7 @@ th {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 920px;
+  min-width: clamp(680px, 88vw, 980px);
 }
 
 th,
@@ -669,5 +682,11 @@ th {
 
   .splitRow {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  table {
+    min-width: 640px;
   }
 }
