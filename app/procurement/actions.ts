@@ -215,7 +215,9 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
 
     const { data: existing, error: existingError } = await supabase
       .from("purchases")
-      .select("id, project_id, status, request_type, is_credit_card, requested_amount, budget_tracked, budget_line_id")
+      .select(
+        "id, project_id, status, request_type, is_credit_card, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, budget_tracked, budget_line_id"
+      )
       .eq("id", id)
       .single();
     if (existingError || !existing) throw new Error("Purchase not found.");
@@ -223,7 +225,13 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
     const isCreditCardPurchase =
       (existing.request_type as string | null) === "expense" && Boolean(existing.is_credit_card as boolean | null);
     const procurementStatus = parseStatus(formData.get("procurementStatus"), isCreditCardPurchase);
-    const nextRequested = orderValue > 0 ? orderValue : Number(existing.requested_amount ?? 0);
+    const existingOrderValue =
+      Number(existing.estimated_amount ?? 0) ||
+      Number(existing.requested_amount ?? 0) ||
+      Number(existing.encumbered_amount ?? 0) ||
+      Number(existing.pending_cc_amount ?? 0) ||
+      Number(existing.posted_amount ?? 0);
+    const nextRequested = orderValue > 0 ? orderValue : existingOrderValue;
     const nextBudgetStatus = toBudgetStatus(procurementStatus, isCreditCardPurchase);
     const nextRequestedAmount = nextBudgetStatus === "requested" ? nextRequested : 0;
     const nextEncumberedAmount = nextBudgetStatus === "encumbered" ? nextRequested : 0;
@@ -300,6 +308,23 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
           reporting_bucket: "direct"
         });
         if (createAllocationError) throw new Error(createAllocationError.message);
+      } else if ((currentAllocations ?? []).length === 1) {
+        const allocationId = currentAllocations?.[0]?.id as string | undefined;
+        if (allocationId) {
+          const allocationAmount =
+            nextBudgetStatus === "encumbered"
+              ? nextEncumberedAmount
+              : nextBudgetStatus === "pending_cc"
+                ? nextPendingCcAmount
+                : nextBudgetStatus === "posted"
+                  ? nextPostedAmount
+                  : nextRequestedAmount;
+          const { error: updateAllocationError } = await supabase
+            .from("purchase_allocations")
+            .update({ amount: allocationAmount })
+            .eq("id", allocationId);
+          if (updateAllocationError) throw new Error(updateAllocationError.message);
+        }
       }
     }
 

@@ -78,6 +78,16 @@ export function ProcurementTable({
             {purchases.map((purchase) => {
               const relatedReceipts = receipts.filter((receipt) => receipt.purchaseId === purchase.id);
               const receiptTotal = relatedReceipts.reduce((sum, receipt) => sum + receipt.amountReceived, 0);
+              const orderValueDisplay =
+                purchase.estimatedAmount > 0
+                  ? purchase.estimatedAmount
+                  : purchase.requestedAmount > 0
+                    ? purchase.requestedAmount
+                    : purchase.encumberedAmount > 0
+                      ? purchase.encumberedAmount
+                      : purchase.pendingCcAmount > 0
+                        ? purchase.pendingCcAmount
+                        : purchase.postedAmount;
               return (
                 <tr key={purchase.id}>
                   <td>
@@ -93,7 +103,7 @@ export function ProcurementTable({
                   <td>{purchase.requisitionNumber ?? "-"}</td>
                   <td>{purchase.poNumber ?? "-"}</td>
                   <td>{purchase.vendorName ?? "-"}</td>
-                  <td>{formatCurrency(purchase.requestedAmount)}</td>
+                  <td>{formatCurrency(orderValueDisplay)}</td>
                   <td>
                     <span className={`statusChip status-${purchase.procurementStatus}`}>
                       {procurementLabel(purchase.procurementStatus, purchase.requestType === "expense" && purchase.isCreditCard)}
@@ -189,7 +199,17 @@ export function ProcurementTable({
                   type="number"
                   min="0"
                   step="0.01"
-                  defaultValue={editingPurchase.requestedAmount}
+                  defaultValue={
+                    editingPurchase.estimatedAmount > 0
+                      ? editingPurchase.estimatedAmount
+                      : editingPurchase.requestedAmount > 0
+                        ? editingPurchase.requestedAmount
+                        : editingPurchase.encumberedAmount > 0
+                          ? editingPurchase.encumberedAmount
+                          : editingPurchase.pendingCcAmount > 0
+                            ? editingPurchase.pendingCcAmount
+                            : editingPurchase.postedAmount
+                  }
                 />
               </label>
               <label>
