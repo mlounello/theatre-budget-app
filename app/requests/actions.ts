@@ -388,3 +388,122 @@ export async function reconcileRequestToPendingCc(formData: FormData): Promise<v
   revalidatePath("/");
   revalidatePath(`/projects/${purchase.project_id as string}`);
 }
+
+export async function updateRequestInline(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("You must be signed in.");
+
+  const purchaseId = String(formData.get("purchaseId") ?? "").trim();
+  const budgetLineId = String(formData.get("budgetLineId") ?? "").trim();
+  const title = String(formData.get("title") ?? "").trim();
+  const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
+  const estimatedAmount = parseMoney(formData.get("estimatedAmount"));
+  const requestedAmount = parseMoney(formData.get("requestedAmount"));
+  const requestTypeRaw = String(formData.get("requestType") ?? "requisition").trim().toLowerCase();
+  const requestType =
+    requestTypeRaw === "expense" || requestTypeRaw === "contract" ? requestTypeRaw : ("requisition" as const);
+  const isCreditCard = requestType === "expense" ? formData.get("isCreditCard") === "on" : false;
+
+  if (!purchaseId) throw new Error("Purchase ID required.");
+  if (!budgetLineId) throw new Error("Budget line is required.");
+  if (!title) throw new Error("Title is required.");
+
+  const { data: existing, error: existingError } = await supabase
+    .from("purchases")
+    .select("id, project_id, status, budget_line_id, encumbered_amount, pending_cc_amount, posted_amount")
+    .eq("id", purchaseId)
+    .single();
+  if (existingError || !existing) throw new Error("Purchase not found.");
+
+  const { data: budgetLine, error: budgetLineError } = await supabase
+    .from("project_budget_lines")
+    .select("id, project_id")
+    .eq("id", budgetLineId)
+    .single();
+  if (budgetLineError || !budgetLine) throw new Error("Invalid budget line.");
+  if ((budgetLine.project_id as string) !== (existing.project_id as string)) {
+    throw new Error("Budget line must belong to the same project.");
+  }
+
+  const nextRequested = requestedAmount;
+  const nextValues = {
+    budget_line_id: budgetLineId,
+    title,
+    reference_number: referenceNumber || null,
+    estimated_amount: estimatedAmount,
+    requested_amount: existing.status === "requested" ? nextRequested : nextRequested,
+    request_type: requestType,
+    is_credit_card: isCreditCard
+  };
+
+  const { error: updateError } = await supabase.from("purchases").update(nextValues).eq("id", purchaseId);
+  if (updateError) throw new Error(updateError.message);
+
+  if (existing.status === "requested") {
+    const { data: allocations, error: allocationsError } = await supabase
+      .from("purchase_allocations")
+      .select("id")
+      .eq("purchase_id", purchaseId);
+    if (allocationsError) throw new Error(allocationsError.message);
+    const count = (allocations ?? []).length;
+    if (count > 0) {
+      const eachAmount = nextRequested / count;
+      const updates = (allocations ?? []).map((row, index) => ({
+        id: row.id as string,
+        amount: index === count - 1 ? Number((nextRequested - eachAmount * (count - 1)).toFixed(2)) : Number(eachAmount.toFixed(2))
+      }));
+      for (const item of updates) {
+        const { error: allocationUpdateError } = await supabase
+          .from("purchase_allocations")
+          .update({ amount: item.amount })
+          .eq("id", item.id);
+        if (allocationUpdateError) throw new Error(allocationUpdateError.message);
+      }
+    }
+  }
+
+  revalidatePath("/requests");
+  revalidatePath("/");
+  revalidatePath(`/projects/${existing.project_id as string}`);
+}
+
+export async function deleteRequestAction(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("You must be signed in.");
+
+  const purchaseId = String(formData.get("purchaseId") ?? "").trim();
+  if (!purchaseId) throw new Error("Purchase ID required.");
+
+  const { data: existing, error: existingError } = await supabase
+    .from("purchases")
+    .select("id, project_id")
+    .eq("id", purchaseId)
+    .single();
+  if (existingError || !existing) throw new Error("Purchase not found.");
+
+  const { data: membership, error: membershipError } = await supabase
+    .from("project_memberships")
+    .select("role")
+    .eq("project_id", existing.project_id as string)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (membershipError) throw new Error(membershipError.message);
+  if ((membership?.role as string | undefined) !== "admin") {
+    throw new Error("Only Admin can delete requests.");
+  }
+
+  const { error: deleteError } = await supabase.from("purchases").delete().eq("id", purchaseId);
+  if (deleteError) throw new Error(deleteError.message);
+
+  revalidatePath("/requests");
+  revalidatePath("/");
+  revalidatePath(`/projects/${existing.project_id as string}`);
+}

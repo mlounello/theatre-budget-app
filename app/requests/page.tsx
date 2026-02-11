@@ -3,6 +3,7 @@ import { getRequestsData } from "@/lib/db";
 import { updatePurchaseStatus } from "@/app/requests/actions";
 import { CreateRequestForm } from "@/app/requests/create-request-form";
 import { CcReconcileModal } from "@/app/requests/cc-reconcile-modal";
+import { RequestRowActions } from "@/app/requests/request-row-actions";
 
 const statuses = ["requested", "encumbered", "pending_cc", "posted", "cancelled"] as const;
 
@@ -46,12 +47,13 @@ export default async function RequestsPage() {
               <th>Receipts</th>
               <th>Update Status</th>
               <th>CC Reconcile</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {purchases.length === 0 ? (
               <tr>
-                <td colSpan={14}>No purchases yet. Create your first request above.</td>
+                <td colSpan={15}>No purchases yet. Create your first request above.</td>
               </tr>
             ) : null}
             {purchases.map((purchase) => (
@@ -109,6 +111,9 @@ export default async function RequestsPage() {
                 </td>
                 <td>
                   <CcReconcileModal purchase={purchase} />
+                </td>
+                <td>
+                  <RequestRowActions purchase={purchase} budgetLineOptions={budgetLineOptions} />
                 </td>
               </tr>
             ))}
