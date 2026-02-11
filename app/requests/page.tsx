@@ -39,6 +39,7 @@ export default async function RequestsPage() {
               <th>Title</th>
               <th>Type</th>
               <th>Status</th>
+              <th>CC Workflow</th>
               <th>Estimated</th>
               <th>Requested</th>
               <th>ENC</th>
@@ -53,7 +54,7 @@ export default async function RequestsPage() {
           <tbody>
             {purchases.length === 0 ? (
               <tr>
-                <td colSpan={15}>No purchases yet. Create your first request above.</td>
+                <td colSpan={16}>No purchases yet. Create your first request above.</td>
               </tr>
             ) : null}
             {purchases.map((purchase) => (
@@ -69,6 +70,7 @@ export default async function RequestsPage() {
                 <td>
                   <span className={`statusChip status-${purchase.status}`}>{purchase.status}</span>
                 </td>
+                <td>{purchase.isCreditCard ? (purchase.ccWorkflowStatus ?? "requested") : "-"}</td>
                 <td>{formatCurrency(purchase.estimatedAmount)}</td>
                 <td>{formatCurrency(purchase.requestedAmount)}</td>
                 <td>{formatCurrency(purchase.encumberedAmount)}</td>

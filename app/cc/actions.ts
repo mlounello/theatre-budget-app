@@ -238,11 +238,12 @@ export async function confirmStatementLineMatchAction(formData: FormData): Promi
       const { error: updateError } = await supabase
         .from("purchases")
         .update({
-          status: "posted",
-          posted_amount: pendingAmount,
-          pending_cc_amount: 0,
+          status: "pending_cc",
+          posted_amount: 0,
+          pending_cc_amount: pendingAmount,
+          cc_workflow_status: "statement_paid",
           credit_card_id: (statementMonth.credit_card_id as string) ?? (purchase.credit_card_id as string | null),
-          posted_date: new Date().toISOString().slice(0, 10)
+          posted_date: null
         })
         .eq("id", purchase.id as string);
       if (updateError) throw new Error(updateError.message);
@@ -250,14 +251,14 @@ export async function confirmStatementLineMatchAction(formData: FormData): Promi
       const { error: eventError } = await supabase.from("purchase_events").insert({
         purchase_id: purchase.id as string,
         from_status: "pending_cc",
-        to_status: "posted",
+        to_status: "pending_cc",
         estimated_amount_snapshot: Number(purchase.estimated_amount ?? 0),
         requested_amount_snapshot: Number(purchase.requested_amount ?? 0),
         encumbered_amount_snapshot: 0,
-        pending_cc_amount_snapshot: 0,
-        posted_amount_snapshot: pendingAmount,
+        pending_cc_amount_snapshot: pendingAmount,
+        posted_amount_snapshot: 0,
         changed_by_user_id: user.id,
-        note: `Matched to statement ${(statementMonth.statement_month as string).slice(0, 7)}`
+        note: `Statement paid ${(statementMonth.statement_month as string).slice(0, 7)}; awaiting accounts posting`
       });
       if (eventError) throw new Error(eventError.message);
     }

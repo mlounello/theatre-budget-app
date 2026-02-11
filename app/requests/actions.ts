@@ -106,6 +106,7 @@ export async function createRequest(formData: FormData): Promise<void> {
   }
 
   const requestedTotal = allocations.length > 0 ? allocations.reduce((sum, allocation) => sum + allocation.amount, 0) : requestedAmount;
+  const isCcRequest = requestType === "expense" && isCreditCard;
 
   const { data: inserted, error } = await supabase
     .from("purchases")
@@ -117,9 +118,13 @@ export async function createRequest(formData: FormData): Promise<void> {
       reference_number: referenceNumber || null,
       estimated_amount: estimatedAmount,
       requested_amount: requestedTotal,
+      encumbered_amount: 0,
+      pending_cc_amount: isCcRequest ? requestedTotal : 0,
+      posted_amount: 0,
       request_type: requestType,
       is_credit_card: isCreditCard,
-      status: "requested"
+      cc_workflow_status: isCcRequest ? "requested" : null,
+      status: isCcRequest ? "pending_cc" : "requested"
     })
     .select("id")
     .single();
@@ -179,14 +184,14 @@ export async function createRequest(formData: FormData): Promise<void> {
   const eventError = await supabase.from("purchase_events").insert({
     purchase_id: inserted.id,
     from_status: null,
-    to_status: "requested",
+    to_status: isCcRequest ? "pending_cc" : "requested",
     estimated_amount_snapshot: estimatedAmount,
-    requested_amount_snapshot: requestedTotal,
+    requested_amount_snapshot: isCcRequest ? 0 : requestedTotal,
     encumbered_amount_snapshot: 0,
-    pending_cc_amount_snapshot: 0,
+    pending_cc_amount_snapshot: isCcRequest ? requestedTotal : 0,
     posted_amount_snapshot: 0,
     changed_by_user_id: user.id,
-    note: "Request created"
+    note: isCcRequest ? "Credit-card request created and reserved in Pending CC" : "Request created"
   });
 
   if (eventError.error) {
@@ -231,7 +236,15 @@ export async function updatePurchaseStatus(formData: FormData): Promise<void> {
     posted_amount: status === "posted" ? amount : 0,
     requested_amount: status === "requested" ? amount : existing.requested_amount,
     status,
-    posted_date: status === "posted" ? new Date().toISOString().slice(0, 10) : null
+    posted_date: status === "posted" ? new Date().toISOString().slice(0, 10) : null,
+    cc_workflow_status:
+      status === "posted"
+        ? "posted_to_account"
+        : status === "pending_cc"
+          ? "receipts_uploaded"
+          : existing.status === "pending_cc" || existing.status === "posted"
+            ? "requested"
+            : null
   };
 
   const { error: updateError } = await supabase.from("purchases").update(nextValues).eq("id", purchaseId);
@@ -319,6 +332,12 @@ export async function addRequestReceipt(formData: FormData): Promise<void> {
   });
   if (error) throw new Error(error.message);
 
+  const { error: purchaseUpdateError } = await supabase
+    .from("purchases")
+    .update({ cc_workflow_status: "receipts_uploaded" })
+    .eq("id", purchaseId);
+  if (purchaseUpdateError) throw new Error(purchaseUpdateError.message);
+
   revalidatePath("/requests");
   revalidatePath(`/projects/${purchase.project_id as string}`);
 }
@@ -362,9 +381,11 @@ export async function reconcileRequestToPendingCc(formData: FormData): Promise<v
     .from("purchases")
     .update({
       status: "pending_cc",
+      requested_amount: 0,
       encumbered_amount: 0,
       pending_cc_amount: reconciledTotal,
-      posted_amount: 0
+      posted_amount: 0,
+      cc_workflow_status: "receipts_uploaded"
     })
     .eq("id", purchaseId);
   if (updateError) throw new Error(updateError.message);
@@ -380,6 +401,62 @@ export async function reconcileRequestToPendingCc(formData: FormData): Promise<v
     posted_amount_snapshot: 0,
     changed_by_user_id: user.id,
     note: "Reconciled from receipts to Pending CC"
+  });
+  if (eventError) throw new Error(eventError.message);
+
+  revalidatePath("/requests");
+  revalidatePath("/cc");
+  revalidatePath("/");
+  revalidatePath(`/projects/${purchase.project_id as string}`);
+}
+
+export async function markCcPostedToAccount(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("You must be signed in.");
+
+  const purchaseId = String(formData.get("purchaseId") ?? "").trim();
+  if (!purchaseId) throw new Error("Purchase ID required.");
+
+  const { data: purchase, error: purchaseError } = await supabase
+    .from("purchases")
+    .select("id, project_id, status, pending_cc_amount, estimated_amount, request_type, is_credit_card")
+    .eq("id", purchaseId)
+    .single();
+  if (purchaseError || !purchase) throw new Error("Purchase not found.");
+  if ((purchase.request_type as string) !== "expense" || !Boolean(purchase.is_credit_card as boolean | null)) {
+    throw new Error("Only credit-card expenses can be posted with this action.");
+  }
+  await requirePmOrAdmin(supabase, purchase.project_id as string, user.id);
+
+  const amount = Number(purchase.pending_cc_amount ?? 0);
+  if (amount <= 0) throw new Error("Pending CC amount is zero.");
+
+  const { error: updateError } = await supabase
+    .from("purchases")
+    .update({
+      status: "posted",
+      pending_cc_amount: 0,
+      posted_amount: amount,
+      posted_date: new Date().toISOString().slice(0, 10),
+      cc_workflow_status: "posted_to_account"
+    })
+    .eq("id", purchaseId);
+  if (updateError) throw new Error(updateError.message);
+
+  const { error: eventError } = await supabase.from("purchase_events").insert({
+    purchase_id: purchaseId,
+    from_status: purchase.status as PurchaseStatus,
+    to_status: "posted",
+    estimated_amount_snapshot: Number(purchase.estimated_amount ?? 0),
+    requested_amount_snapshot: 0,
+    encumbered_amount_snapshot: 0,
+    pending_cc_amount_snapshot: 0,
+    posted_amount_snapshot: amount,
+    changed_by_user_id: user.id,
+    note: "Manually marked Posted to Account after statement payment"
   });
   if (eventError) throw new Error(eventError.message);
 
@@ -506,6 +583,10 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
   }
 
   const nextRequested = requestedAmount;
+  const nextIsCc = requestType === "expense" && isCreditCard;
+  const nextCcWorkflowStatus = nextIsCc
+    ? ((existing.status as PurchaseStatus) === "posted" ? "posted_to_account" : "requested")
+    : null;
   const nextValues = {
     budget_line_id: budgetLineId,
     title,
@@ -513,7 +594,8 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
     estimated_amount: estimatedAmount,
     requested_amount: existing.status === "requested" ? nextRequested : nextRequested,
     request_type: requestType,
-    is_credit_card: isCreditCard
+    is_credit_card: isCreditCard,
+    cc_workflow_status: nextCcWorkflowStatus
   };
 
   const { error: updateError } = await supabase.from("purchases").update(nextValues).eq("id", purchaseId);

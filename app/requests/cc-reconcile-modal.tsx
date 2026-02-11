@@ -1,7 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { addRequestReceipt, deleteRequestReceipt, reconcileRequestToPendingCc, updateRequestReceipt } from "@/app/requests/actions";
+import {
+  addRequestReceipt,
+  deleteRequestReceipt,
+  markCcPostedToAccount,
+  reconcileRequestToPendingCc,
+  updateRequestReceipt
+} from "@/app/requests/actions";
 import { formatCurrency } from "@/lib/format";
 import type { PurchaseRow, RequestReceiptRow } from "@/lib/db";
 
@@ -31,6 +37,9 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
               Requested: <strong>{formatCurrency(purchase.requestedAmount)}</strong> | Receipts:{" "}
               <strong>{formatCurrency(purchase.receiptTotal)}</strong> ({purchase.receiptCount}) | Pending CC:{" "}
               <strong>{formatCurrency(purchase.pendingCcAmount)}</strong>
+            </p>
+            <p>
+              CC Workflow Status: <strong>{purchase.ccWorkflowStatus ?? "requested"}</strong>
             </p>
 
             <article className="panel" style={{ marginBottom: "0.75rem" }}>
@@ -104,6 +113,16 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
                   Reconcile to Pending CC
                 </button>
               </form>
+              {purchase.ccWorkflowStatus === "statement_paid" ? (
+                <form action={markCcPostedToAccount} className="inlineEditForm" style={{ marginTop: "0.4rem" }}>
+                  <input type="hidden" name="purchaseId" value={purchase.id} />
+                  <button type="submit" className="tinyButton">
+                    Mark Posted to Account
+                  </button>
+                </form>
+              ) : (
+                <p>Mark Posted to Account becomes available after statement is marked paid.</p>
+              )}
             </article>
 
             <div className="modalActions">
