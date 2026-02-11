@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createProcurementOrderAction } from "@/app/procurement/actions";
 import type { ProcurementBudgetLineOption, ProcurementProjectOption, VendorOption } from "@/lib/db";
 
@@ -21,6 +21,33 @@ export function CreateOrderForm({
   const [organizationId, setOrganizationId] = useState("");
   const [budgetTracked, setBudgetTracked] = useState(true);
   const [budgetLineId, setBudgetLineId] = useState("");
+  const [vendorId, setVendorId] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const fy = window.localStorage.getItem("tba_procurement_fiscal_year_id");
+    const org = window.localStorage.getItem("tba_procurement_org_id");
+    const project = window.localStorage.getItem("tba_procurement_project_id");
+    const tracked = window.localStorage.getItem("tba_procurement_budget_tracked");
+    const line = window.localStorage.getItem("tba_procurement_budget_line_id");
+    const vendor = window.localStorage.getItem("tba_procurement_vendor_id");
+    if (fy) setFiscalYearId(fy);
+    if (org) setOrganizationId(org);
+    if (project) setProjectId(project);
+    if (tracked === "0") setBudgetTracked(false);
+    if (line) setBudgetLineId(line);
+    if (vendor) setVendorId(vendor);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("tba_procurement_fiscal_year_id", fiscalYearId);
+    window.localStorage.setItem("tba_procurement_org_id", organizationId);
+    window.localStorage.setItem("tba_procurement_project_id", projectId);
+    window.localStorage.setItem("tba_procurement_budget_tracked", budgetTracked ? "1" : "0");
+    window.localStorage.setItem("tba_procurement_budget_line_id", budgetLineId);
+    window.localStorage.setItem("tba_procurement_vendor_id", vendorId);
+  }, [budgetLineId, budgetTracked, fiscalYearId, organizationId, projectId, vendorId]);
 
   const fiscalYearOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -170,7 +197,7 @@ export function CreateOrderForm({
       </label>
       <label>
         Vendor
-        <select name="vendorId" defaultValue="">
+        <select name="vendorId" value={vendorId} onChange={(event) => setVendorId(event.target.value)}>
           <option value="">No vendor</option>
           {vendors.map((vendor) => (
             <option key={vendor.id} value={vendor.id}>

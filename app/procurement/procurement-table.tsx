@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   addProcurementReceiptAction,
   deleteProcurementReceiptAction,
@@ -34,6 +35,118 @@ function procurementLabel(value: string, isCreditCard: boolean): string {
   return found?.label ?? value;
 }
 
+type SortKey =
+  | "projectName"
+  | "budgetCode"
+  | "title"
+  | "requisitionNumber"
+  | "poNumber"
+  | "vendorName"
+  | "orderValue"
+  | "procurementStatus"
+  | "budgetStatus"
+  | "receiptTotal";
+
+type SortDirection = "asc" | "desc";
+const SORT_KEYS: SortKey[] = [
+  "projectName",
+  "budgetCode",
+  "title",
+  "requisitionNumber",
+  "poNumber",
+  "vendorName",
+  "orderValue",
+  "procurementStatus",
+  "budgetStatus",
+  "receiptTotal"
+];
+
+function asString(value: string | null | undefined): string {
+  return (value ?? "").toLowerCase();
+}
+
+function sortRows(rows: ProcurementRow[], receipts: ProcurementReceiptRow[], key: SortKey, direction: SortDirection): ProcurementRow[] {
+  const receiptMap = new Map<string, number>();
+  for (const purchase of rows) {
+    const total = receipts.filter((receipt) => receipt.purchaseId === purchase.id).reduce((sum, receipt) => sum + receipt.amountReceived, 0);
+    receiptMap.set(purchase.id, total);
+  }
+
+  const dir = direction === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const aOrderValue =
+      a.estimatedAmount > 0 ? a.estimatedAmount : a.requestedAmount > 0 ? a.requestedAmount : a.encumberedAmount > 0 ? a.encumberedAmount : a.pendingCcAmount > 0 ? a.pendingCcAmount : a.postedAmount;
+    const bOrderValue =
+      b.estimatedAmount > 0 ? b.estimatedAmount : b.requestedAmount > 0 ? b.requestedAmount : b.encumberedAmount > 0 ? b.encumberedAmount : b.pendingCcAmount > 0 ? b.pendingCcAmount : b.postedAmount;
+    const aVal =
+      key === "orderValue"
+        ? aOrderValue
+        : key === "receiptTotal"
+          ? (receiptMap.get(a.id) ?? 0)
+          : key === "projectName"
+            ? asString(a.projectName)
+            : key === "budgetCode"
+              ? asString(a.budgetCode)
+              : key === "title"
+                ? asString(a.title)
+                : key === "requisitionNumber"
+                  ? asString(a.requisitionNumber)
+                  : key === "poNumber"
+                    ? asString(a.poNumber)
+                    : key === "vendorName"
+                      ? asString(a.vendorName)
+                      : key === "procurementStatus"
+                        ? asString(a.procurementStatus)
+                        : asString(a.budgetStatus);
+    const bVal =
+      key === "orderValue"
+        ? bOrderValue
+        : key === "receiptTotal"
+          ? (receiptMap.get(b.id) ?? 0)
+          : key === "projectName"
+            ? asString(b.projectName)
+            : key === "budgetCode"
+              ? asString(b.budgetCode)
+              : key === "title"
+                ? asString(b.title)
+                : key === "requisitionNumber"
+                  ? asString(b.requisitionNumber)
+                  : key === "poNumber"
+                    ? asString(b.poNumber)
+                    : key === "vendorName"
+                      ? asString(b.vendorName)
+                      : key === "procurementStatus"
+                        ? asString(b.procurementStatus)
+                        : asString(b.budgetStatus);
+
+    if (typeof aVal === "number" && typeof bVal === "number") return (aVal - bVal) * dir;
+    return String(aVal).localeCompare(String(bVal)) * dir;
+  });
+}
+
+function SortTh({
+  label,
+  sortKey,
+  activeKey,
+  direction,
+  onToggle
+}: {
+  label: string;
+  sortKey: SortKey;
+  activeKey: SortKey;
+  direction: SortDirection;
+  onToggle: (key: SortKey) => void;
+}) {
+  const active = sortKey === activeKey;
+  return (
+    <th>
+      <button type="button" className="sortHeaderButton" onClick={() => onToggle(sortKey)}>
+        {label} {active ? (direction === "asc" ? "▲" : "▼") : ""}
+      </button>
+    </th>
+  );
+}
+
 export function ProcurementTable({
   purchases,
   receipts,
@@ -47,8 +160,33 @@ export function ProcurementTable({
   budgetLineOptions: Array<{ id: string; projectId: string; label: string }>;
   canManageProcurement: boolean;
 }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const sortFromUrl = searchParams.get("pr_sort");
+  const dirFromUrl = searchParams.get("pr_dir");
+  const [sortKey, setSortKey] = useState<SortKey>(
+    sortFromUrl && SORT_KEYS.includes(sortFromUrl as SortKey) ? (sortFromUrl as SortKey) : "projectName"
+  );
+  const [direction, setDirection] = useState<SortDirection>(dirFromUrl === "desc" ? "desc" : "asc");
   const editingPurchase = useMemo(() => purchases.find((purchase) => purchase.id === editingId) ?? null, [purchases, editingId]);
+  const sortedPurchases = useMemo(() => sortRows(purchases, receipts, sortKey, direction), [purchases, receipts, sortKey, direction]);
+
+  function onToggle(key: SortKey): void {
+    const nextDirection: SortDirection = sortKey === key ? (direction === "asc" ? "desc" : "asc") : "asc";
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("pr_sort", key);
+    params.set("pr_dir", nextDirection);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+
+    if (sortKey === key) {
+      setDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setDirection("asc");
+  }
 
   return (
     <>
@@ -56,26 +194,32 @@ export function ProcurementTable({
         <table>
           <thead>
             <tr>
-              <th>Project</th>
-              <th>Budget Line</th>
-              <th>Title</th>
-              <th>Req #</th>
-              <th>PO #</th>
-              <th>Vendor</th>
-              <th>Order Value</th>
-              <th>Procurement</th>
-              <th>Budget Status</th>
-              <th>Receipt Total</th>
+              <SortTh label="Project" sortKey="projectName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Budget Line" sortKey="budgetCode" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Title" sortKey="title" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Req #" sortKey="requisitionNumber" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="PO #" sortKey="poNumber" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Vendor" sortKey="vendorName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Order Value" sortKey="orderValue" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh
+                label="Procurement"
+                sortKey="procurementStatus"
+                activeKey={sortKey}
+                direction={direction}
+                onToggle={onToggle}
+              />
+              <SortTh label="Budget Status" sortKey="budgetStatus" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Receipt Total" sortKey="receiptTotal" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {purchases.length === 0 ? (
+            {sortedPurchases.length === 0 ? (
               <tr>
                 <td colSpan={11}>No procurement records yet.</td>
               </tr>
             ) : null}
-            {purchases.map((purchase) => {
+            {sortedPurchases.map((purchase) => {
               const relatedReceipts = receipts.filter((receipt) => receipt.purchaseId === purchase.id);
               const receiptTotal = relatedReceipts.reduce((sum, receipt) => sum + receipt.amountReceived, 0);
               const orderValueDisplay =

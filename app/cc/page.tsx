@@ -1,13 +1,13 @@
 import {
-  addStatementLineAction,
   confirmStatementLineMatchAction,
   createCreditCardAction,
-  createStatementMonthAction,
   deleteCreditCardAction,
   deleteStatementMonthAction,
   updateCreditCardAction,
   updateStatementMonthAction
 } from "@/app/cc/actions";
+import { CreateStatementMonthForm } from "@/app/cc/create-statement-month-form";
+import { AddStatementLineForm } from "@/app/cc/add-statement-line-form";
 import { getCcPendingRows, getSettingsProjects } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
@@ -248,31 +248,10 @@ export default async function CreditCardPage({
 
         <article className="panel">
           <h2>Open Statement Month</h2>
-          <form action={createStatementMonthAction} className="requestForm">
-            <label>
-              Credit Card
-              <select name="creditCardId" required>
-                <option value="">Select card</option>
-                {cards
-                  .filter((card) => card.active)
-                  .map((card) => (
-                    <option key={card.id} value={card.id}>
-                      {card.nickname} {card.maskedNumber ? `(${card.maskedNumber})` : ""}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label>
-              Statement Month
-              <input type="month" name="statementMonth" required />
-            </label>
-            <button type="submit" className="buttonLink buttonPrimary">
-              Save Statement Month
-            </button>
-            {manageableProjects.length === 0 && !hasGlobalAdmin ? (
-              <p className="errorNote">You need Admin or Project Manager access to manage statements.</p>
-            ) : null}
-          </form>
+          <CreateStatementMonthForm cards={cards} />
+          {manageableProjects.length === 0 && !hasGlobalAdmin ? (
+            <p className="errorNote">You need Admin or Project Manager access to manage statements.</p>
+          ) : null}
         </article>
       </div>
 
@@ -311,22 +290,7 @@ export default async function CreditCardPage({
                 </button>
               </form>
 
-              <form action={addStatementLineAction} className="inlineEditForm">
-                <input type="hidden" name="statementMonthId" value={month.id} />
-                <select name="projectBudgetLineId" required>
-                  <option value="">Budget line</option>
-                  {budgetLines.map((line) => (
-                    <option key={line.id} value={line.id}>
-                      {line.label}
-                    </option>
-                  ))}
-                </select>
-                <input name="amount" type="number" step="0.01" min="0.01" placeholder="Amount" required />
-                <input name="note" placeholder="Optional note" />
-                <button type="submit" className="tinyButton">
-                  Add Statement Line
-                </button>
-              </form>
+              <AddStatementLineForm statementMonthId={month.id} budgetLines={budgetLines} />
 
               <div className="tableWrap">
                 <table>

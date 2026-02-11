@@ -286,6 +286,18 @@ th {
   background: #f3f7f4;
 }
 
+.sortHeaderButton {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
 .statusChip {
   display: inline-flex;
   border-radius: 999px;

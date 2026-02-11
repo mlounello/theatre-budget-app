@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { deleteIncomeEntryAction, updateIncomeEntryAction } from "@/app/income/actions";
 import { formatCurrency } from "@/lib/format";
 import type { IncomeRow, OrganizationOption } from "@/lib/db";
@@ -12,9 +13,75 @@ function typeLabel(type: IncomeRow["incomeType"]): string {
   return "Other";
 }
 
+type SortKey = "projectName" | "organizationLabel" | "incomeType" | "lineName" | "referenceNumber" | "amount" | "receivedOn";
+type SortDirection = "asc" | "desc";
+const SORT_KEYS: SortKey[] = ["projectName", "organizationLabel", "incomeType", "lineName", "referenceNumber", "amount", "receivedOn"];
+
+function asString(value: string | null | undefined): string {
+  return (value ?? "").toLowerCase();
+}
+
+function sortRows(rows: IncomeRow[], key: SortKey, direction: SortDirection): IncomeRow[] {
+  const dir = direction === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    const aVal = key === "amount" ? a.amount : asString(a[key] as string | null);
+    const bVal = key === "amount" ? b.amount : asString(b[key] as string | null);
+    if (typeof aVal === "number" && typeof bVal === "number") return (aVal - bVal) * dir;
+    return String(aVal).localeCompare(String(bVal)) * dir;
+  });
+}
+
+function SortTh({
+  label,
+  sortKey,
+  activeKey,
+  direction,
+  onToggle
+}: {
+  label: string;
+  sortKey: SortKey;
+  activeKey: SortKey;
+  direction: SortDirection;
+  onToggle: (key: SortKey) => void;
+}) {
+  const active = sortKey === activeKey;
+  return (
+    <th>
+      <button type="button" className="sortHeaderButton" onClick={() => onToggle(sortKey)}>
+        {label} {active ? (direction === "asc" ? "▲" : "▼") : ""}
+      </button>
+    </th>
+  );
+}
+
 export function IncomeTable({ rows, organizations }: { rows: IncomeRow[]; organizations: OrganizationOption[] }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const sortFromUrl = searchParams.get("inc_sort");
+  const dirFromUrl = searchParams.get("inc_dir");
+  const [sortKey, setSortKey] = useState<SortKey>(
+    sortFromUrl && SORT_KEYS.includes(sortFromUrl as SortKey) ? (sortFromUrl as SortKey) : "receivedOn"
+  );
+  const [direction, setDirection] = useState<SortDirection>(dirFromUrl === "asc" ? "asc" : "desc");
   const editingRow = rows.find((row) => row.id === editingId) ?? null;
+  const sortedRows = useMemo(() => sortRows(rows, sortKey, direction), [rows, sortKey, direction]);
+
+  function onToggle(key: SortKey): void {
+    const nextDirection: SortDirection = key === sortKey ? (direction === "asc" ? "desc" : "asc") : "asc";
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("inc_sort", key);
+    params.set("inc_dir", nextDirection);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+
+    if (key === sortKey) {
+      setDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortKey(key);
+    setDirection("asc");
+  }
 
   return (
     <>
@@ -22,23 +89,29 @@ export function IncomeTable({ rows, organizations }: { rows: IncomeRow[]; organi
         <table>
           <thead>
             <tr>
-              <th>Project</th>
-              <th>Organization</th>
-              <th>Type</th>
-              <th>Description</th>
-              <th>Reference</th>
-              <th>Amount</th>
-              <th>Received</th>
+              <SortTh label="Project" sortKey="projectName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh
+                label="Organization"
+                sortKey="organizationLabel"
+                activeKey={sortKey}
+                direction={direction}
+                onToggle={onToggle}
+              />
+              <SortTh label="Type" sortKey="incomeType" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Description" sortKey="lineName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Reference" sortKey="referenceNumber" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Amount" sortKey="amount" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Received" sortKey="receivedOn" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {sortedRows.length === 0 ? (
               <tr>
                 <td colSpan={8}>No income entries yet.</td>
               </tr>
             ) : null}
-            {rows.map((row) => (
+            {sortedRows.map((row) => (
               <tr key={row.id}>
                 <td>{row.projectName ?? "-"}</td>
                 <td>{row.organizationLabel}</td>

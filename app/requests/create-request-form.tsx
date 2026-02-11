@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createRequest } from "@/app/requests/actions";
 import type { AccountCodeOption, ProjectBudgetLineOption } from "@/lib/db";
 
@@ -59,6 +59,35 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
   );
 
   const splitMode = canManageSplits && useSplits;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const fy = window.localStorage.getItem("tba_requests_fiscal_year_id");
+    const org = window.localStorage.getItem("tba_requests_org_id");
+    const project = window.localStorage.getItem("tba_requests_project_id");
+    const line = window.localStorage.getItem("tba_requests_budget_line_id");
+    const type = window.localStorage.getItem("tba_requests_request_type");
+    const cc = window.localStorage.getItem("tba_requests_is_credit_card");
+    const splits = window.localStorage.getItem("tba_requests_use_splits");
+    if (fy) setSelectedFiscalYear(fy);
+    if (org) setSelectedOrganization(org);
+    if (project) setSelectedProjectId(project);
+    if (line) setSelectedBudgetLineId(line);
+    if (type === "expense" || type === "contract" || type === "requisition") setRequestType(type);
+    if (cc === "1") setIsCreditCard(true);
+    if (splits === "1") setUseSplits(true);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("tba_requests_fiscal_year_id", selectedFiscalYear);
+    window.localStorage.setItem("tba_requests_org_id", selectedOrganization);
+    window.localStorage.setItem("tba_requests_project_id", selectedProjectId);
+    window.localStorage.setItem("tba_requests_budget_line_id", selectedBudgetLineId);
+    window.localStorage.setItem("tba_requests_request_type", requestType);
+    window.localStorage.setItem("tba_requests_is_credit_card", isCreditCard ? "1" : "0");
+    window.localStorage.setItem("tba_requests_use_splits", useSplits ? "1" : "0");
+  }, [isCreditCard, requestType, selectedBudgetLineId, selectedFiscalYear, selectedOrganization, selectedProjectId, useSplits]);
 
   const fiscalYearOptions = useMemo(() => {
     const map = new Map<string, string>();
