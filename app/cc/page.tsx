@@ -1,13 +1,14 @@
 import {
-  confirmStatementLineMatchAction,
+  assignPurchasesToStatementAction,
   createCreditCardAction,
   deleteCreditCardAction,
   deleteStatementMonthAction,
+  submitStatementMonthAction,
+  unassignPurchaseFromStatementAction,
   updateCreditCardAction,
   updateStatementMonthAction
 } from "@/app/cc/actions";
 import { CreateStatementMonthForm } from "@/app/cc/create-statement-month-form";
-import { AddStatementLineForm } from "@/app/cc/add-statement-line-form";
 import { getCcPendingRows, getSettingsProjects } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
@@ -20,19 +21,6 @@ type StatementMonthRow = {
   postedAt: string | null;
 };
 
-type StatementLineRow = {
-  id: string;
-  statementMonthId: string;
-  projectBudgetLineId: string;
-  projectLabel: string;
-  budgetCode: string;
-  category: string;
-  lineName: string;
-  amount: number;
-  note: string | null;
-  matchedPurchaseIds: string[];
-};
-
 type PendingPurchaseRow = {
   id: string;
   projectId: string;
@@ -41,6 +29,9 @@ type PendingPurchaseRow = {
   referenceNumber: string | null;
   pendingCcAmount: number;
   creditCardId: string | null;
+  statementMonthId: string | null;
+  projectLabel: string;
+  budgetLineLabel: string;
 };
 
 export default async function CreditCardPage({
@@ -58,9 +49,7 @@ export default async function CreditCardPage({
     projects,
     cardsResponse,
     monthsResponse,
-    linesResponse,
     pendingPurchasesResponse,
-    budgetLinesResponse,
     membershipsResponse
   ] = await Promise.all([
     getCcPendingRows(),
@@ -71,28 +60,16 @@ export default async function CreditCardPage({
       .select("id, credit_card_id, statement_month, posted_at, credit_cards(nickname)")
       .order("statement_month", { ascending: false }),
     supabase
-      .from("cc_statement_lines")
-      .select("id, statement_month_id, project_budget_line_id, amount, note, matched_purchase_ids, project_budget_lines(project_id, budget_code, category, line_name, projects(name, season))")
-      .order("created_at", { ascending: false }),
-    supabase
       .from("purchases")
-      .select("id, project_id, budget_line_id, title, reference_number, pending_cc_amount, credit_card_id")
+      .select("id, project_id, budget_line_id, title, reference_number, requisition_number, pending_cc_amount, credit_card_id, cc_statement_month_id, projects(name, season), project_budget_lines(budget_code, category, line_name)")
       .eq("status", "pending_cc")
       .order("created_at", { ascending: true }),
-    supabase
-      .from("project_budget_lines")
-      .select("id, project_id, budget_code, category, line_name, active")
-      .eq("active", true)
-      .order("budget_code", { ascending: true })
-    ,
     supabase.from("project_memberships").select("project_id, role")
   ]);
 
   if (cardsResponse.error) throw cardsResponse.error;
   if (monthsResponse.error) throw monthsResponse.error;
-  if (linesResponse.error) throw linesResponse.error;
   if (pendingPurchasesResponse.error) throw pendingPurchasesResponse.error;
-  if (budgetLinesResponse.error) throw budgetLinesResponse.error;
   if (membershipsResponse.error) throw membershipsResponse.error;
 
   const membershipRows = membershipsResponse.data ?? [];
@@ -123,44 +100,27 @@ export default async function CreditCardPage({
     };
   });
 
-  const statementLines: StatementLineRow[] = (linesResponse.data ?? []).map((row) => {
-    const budgetLine = row.project_budget_lines as
-      | { project_id?: string; budget_code?: string; category?: string; line_name?: string; projects?: { name?: string; season?: string | null } | null }
-      | null;
-    const project = budgetLine?.projects;
+  const pendingPurchases: PendingPurchaseRow[] = (pendingPurchasesResponse.data ?? []).map((row) => {
+    const project = row.projects as { name?: string; season?: string | null } | null;
+    const budgetLine = row.project_budget_lines as { budget_code?: string; category?: string; line_name?: string } | null;
+    const reqOrRef = (row.requisition_number as string | null) ?? (row.reference_number as string | null) ?? null;
     return {
       id: row.id as string,
-      statementMonthId: row.statement_month_id as string,
-      projectBudgetLineId: row.project_budget_line_id as string,
+      projectId: row.project_id as string,
+      budgetLineId: row.budget_line_id as string,
+      title: row.title as string,
+      referenceNumber: reqOrRef,
+      pendingCcAmount: Number(row.pending_cc_amount ?? 0),
+      creditCardId: (row.credit_card_id as string | null) ?? null,
+      statementMonthId: (row.cc_statement_month_id as string | null) ?? null,
       projectLabel: `${project?.name ?? "Unknown Project"}${project?.season ? ` (${project.season})` : ""}`,
-      budgetCode: budgetLine?.budget_code ?? "-",
-      category: budgetLine?.category ?? "-",
-      lineName: budgetLine?.line_name ?? "-",
-      amount: Number(row.amount ?? 0),
-      note: (row.note as string | null) ?? null,
-      matchedPurchaseIds: ((row.matched_purchase_ids as string[] | null) ?? []).map((id) => String(id))
+      budgetLineLabel: `${budgetLine?.budget_code ?? "-"} | ${budgetLine?.category ?? "-"} | ${budgetLine?.line_name ?? "-"}`
     };
   });
-
-  const pendingPurchases: PendingPurchaseRow[] = (pendingPurchasesResponse.data ?? []).map((row) => ({
-    id: row.id as string,
-    projectId: row.project_id as string,
-    budgetLineId: row.budget_line_id as string,
-    title: row.title as string,
-    referenceNumber: (row.reference_number as string | null) ?? null,
-    pendingCcAmount: Number(row.pending_cc_amount ?? 0),
-    creditCardId: (row.credit_card_id as string | null) ?? null
-  }));
 
   const projectNameById = new Map(
     projects.map((project) => [project.id, `${project.name}${project.season ? ` (${project.season})` : ""}`])
   );
-
-  const budgetLines = (budgetLinesResponse.data ?? []).map((row) => ({
-    id: row.id as string,
-    projectId: row.project_id as string,
-    label: `${projectNameById.get(row.project_id as string) ?? "Unknown Project"} | ${row.budget_code as string} | ${row.category as string} | ${row.line_name as string}`
-  }));
 
   return (
     <section>
@@ -256,16 +216,22 @@ export default async function CreditCardPage({
       </div>
 
       <article className="panel panelFull">
-        <h2>Statement Months and Lines</h2>
+        <h2>Statement Months</h2>
         {statementMonths.length === 0 ? <p>No statement months yet.</p> : null}
 
         {statementMonths.map((month) => {
-          const monthLines = statementLines.filter((line) => line.statementMonthId === month.id);
+          const assignedPurchases = pendingPurchases.filter((purchase) => purchase.statementMonthId === month.id);
+          const unassignedCandidates = pendingPurchases.filter(
+            (purchase) =>
+              !purchase.statementMonthId &&
+              (purchase.creditCardId === month.creditCardId || purchase.creditCardId === null)
+          );
+          const assignedTotal = assignedPurchases.reduce((sum, purchase) => sum + purchase.pendingCcAmount, 0);
           return (
             <details key={month.id} className="treeNode" open>
               <summary>
                 <strong>{month.statementMonth.slice(0, 7)}</strong> | {month.creditCardName} |{" "}
-                {month.postedAt ? "Posted" : "Open"}
+                {month.postedAt ? "Statement Paid" : "Open"}
               </summary>
 
               <form action={updateStatementMonthAction} className="inlineEditForm" style={{ marginBottom: "0.45rem" }}>
@@ -290,77 +256,83 @@ export default async function CreditCardPage({
                 </button>
               </form>
 
-              <AddStatementLineForm statementMonthId={month.id} budgetLines={budgetLines} />
-
               <div className="tableWrap">
                 <table>
                   <thead>
                     <tr>
+                      <th>Project</th>
                       <th>Budget Line</th>
+                      <th>Req/Ref #</th>
+                      <th>Title</th>
                       <th>Amount</th>
-                      <th>Note</th>
-                      <th>Match</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {monthLines.length === 0 ? (
+                    {assignedPurchases.length === 0 ? (
                       <tr>
-                        <td colSpan={4}>No statement lines yet.</td>
+                        <td colSpan={6}>No purchases assigned to this statement month.</td>
                       </tr>
                     ) : null}
-                    {monthLines.map((line) => {
-                      const candidates = pendingPurchases.filter(
-                        (purchase) =>
-                          purchase.budgetLineId === line.projectBudgetLineId &&
-                          (purchase.creditCardId === month.creditCardId || purchase.creditCardId === null)
-                      );
-
-                      const exactCandidates = candidates.filter(
-                        (purchase) => Math.abs(purchase.pendingCcAmount - line.amount) < 0.01
-                      );
-
-                      return (
-                        <tr key={line.id}>
-                          <td>
-                            {line.projectLabel} | {line.budgetCode} | {line.category} | {line.lineName}
-                          </td>
-                          <td>{formatCurrency(line.amount)}</td>
-                          <td>{line.note ?? "-"}</td>
-                          <td>
-                            {line.matchedPurchaseIds.length > 0 ? (
-                              <span className="statusChip status-posted">Matched ({line.matchedPurchaseIds.length})</span>
-                            ) : (
-                              <form action={confirmStatementLineMatchAction} className="requestForm">
-                                <input type="hidden" name="statementLineId" value={line.id} />
-                                <div className="checkboxStack">
-                                  {(exactCandidates.length > 0 ? exactCandidates : candidates).map((purchase) => (
-                                    <label key={purchase.id} className="checkboxLabel">
-                                      <input
-                                        type="checkbox"
-                                        name="purchaseId"
-                                        value={purchase.id}
-                                        defaultChecked={exactCandidates.length === 1 && exactCandidates[0]?.id === purchase.id}
-                                      />
-                                      {purchase.referenceNumber ?? purchase.id.slice(0, 8)} | {purchase.title} |{" "}
-                                      {formatCurrency(purchase.pendingCcAmount)}
-                                    </label>
-                                  ))}
-                                  {candidates.length === 0 ? <p>No pending candidates for this line/card.</p> : null}
-                                </div>
-                                {candidates.length > 0 ? (
-                                  <button type="submit" className="tinyButton">
-                                    Confirm Statement Paid
-                                  </button>
-                                ) : null}
-                              </form>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {assignedPurchases.map((purchase) => (
+                      <tr key={purchase.id}>
+                        <td>{purchase.projectLabel}</td>
+                        <td>{purchase.budgetLineLabel}</td>
+                        <td>{purchase.referenceNumber ?? "-"}</td>
+                        <td>{purchase.title}</td>
+                        <td>{formatCurrency(purchase.pendingCcAmount)}</td>
+                        <td>
+                          {!month.postedAt ? (
+                            <form action={unassignPurchaseFromStatementAction} className="inlineEditForm">
+                              <input type="hidden" name="statementMonthId" value={month.id} />
+                              <input type="hidden" name="purchaseId" value={purchase.id} />
+                              <button type="submit" className="tinyButton dangerButton">
+                                Remove
+                              </button>
+                            </form>
+                          ) : (
+                            "-"
+                          )}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
+
+              <p className="heroSubtitle">Assigned Total: {formatCurrency(assignedTotal)}</p>
+
+              {!month.postedAt ? (
+                <>
+                  <form action={assignPurchasesToStatementAction} className="requestForm">
+                    <input type="hidden" name="statementMonthId" value={month.id} />
+                    <div className="checkboxStack">
+                      {unassignedCandidates.map((purchase) => (
+                        <label key={purchase.id} className="checkboxLabel">
+                          <input type="checkbox" name="purchaseId" value={purchase.id} />
+                          {purchase.projectLabel} | {purchase.budgetLineLabel} | {purchase.referenceNumber ?? purchase.id.slice(0, 8)} |{" "}
+                          {purchase.title} | {formatCurrency(purchase.pendingCcAmount)}
+                        </label>
+                      ))}
+                      {unassignedCandidates.length === 0 ? <p>No unassigned Pending CC purchases for this card.</p> : null}
+                    </div>
+                    {unassignedCandidates.length > 0 ? (
+                      <button type="submit" className="tinyButton">
+                        Add Selected Purchases
+                      </button>
+                    ) : null}
+                  </form>
+
+                  <form action={submitStatementMonthAction} className="inlineEditForm" style={{ marginTop: "0.6rem" }}>
+                    <input type="hidden" name="statementMonthId" value={month.id} />
+                    <button type="submit" className="buttonLink buttonPrimary">
+                      Submit Statement (Mark Statement Paid)
+                    </button>
+                  </form>
+                </>
+              ) : (
+                <p className="successNote">Statement submitted and linked purchases marked as Statement Paid.</p>
+              )}
             </details>
           );
         })}

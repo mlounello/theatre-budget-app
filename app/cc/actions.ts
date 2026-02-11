@@ -258,16 +258,14 @@ export async function deleteStatementMonthAction(formData: FormData): Promise<vo
     if (existingError || !existing) throw new Error("Statement month not found.");
     await requireCcManagerRole(supabase, user.id);
 
-    const { data: matchedLines, error: matchedLinesError } = await supabase
-      .from("cc_statement_lines")
-      .select("id, matched_purchase_ids")
-      .eq("statement_month_id", id);
-    if (matchedLinesError) throw new Error(matchedLinesError.message);
-    const hasMatchedPurchases = (matchedLines ?? []).some(
-      (line) => Array.isArray(line.matched_purchase_ids) && line.matched_purchase_ids.length > 0
-    );
-    if (hasMatchedPurchases) {
-      throw new Error("Cannot delete a statement month that has matched purchases. Remove matches first.");
+    const { data: linkedPurchases, error: linkedError } = await supabase
+      .from("purchases")
+      .select("id")
+      .eq("cc_statement_month_id", id)
+      .limit(1);
+    if (linkedError) throw new Error(linkedError.message);
+    if ((linkedPurchases ?? []).length > 0) {
+      throw new Error("Cannot delete a statement month that has linked purchases. Remove purchases first.");
     }
 
     const { error } = await supabase.from("cc_statement_months").delete().eq("id", id);
@@ -278,6 +276,176 @@ export async function deleteStatementMonthAction(formData: FormData): Promise<vo
   } catch (error) {
     rethrowIfRedirect(error);
     ccError(getErrorMessage(error, "Could not delete statement month."));
+  }
+}
+
+export async function assignPurchasesToStatementAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+    await requireCcManagerRole(supabase, user.id);
+
+    const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
+    const purchaseIds = formData
+      .getAll("purchaseId")
+      .map((value) => String(value).trim())
+      .filter(Boolean);
+
+    if (!statementMonthId) throw new Error("Statement month is required.");
+    if (purchaseIds.length === 0) throw new Error("Select at least one purchase.");
+
+    const { data: statementMonth, error: statementMonthError } = await supabase
+      .from("cc_statement_months")
+      .select("id, credit_card_id, posted_at")
+      .eq("id", statementMonthId)
+      .single();
+    if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
+    if (statementMonth.posted_at) throw new Error("Statement month is already submitted.");
+
+    const { data: purchases, error: purchasesError } = await supabase
+      .from("purchases")
+      .select("id, status, request_type, is_credit_card, cc_statement_month_id")
+      .in("id", purchaseIds);
+    if (purchasesError) throw new Error(purchasesError.message);
+    if (!purchases || purchases.length !== purchaseIds.length) throw new Error("One or more purchases were not found.");
+
+    for (const purchase of purchases) {
+      if ((purchase.request_type as string) !== "expense" || !Boolean(purchase.is_credit_card as boolean | null)) {
+        throw new Error("Only credit-card expense requests can be assigned.");
+      }
+      if ((purchase.status as string) !== "pending_cc") {
+        throw new Error("Only Pending CC purchases can be assigned.");
+      }
+      if ((purchase.cc_statement_month_id as string | null) && (purchase.cc_statement_month_id as string) !== statementMonthId) {
+        throw new Error("One or more purchases are already assigned to another statement month.");
+      }
+    }
+
+    const { error: updateError } = await supabase
+      .from("purchases")
+      .update({
+        cc_statement_month_id: statementMonthId,
+        credit_card_id: statementMonth.credit_card_id as string
+      })
+      .in("id", purchaseIds);
+    if (updateError) throw new Error(updateError.message);
+
+    revalidatePath("/cc");
+    ccSuccess("Purchases added to statement month.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    ccError(getErrorMessage(error, "Could not add purchases to statement month."));
+  }
+}
+
+export async function unassignPurchaseFromStatementAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+    await requireCcManagerRole(supabase, user.id);
+
+    const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
+    const purchaseId = String(formData.get("purchaseId") ?? "").trim();
+    if (!statementMonthId || !purchaseId) throw new Error("Statement month and purchase are required.");
+
+    const { data: statementMonth, error: statementMonthError } = await supabase
+      .from("cc_statement_months")
+      .select("id, posted_at")
+      .eq("id", statementMonthId)
+      .single();
+    if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
+    if (statementMonth.posted_at) throw new Error("Cannot remove purchases from a submitted statement month.");
+
+    const { error: updateError } = await supabase
+      .from("purchases")
+      .update({ cc_statement_month_id: null })
+      .eq("id", purchaseId)
+      .eq("cc_statement_month_id", statementMonthId);
+    if (updateError) throw new Error(updateError.message);
+
+    revalidatePath("/cc");
+    ccSuccess("Purchase removed from statement month.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    ccError(getErrorMessage(error, "Could not remove purchase from statement month."));
+  }
+}
+
+export async function submitStatementMonthAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+    await requireCcManagerRole(supabase, user.id);
+
+    const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
+    if (!statementMonthId) throw new Error("Statement month is required.");
+
+    const { data: statementMonth, error: statementMonthError } = await supabase
+      .from("cc_statement_months")
+      .select("id, statement_month, posted_at")
+      .eq("id", statementMonthId)
+      .single();
+    if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
+    if (statementMonth.posted_at) throw new Error("Statement month is already submitted.");
+
+    const { data: purchases, error: purchasesError } = await supabase
+      .from("purchases")
+      .select("id, project_id, status, estimated_amount, requested_amount, pending_cc_amount")
+      .eq("cc_statement_month_id", statementMonthId)
+      .eq("request_type", "expense")
+      .eq("is_credit_card", true);
+    if (purchasesError) throw new Error(purchasesError.message);
+    if (!purchases || purchases.length === 0) throw new Error("No purchases assigned to this statement month.");
+
+    for (const purchase of purchases) {
+      if ((purchase.status as string) !== "pending_cc") continue;
+      const pendingAmount = Number(purchase.pending_cc_amount ?? 0);
+      const { error: updateError } = await supabase
+        .from("purchases")
+        .update({
+          cc_workflow_status: "statement_paid",
+          procurement_status: "statement_paid"
+        })
+        .eq("id", purchase.id as string);
+      if (updateError) throw new Error(updateError.message);
+
+      const { error: eventError } = await supabase.from("purchase_events").insert({
+        purchase_id: purchase.id as string,
+        from_status: "pending_cc",
+        to_status: "pending_cc",
+        estimated_amount_snapshot: Number(purchase.estimated_amount ?? 0),
+        requested_amount_snapshot: Number(purchase.requested_amount ?? 0),
+        encumbered_amount_snapshot: 0,
+        pending_cc_amount_snapshot: pendingAmount,
+        posted_amount_snapshot: 0,
+        changed_by_user_id: user.id,
+        note: `Statement paid ${(statementMonth.statement_month as string).slice(0, 7)}; awaiting accounts posting`
+      });
+      if (eventError) throw new Error(eventError.message);
+    }
+
+    const { error: monthUpdateError } = await supabase
+      .from("cc_statement_months")
+      .update({ posted_at: new Date().toISOString() })
+      .eq("id", statementMonthId);
+    if (monthUpdateError) throw new Error(monthUpdateError.message);
+
+    revalidatePath("/cc");
+    revalidatePath("/requests");
+    revalidatePath("/");
+    ccSuccess("Statement month submitted and purchases marked Statement Paid.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    ccError(getErrorMessage(error, "Could not submit statement month."));
   }
 }
 
