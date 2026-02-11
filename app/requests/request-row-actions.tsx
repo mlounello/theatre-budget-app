@@ -117,11 +117,11 @@ export function RequestRowActions({
               </label>
               <label>
                 Estimated
-                <input name="estimatedAmount" type="number" step="0.01" min="0" defaultValue={purchase.estimatedAmount} />
+                <input name="estimatedAmount" type="number" step="0.01" defaultValue={purchase.estimatedAmount} />
               </label>
               <label>
                 Requested
-                <input name="requestedAmount" type="number" step="0.01" min="0" defaultValue={purchase.requestedAmount} />
+                <input name="requestedAmount" type="number" step="0.01" defaultValue={purchase.requestedAmount} />
               </label>
 
               <div className="modalActions">

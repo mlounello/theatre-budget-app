@@ -181,7 +181,7 @@ export function CreateOrderForm({
       </label>
       <label>
         Order Value
-        <input name="orderValue" type="number" min="0.01" step="0.01" required />
+        <input name="orderValue" type="number" step="0.01" required />
       </label>
       <label>
         Reference #

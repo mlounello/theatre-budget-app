@@ -290,7 +290,7 @@ export async function addStatementLineAction(formData: FormData): Promise<void> 
     const note = String(formData.get("note") ?? "").trim();
 
     if (!statementMonthId || !projectBudgetLineId) throw new Error("Statement month and budget line are required.");
-    if (amount <= 0) throw new Error("Amount must be greater than zero.");
+    if (amount === 0) throw new Error("Amount must be non-zero.");
 
     const { data: statementMonth, error: statementMonthError } = await supabase
       .from("cc_statement_months")

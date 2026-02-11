@@ -105,6 +105,7 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
     const budgetLineId = String(formData.get("budgetLineId") ?? "").trim();
     const budgetTracked = formData.get("budgetTracked") === "on";
     const title = String(formData.get("title") ?? "").trim();
+    const orderValueRaw = String(formData.get("orderValue") ?? "").trim();
     const orderValue = parseMoney(formData.get("orderValue"));
     const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
     const requisitionNumber = String(formData.get("requisitionNumber") ?? "").trim();
@@ -112,7 +113,7 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
     const vendorId = String(formData.get("vendorId") ?? "").trim();
 
     if (!projectId || !title) throw new Error("Project and title are required.");
-    if (orderValue <= 0) throw new Error("Order value must be greater than 0.");
+    if (orderValueRaw === "" || orderValue === 0) throw new Error("Order value must be non-zero.");
     await ensureProjectCreateAccess(supabase, user.id, projectId);
 
     let line: { id: string; project_id: string; account_code_id: string | null } | null = null;
@@ -210,6 +211,7 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
     const orderedOn = String(formData.get("orderedOn") ?? "").trim();
     const receivedOn = String(formData.get("receivedOn") ?? "").trim();
     const paidOn = String(formData.get("paidOn") ?? "").trim();
+    const orderValueRaw = String(formData.get("orderValue") ?? "").trim();
     const orderValue = parseMoney(formData.get("orderValue"));
 
     if (!id) throw new Error("Purchase id is required.");
@@ -233,7 +235,7 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
       Number(existing.encumbered_amount ?? 0) ||
       Number(existing.pending_cc_amount ?? 0) ||
       Number(existing.posted_amount ?? 0);
-    const nextRequested = orderValue > 0 ? orderValue : existingOrderValue;
+    const nextRequested = orderValueRaw !== "" ? orderValue : existingOrderValue;
     const nextBudgetStatus = toBudgetStatus(procurementStatus, isCreditCardPurchase);
     const nextRequestedAmount = nextBudgetStatus === "requested" ? nextRequested : 0;
     const nextEncumberedAmount = nextBudgetStatus === "encumbered" ? nextRequested : 0;
@@ -349,7 +351,7 @@ export async function addProcurementReceiptAction(formData: FormData): Promise<v
     const { error } = await supabase.from("purchase_receipts").insert({
       purchase_id: purchaseId,
       note: note || null,
-      amount_received: amountReceived > 0 ? amountReceived : null,
+      amount_received: amountReceived === 0 ? null : amountReceived,
       fully_received: fullyReceived,
       attachment_url: attachmentUrl || null,
       created_by_user_id: user.id

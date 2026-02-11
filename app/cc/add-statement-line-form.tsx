@@ -44,7 +44,7 @@ export function AddStatementLineForm({
           </option>
         ))}
       </select>
-      <input name="amount" type="number" step="0.01" min="0.01" placeholder="Amount" required />
+      <input name="amount" type="number" step="0.01" placeholder="Amount" required />
       <input name="note" placeholder="Optional note" />
       <button type="submit" className="tinyButton">
         Add Statement Line

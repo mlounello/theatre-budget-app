@@ -179,7 +179,7 @@ export function IncomeTable({ rows, organizations }: { rows: IncomeRow[]; organi
               </label>
               <label>
                 Amount
-                <input name="amount" type="number" step="0.01" min="0.01" defaultValue={editingRow.amount} required />
+                <input name="amount" type="number" step="0.01" defaultValue={editingRow.amount} required />
               </label>
               <label>
                 Received On

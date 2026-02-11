@@ -299,7 +299,6 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
               <input
                 type="number"
                 step="0.01"
-                min="0"
                 placeholder="Amount"
                 value={row.amount}
                 onChange={(event) =>
@@ -363,11 +362,11 @@ export function CreateRequestForm({ budgetLineOptions, accountCodeOptions, canMa
       </label>
       <label>
         Estimated
-        <input name="estimatedAmount" type="number" step="0.01" min="0" />
+        <input name="estimatedAmount" type="number" step="0.01" />
       </label>
       <label>
         Requested
-        <input name="requestedAmount" type="number" step="0.01" min="0" />
+        <input name="requestedAmount" type="number" step="0.01" />
       </label>
       <button type="submit" className="buttonLink buttonPrimary">
         Create Request

@@ -75,9 +75,25 @@ function sortRows(rows: ProcurementRow[], receipts: ProcurementReceiptRow[], key
   const dir = direction === "asc" ? 1 : -1;
   return [...rows].sort((a, b) => {
     const aOrderValue =
-      a.estimatedAmount > 0 ? a.estimatedAmount : a.requestedAmount > 0 ? a.requestedAmount : a.encumberedAmount > 0 ? a.encumberedAmount : a.pendingCcAmount > 0 ? a.pendingCcAmount : a.postedAmount;
+      a.estimatedAmount !== 0
+        ? a.estimatedAmount
+        : a.requestedAmount !== 0
+          ? a.requestedAmount
+          : a.encumberedAmount !== 0
+            ? a.encumberedAmount
+            : a.pendingCcAmount !== 0
+              ? a.pendingCcAmount
+              : a.postedAmount;
     const bOrderValue =
-      b.estimatedAmount > 0 ? b.estimatedAmount : b.requestedAmount > 0 ? b.requestedAmount : b.encumberedAmount > 0 ? b.encumberedAmount : b.pendingCcAmount > 0 ? b.pendingCcAmount : b.postedAmount;
+      b.estimatedAmount !== 0
+        ? b.estimatedAmount
+        : b.requestedAmount !== 0
+          ? b.requestedAmount
+          : b.encumberedAmount !== 0
+            ? b.encumberedAmount
+            : b.pendingCcAmount !== 0
+              ? b.pendingCcAmount
+              : b.postedAmount;
     const aVal =
       key === "orderValue"
         ? aOrderValue
@@ -237,13 +253,13 @@ export function ProcurementTable({
               const relatedReceipts = receipts.filter((receipt) => receipt.purchaseId === purchase.id);
               const receiptTotal = relatedReceipts.reduce((sum, receipt) => sum + receipt.amountReceived, 0);
               const orderValueDisplay =
-                purchase.estimatedAmount > 0
+                purchase.estimatedAmount !== 0
                   ? purchase.estimatedAmount
-                  : purchase.requestedAmount > 0
+                  : purchase.requestedAmount !== 0
                     ? purchase.requestedAmount
-                    : purchase.encumberedAmount > 0
+                    : purchase.encumberedAmount !== 0
                       ? purchase.encumberedAmount
-                      : purchase.pendingCcAmount > 0
+                      : purchase.pendingCcAmount !== 0
                         ? purchase.pendingCcAmount
                         : purchase.postedAmount;
               return (
@@ -371,16 +387,15 @@ export function ProcurementTable({
                 <input
                   name="orderValue"
                   type="number"
-                  min="0"
                   step="0.01"
                   defaultValue={
-                    editingPurchase.estimatedAmount > 0
+                    editingPurchase.estimatedAmount !== 0
                       ? editingPurchase.estimatedAmount
-                      : editingPurchase.requestedAmount > 0
+                      : editingPurchase.requestedAmount !== 0
                         ? editingPurchase.requestedAmount
-                        : editingPurchase.encumberedAmount > 0
+                        : editingPurchase.encumberedAmount !== 0
                           ? editingPurchase.encumberedAmount
-                          : editingPurchase.pendingCcAmount > 0
+                          : editingPurchase.pendingCcAmount !== 0
                             ? editingPurchase.pendingCcAmount
                             : editingPurchase.postedAmount
                   }
@@ -422,7 +437,7 @@ export function ProcurementTable({
                 </label>
                 <label>
                   Amount Received
-                  <input name="amountReceived" type="number" min="0" step="0.01" />
+                  <input name="amountReceived" type="number" step="0.01" />
                 </label>
                 <label>
                   Attachment URL

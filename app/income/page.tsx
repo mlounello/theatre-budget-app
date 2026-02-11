@@ -77,7 +77,7 @@ export default async function IncomePage({
 
           <label>
             Amount
-            <input name="amount" type="number" step="0.01" min="0.01" required />
+            <input name="amount" type="number" step="0.01" required />
           </label>
 
           <label>

@@ -63,7 +63,7 @@ export async function createIncomeEntryAction(formData: FormData): Promise<void>
     const receivedOn = String(formData.get("receivedOn") ?? "").trim();
 
     if (!organizationId) throw new Error("Organization is required.");
-    if (amount <= 0) throw new Error("Amount must be greater than 0.");
+    if (amount === 0) throw new Error("Amount must be non-zero.");
 
     const lineName = lineNameInput || defaultLineName(incomeType);
 
@@ -120,7 +120,7 @@ export async function updateIncomeEntryAction(formData: FormData): Promise<void>
 
     if (!id) throw new Error("Income entry id is required.");
     if (!organizationId) throw new Error("Organization is required.");
-    if (amount <= 0) throw new Error("Amount must be greater than 0.");
+    if (amount === 0) throw new Error("Amount must be non-zero.");
 
     const lineName = lineNameInput || defaultLineName(incomeType);
 

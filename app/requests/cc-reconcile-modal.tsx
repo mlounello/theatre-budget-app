@@ -48,7 +48,7 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
                 <input type="hidden" name="purchaseId" value={purchase.id} />
                 <label>
                   Amount
-                  <input name="amountReceived" type="number" step="0.01" min="0.01" placeholder="0.00" required />
+                  <input name="amountReceived" type="number" step="0.01" placeholder="0.00" required />
                 </label>
                 <label>
                   Note
@@ -80,7 +80,7 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
                     <input type="hidden" name="receiptId" value={receipt.id} />
                     <label>
                       Amount
-                      <input name="amountReceived" type="number" step="0.01" min="0.01" defaultValue={receipt.amountReceived} required />
+                      <input name="amountReceived" type="number" step="0.01" defaultValue={receipt.amountReceived} required />
                     </label>
                     <label>
                       Note

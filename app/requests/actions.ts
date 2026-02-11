@@ -292,7 +292,7 @@ export async function addRequestReceipt(formData: FormData): Promise<void> {
   const receiptFile = formData.get("receiptFile");
 
   if (!purchaseId) throw new Error("Purchase ID required.");
-  if (amount <= 0) throw new Error("Receipt amount must be greater than 0.");
+  if (amount === 0) throw new Error("Receipt amount must be non-zero.");
 
   const { data: purchase, error: purchaseError } = await supabase
     .from("purchases")
@@ -377,7 +377,7 @@ export async function reconcileRequestToPendingCc(formData: FormData): Promise<v
     const value = Number(row.amount_received ?? 0);
     return sum + (Number.isFinite(value) ? value : 0);
   }, 0);
-  if (reconciledTotal <= 0) throw new Error("Add at least one receipt amount before reconciling to Pending CC.");
+  if (reconciledTotal === 0) throw new Error("Receipts net to zero. Add a non-zero total before reconciling to Pending CC.");
 
   const { error: updateError } = await supabase
     .from("purchases")
@@ -434,7 +434,7 @@ export async function markCcPostedToAccount(formData: FormData): Promise<void> {
   await requirePmOrAdmin(supabase, purchase.project_id as string, user.id);
 
   const amount = Number(purchase.pending_cc_amount ?? 0);
-  if (amount <= 0) throw new Error("Pending CC amount is zero.");
+  if (amount === 0) throw new Error("Pending CC amount is zero.");
 
   const { error: updateError } = await supabase
     .from("purchases")
@@ -480,7 +480,7 @@ export async function updateRequestReceipt(formData: FormData): Promise<void> {
   const note = String(formData.get("note") ?? "").trim();
   const receiptUrl = String(formData.get("receiptUrl") ?? "").trim();
   if (!receiptId) throw new Error("Receipt ID required.");
-  if (amount <= 0) throw new Error("Receipt amount must be greater than 0.");
+  if (amount === 0) throw new Error("Receipt amount must be non-zero.");
 
   const { data: receipt, error: receiptError } = await supabase
     .from("purchase_receipts")
