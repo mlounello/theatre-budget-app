@@ -85,16 +85,21 @@ where p.budget_line_id = pbl.id
   and p.production_category_id is null;
 
 update public.purchases p
-set banner_account_code_id = pa.account_code_id
-from lateral (
+set banner_account_code_id = (
   select pa_inner.account_code_id
   from public.purchase_allocations pa_inner
   where pa_inner.purchase_id = p.id
     and pa_inner.account_code_id is not null
   order by pa_inner.created_at asc
   limit 1
-) pa
-where p.banner_account_code_id is null;
+)
+where p.banner_account_code_id is null
+  and exists (
+    select 1
+    from public.purchase_allocations pa_exists
+    where pa_exists.purchase_id = p.id
+      and pa_exists.account_code_id is not null
+  );
 
 alter table public.income_lines
 add column if not exists production_category_id uuid references public.production_categories (id) on delete set null,

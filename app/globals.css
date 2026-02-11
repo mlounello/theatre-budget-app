@@ -26,6 +26,7 @@ body {
   font-family: "Merriweather", "Georgia", serif;
   color: var(--text-main);
   background: var(--bg);
+  overflow-y: scroll;
 }
 
 h1,
@@ -264,7 +265,8 @@ th {
 }
 
 .tableWrap {
-  overflow-x: auto;
+  overflow: auto;
+  scrollbar-gutter: stable both-edges;
 }
 
 table {
@@ -570,17 +572,22 @@ th {
   inset: 0;
   background: rgba(10, 20, 14, 0.42);
   display: grid;
-  place-items: center;
+  place-items: start center;
   z-index: 1000;
-  padding: 1rem;
+  padding: 1rem 1rem 2rem;
+  overflow-y: auto;
+  scrollbar-gutter: stable both-edges;
 }
 
 .modalPanel {
   width: min(920px, 100%);
+  max-height: calc(100vh - 2rem);
   background: var(--surface);
   border: 1px solid var(--surface-border);
   border-radius: 14px;
   padding: 1rem;
+  overflow: auto;
+  scrollbar-gutter: stable both-edges;
 }
 
 .modalActions {
@@ -622,6 +629,27 @@ th {
   display: inline-block;
   margin-right: 0.45rem;
   color: var(--text-muted);
+}
+
+/* Keep scrollbars visible and easy to grab for mouse users */
+*::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #e6ece8;
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #8ea59a;
+  border-radius: 999px;
+  border: 2px solid #e6ece8;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #6f887c;
 }
 
 @media (max-width: 720px) {
