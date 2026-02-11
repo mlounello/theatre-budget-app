@@ -17,6 +17,24 @@ type AllocationInput = {
   reportingBucket: "direct" | "miscellaneous";
 };
 
+async function requirePmOrAdmin(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  projectId: string,
+  userId: string
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("project_memberships")
+    .select("role")
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const role = (data?.role as string | undefined) ?? null;
+  if (!role || (role !== "admin" && role !== "project_manager")) {
+    throw new Error("Only Admin or Project Manager can reconcile to Pending CC.");
+  }
+}
+
 export async function createRequest(formData: FormData): Promise<void> {
   const supabase = await getSupabaseServerClient();
   const {
@@ -236,4 +254,125 @@ export async function updatePurchaseStatus(formData: FormData): Promise<void> {
   revalidatePath("/requests");
   revalidatePath("/");
   revalidatePath(`/projects/${existing.project_id}`);
+}
+
+export async function addRequestReceipt(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("You must be signed in.");
+
+  const purchaseId = String(formData.get("purchaseId") ?? "").trim();
+  const amount = parseMoney(formData.get("amountReceived"));
+  const note = String(formData.get("note") ?? "").trim();
+  const receiptUrl = String(formData.get("receiptUrl") ?? "").trim();
+  const receiptFile = formData.get("receiptFile");
+
+  if (!purchaseId) throw new Error("Purchase ID required.");
+  if (amount <= 0) throw new Error("Receipt amount must be greater than 0.");
+
+  const { data: purchase, error: purchaseError } = await supabase
+    .from("purchases")
+    .select("id, project_id")
+    .eq("id", purchaseId)
+    .single();
+  if (purchaseError || !purchase) throw new Error("Purchase not found.");
+
+  let attachmentUrl: string | null = receiptUrl || null;
+
+  if (receiptFile instanceof File && receiptFile.size > 0) {
+    const safeName = receiptFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const path = `${purchase.project_id as string}/${purchaseId}/${Date.now()}-${safeName}`;
+    const { error: uploadError } = await supabase.storage.from("purchase-receipts").upload(path, receiptFile, {
+      upsert: false
+    });
+    if (uploadError) {
+      throw new Error(
+        `Receipt upload failed. Ensure storage bucket 'purchase-receipts' exists and policies are applied. ${uploadError.message}`
+      );
+    }
+
+    const {
+      data: { publicUrl }
+    } = supabase.storage.from("purchase-receipts").getPublicUrl(path);
+    attachmentUrl = publicUrl;
+  }
+
+  const { error } = await supabase.from("purchase_receipts").insert({
+    purchase_id: purchaseId,
+    note: note || null,
+    amount_received: amount,
+    attachment_url: attachmentUrl,
+    fully_received: false,
+    created_by_user_id: user.id
+  });
+  if (error) throw new Error(error.message);
+
+  revalidatePath("/requests");
+  revalidatePath(`/projects/${purchase.project_id as string}`);
+}
+
+export async function reconcileRequestToPendingCc(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  if (!user) throw new Error("You must be signed in.");
+
+  const purchaseId = String(formData.get("purchaseId") ?? "").trim();
+  if (!purchaseId) throw new Error("Purchase ID required.");
+
+  const { data: purchase, error: purchaseError } = await supabase
+    .from("purchases")
+    .select("id, project_id, status, estimated_amount, requested_amount")
+    .eq("id", purchaseId)
+    .single();
+  if (purchaseError || !purchase) throw new Error("Purchase not found.");
+
+  await requirePmOrAdmin(supabase, purchase.project_id as string, user.id);
+
+  const { data: receiptRows, error: receiptsError } = await supabase
+    .from("purchase_receipts")
+    .select("amount_received")
+    .eq("purchase_id", purchaseId);
+  if (receiptsError) throw new Error(receiptsError.message);
+
+  const reconciledTotal = (receiptRows ?? []).reduce((sum, row) => {
+    const value = Number(row.amount_received ?? 0);
+    return sum + (Number.isFinite(value) ? value : 0);
+  }, 0);
+  if (reconciledTotal <= 0) throw new Error("Add at least one receipt amount before reconciling to Pending CC.");
+
+  const { error: updateError } = await supabase
+    .from("purchases")
+    .update({
+      status: "pending_cc",
+      encumbered_amount: 0,
+      pending_cc_amount: reconciledTotal,
+      posted_amount: 0
+    })
+    .eq("id", purchaseId);
+  if (updateError) throw new Error(updateError.message);
+
+  const { error: eventError } = await supabase.from("purchase_events").insert({
+    purchase_id: purchaseId,
+    from_status: purchase.status as PurchaseStatus,
+    to_status: "pending_cc",
+    estimated_amount_snapshot: Number(purchase.estimated_amount ?? 0),
+    requested_amount_snapshot: Number(purchase.requested_amount ?? 0),
+    encumbered_amount_snapshot: 0,
+    pending_cc_amount_snapshot: reconciledTotal,
+    posted_amount_snapshot: 0,
+    changed_by_user_id: user.id,
+    note: "Reconciled from receipts to Pending CC"
+  });
+  if (eventError) throw new Error(eventError.message);
+
+  revalidatePath("/requests");
+  revalidatePath("/cc");
+  revalidatePath("/");
+  revalidatePath(`/projects/${purchase.project_id as string}`);
 }

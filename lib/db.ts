@@ -52,6 +52,8 @@ export type PurchaseRow = {
   encumberedAmount: number;
   pendingCcAmount: number;
   postedAmount: number;
+  receiptTotal: number;
+  receiptCount: number;
   status: PurchaseStatus;
   createdAt: string;
 };
@@ -389,6 +391,23 @@ export async function getRequestsData(): Promise<{
     throw purchasesError;
   }
 
+  const purchaseIds = (purchasesData ?? []).map((row) => row.id as string);
+  const receiptsByPurchase = new Map<string, { total: number; count: number }>();
+  if (purchaseIds.length > 0) {
+    const { data: receiptsData, error: receiptsError } = await supabase
+      .from("purchase_receipts")
+      .select("purchase_id, amount_received")
+      .in("purchase_id", purchaseIds);
+    if (receiptsError) throw receiptsError;
+
+    for (const row of receiptsData ?? []) {
+      const purchaseId = row.purchase_id as string;
+      const current = receiptsByPurchase.get(purchaseId) ?? { total: 0, count: 0 };
+      const amount = asNumber(row.amount_received as string | number | null);
+      receiptsByPurchase.set(purchaseId, { total: current.total + amount, count: current.count + 1 });
+    }
+  }
+
   const { data: optionsData, error: optionsError } = await supabase
     .from("project_budget_lines")
     .select("id, project_id, account_code_id, budget_code, category, line_name")
@@ -451,6 +470,8 @@ export async function getRequestsData(): Promise<{
       encumberedAmount: asNumber(row.encumbered_amount as string | number | null),
       pendingCcAmount: asNumber(row.pending_cc_amount as string | number | null),
       postedAmount: asNumber(row.posted_amount as string | number | null),
+      receiptTotal: receiptsByPurchase.get(row.id as string)?.total ?? 0,
+      receiptCount: receiptsByPurchase.get(row.id as string)?.count ?? 0,
       status: row.status as PurchaseStatus,
       createdAt: row.created_at as string
     };
