@@ -8,7 +8,7 @@ import { RequestRowActions } from "@/app/requests/request-row-actions";
 const statuses = ["requested", "encumbered", "pending_cc", "posted", "cancelled"] as const;
 
 export default async function RequestsPage() {
-  const { purchases, budgetLineOptions, accountCodeOptions, canManageSplits } = await getRequestsData();
+  const { purchases, receipts, budgetLineOptions, accountCodeOptions, canManageSplits } = await getRequestsData();
 
   return (
     <section>
@@ -110,7 +110,7 @@ export default async function RequestsPage() {
                   </form>
                 </td>
                 <td>
-                  <CcReconcileModal purchase={purchase} />
+                  <CcReconcileModal purchase={purchase} receipts={receipts} />
                 </td>
                 <td>
                   <RequestRowActions purchase={purchase} budgetLineOptions={budgetLineOptions} />

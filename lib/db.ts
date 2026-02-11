@@ -60,6 +60,15 @@ export type PurchaseRow = {
   createdAt: string;
 };
 
+export type RequestReceiptRow = {
+  id: string;
+  purchaseId: string;
+  note: string | null;
+  amountReceived: number;
+  attachmentUrl: string | null;
+  createdAt: string;
+};
+
 export type ProcurementRow = {
   id: string;
   projectId: string;
@@ -375,6 +384,7 @@ export async function getProjectBudgetBoard(projectId: string): Promise<{ projec
 
 export async function getRequestsData(): Promise<{
   purchases: PurchaseRow[];
+  receipts: RequestReceiptRow[];
   budgetLineOptions: ProjectBudgetLineOption[];
   accountCodeOptions: AccountCodeOption[];
   canManageSplits: boolean;
@@ -395,10 +405,11 @@ export async function getRequestsData(): Promise<{
 
   const purchaseIds = (purchasesData ?? []).map((row) => row.id as string);
   const receiptsByPurchase = new Map<string, { total: number; count: number }>();
+  const requestReceipts: RequestReceiptRow[] = [];
   if (purchaseIds.length > 0) {
     const { data: receiptsData, error: receiptsError } = await supabase
       .from("purchase_receipts")
-      .select("purchase_id, amount_received")
+      .select("id, purchase_id, note, amount_received, attachment_url, created_at")
       .in("purchase_id", purchaseIds);
     if (receiptsError) throw receiptsError;
 
@@ -407,6 +418,14 @@ export async function getRequestsData(): Promise<{
       const current = receiptsByPurchase.get(purchaseId) ?? { total: 0, count: 0 };
       const amount = asNumber(row.amount_received as string | number | null);
       receiptsByPurchase.set(purchaseId, { total: current.total + amount, count: current.count + 1 });
+      requestReceipts.push({
+        id: row.id as string,
+        purchaseId,
+        note: (row.note as string | null) ?? null,
+        amountReceived: amount,
+        attachmentUrl: (row.attachment_url as string | null) ?? null,
+        createdAt: row.created_at as string
+      });
     }
   }
 
@@ -531,7 +550,7 @@ export async function getRequestsData(): Promise<{
     label: `${row.code as string} | ${row.category as string} | ${row.name as string}`
   }));
 
-  return { purchases, budgetLineOptions, accountCodeOptions, canManageSplits };
+  return { purchases, receipts: requestReceipts, budgetLineOptions, accountCodeOptions, canManageSplits };
 }
 
 export async function getProcurementData(): Promise<{

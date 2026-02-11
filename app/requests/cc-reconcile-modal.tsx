@@ -1,13 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { addRequestReceipt, reconcileRequestToPendingCc } from "@/app/requests/actions";
+import { addRequestReceipt, deleteRequestReceipt, reconcileRequestToPendingCc, updateRequestReceipt } from "@/app/requests/actions";
 import { formatCurrency } from "@/lib/format";
-import type { PurchaseRow } from "@/lib/db";
+import type { PurchaseRow, RequestReceiptRow } from "@/lib/db";
 
-export function CcReconcileModal({ purchase }: { purchase: PurchaseRow }) {
+export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow; receipts: RequestReceiptRow[] }) {
   const [open, setOpen] = useState(false);
   const title = useMemo(() => `${purchase.projectName} | ${purchase.title}`, [purchase.projectName, purchase.title]);
+  const purchaseReceipts = useMemo(
+    () => receipts.filter((receipt) => receipt.purchaseId === purchase.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    [receipts, purchase.id]
+  );
 
   if (!(purchase.requestType === "expense" && purchase.isCreditCard)) {
     return <span>-</span>;
@@ -53,6 +57,42 @@ export function CcReconcileModal({ purchase }: { purchase: PurchaseRow }) {
                   Add Receipt
                 </button>
               </form>
+            </article>
+
+            <article className="panel" style={{ marginBottom: "0.75rem" }}>
+              <h3>Current Receipts</h3>
+              {purchaseReceipts.length === 0 ? <p>No receipts added yet.</p> : null}
+              {purchaseReceipts.map((receipt) => (
+                <details key={receipt.id} className="treeNode">
+                  <summary>
+                    {formatCurrency(receipt.amountReceived)} | {receipt.note ?? "Receipt"} | {receipt.createdAt.slice(0, 10)}
+                  </summary>
+                  <form action={updateRequestReceipt} className="requestForm">
+                    <input type="hidden" name="receiptId" value={receipt.id} />
+                    <label>
+                      Amount
+                      <input name="amountReceived" type="number" step="0.01" min="0.01" defaultValue={receipt.amountReceived} required />
+                    </label>
+                    <label>
+                      Note
+                      <input name="note" defaultValue={receipt.note ?? ""} />
+                    </label>
+                    <label>
+                      Receipt URL
+                      <input name="receiptUrl" defaultValue={receipt.attachmentUrl ?? ""} />
+                    </label>
+                    <button type="submit" className="tinyButton">
+                      Save Receipt
+                    </button>
+                  </form>
+                  <form action={deleteRequestReceipt} className="inlineEditForm">
+                    <input type="hidden" name="receiptId" value={receipt.id} />
+                    <button type="submit" className="tinyButton dangerButton">
+                      Delete Receipt
+                    </button>
+                  </form>
+                </details>
+              ))}
             </article>
 
             <article className="panel">

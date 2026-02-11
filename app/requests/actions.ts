@@ -389,6 +389,82 @@ export async function reconcileRequestToPendingCc(formData: FormData): Promise<v
   revalidatePath(`/projects/${purchase.project_id as string}`);
 }
 
+export async function updateRequestReceipt(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("You must be signed in.");
+
+  const receiptId = String(formData.get("receiptId") ?? "").trim();
+  const amount = parseMoney(formData.get("amountReceived"));
+  const note = String(formData.get("note") ?? "").trim();
+  const receiptUrl = String(formData.get("receiptUrl") ?? "").trim();
+  if (!receiptId) throw new Error("Receipt ID required.");
+  if (amount <= 0) throw new Error("Receipt amount must be greater than 0.");
+
+  const { data: receipt, error: receiptError } = await supabase
+    .from("purchase_receipts")
+    .select("id, purchase_id")
+    .eq("id", receiptId)
+    .single();
+  if (receiptError || !receipt) throw new Error("Receipt not found.");
+
+  const { data: purchase, error: purchaseError } = await supabase
+    .from("purchases")
+    .select("id, project_id, request_type, is_credit_card")
+    .eq("id", receipt.purchase_id as string)
+    .single();
+  if (purchaseError || !purchase) throw new Error("Purchase not found.");
+  if ((purchase.request_type as string) !== "expense" || !Boolean(purchase.is_credit_card as boolean | null)) {
+    throw new Error("This receipt is not attached to a credit-card expense request.");
+  }
+
+  const { error: updateError } = await supabase
+    .from("purchase_receipts")
+    .update({
+      amount_received: amount,
+      note: note || null,
+      attachment_url: receiptUrl || null
+    })
+    .eq("id", receiptId);
+  if (updateError) throw new Error(updateError.message);
+
+  revalidatePath("/requests");
+  revalidatePath(`/projects/${purchase.project_id as string}`);
+}
+
+export async function deleteRequestReceipt(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("You must be signed in.");
+
+  const receiptId = String(formData.get("receiptId") ?? "").trim();
+  if (!receiptId) throw new Error("Receipt ID required.");
+
+  const { data: receipt, error: receiptError } = await supabase
+    .from("purchase_receipts")
+    .select("id, purchase_id")
+    .eq("id", receiptId)
+    .single();
+  if (receiptError || !receipt) throw new Error("Receipt not found.");
+
+  const { data: purchase, error: purchaseError } = await supabase
+    .from("purchases")
+    .select("id, project_id")
+    .eq("id", receipt.purchase_id as string)
+    .single();
+  if (purchaseError || !purchase) throw new Error("Purchase not found.");
+
+  const { error: deleteError } = await supabase.from("purchase_receipts").delete().eq("id", receiptId);
+  if (deleteError) throw new Error(deleteError.message);
+
+  revalidatePath("/requests");
+  revalidatePath(`/projects/${purchase.project_id as string}`);
+}
+
 export async function updateRequestInline(formData: FormData): Promise<void> {
   const supabase = await getSupabaseServerClient();
   const {
