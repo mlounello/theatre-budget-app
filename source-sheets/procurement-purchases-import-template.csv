@@ -1,51 +1,51 @@
-project_name,season,title,vendor_name,reference_number,requisition_number,po_number,invoice_number,budget_tracked,budget_code,line_name,procurement_status,budget_status,estimated_amount,requested_amount,encumbered_amount,pending_cc_amount,posted_amount,ordered_on,received_on,paid_on,notes,org
-Dolly West's Kitchen,Spring 2026,,Curtis Lumber,,R0019576,R0019576,,TRUE,11300,Theatre Scenic,requested,requested,0,828.68,0,0,828.68,,,,,2AC230
-Miscellaneous Production Supplies,Spring 2026,,Propared,,R0019653,R0019653,,TRUE,13220,Business Licenses/Fees,requested,requested,0,1200,0,0,1200,,,,,2AC230
-Rumors,Fall 2025,,Concord Theatricals Corp,,R0012787,R0012787,,TRUE,13220,Business Licenses/Fees,paid,paid,0,1015,0,0,1015,,,,,2AC230
-Rumors,Fall 2025,,Concord Theatricals Corp,,R0012788,R0012788,,TRUE,13220,Business Licenses/Fees,paid,paid,0,133.55,0,0,133.55,,,,,2AC230
-Dolly West's Kitchen,Spring 2026,,Casarotto Ramsay and Associates,,R0012818,R0012818,,TRUE,13220,Business Licenses/Fees,paid,paid,0,875,0,0,875,,,,,2AC230
-Rumors,Fall 2025,,Curtis Lumber,,R0016819,R0016819,,TRUE,11300,Theatre Scenic,paid,paid,0,1153.59,0,0,1153.59,,,,,2AC230
-Miscellaneous Production Supplies,Fall 2025,,B & H Foto & Electronics Corp.,,R0016832,R0016832,,TRUE,11303,Theatre Video,paid,paid,0,226.37,0,0,226.37,,,,,2AC230
-Rumors,Fall 2025,,Lowe's for Pros,,R0017064,R0017064,,TRUE,11300,Theatre Scenic,paid,paid,0,128.98,0,0,128.98,,,,,2AC230
-Rumors,Fall 2025,,Grainger,,R0016971,R0016971,,TRUE,11300,Theatre Scenic,paid,paid,0,324.85,0,0,324.85,,,,,2AC230
-Rumors,Fall 2025,,Curtis Lumber,,R0017154,R0017154,,TRUE,11300,Theatre Scenic,paid,paid,0,124.32,0,0,124.32,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0017366,R0017366,,TRUE,11305,Theatre Costumes,paid,paid,0,156.31,0,0,156.31,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0017478,R0017478,,TRUE,11305,Theatre Costumes,paid,paid,0,43.97,0,0,43.97,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0017474,R0017474,,TRUE,11300,Theatre Scenic,paid,paid,0,30.56,0,0,30.56,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0017470,R0017470,,TRUE,11300,Theatre Scenic,paid,paid,0,95.5,0,0,95.5,,,,,2AC230
-Rumors,Fall 2025,,Grainger,,R0017519,R0017519,,TRUE,11300,Theatre Scenic,paid,paid,0,43.4,0,0,43.4,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0017542,R0017542,,TRUE,11305,Theatre Costumes,paid,paid,0,36.9,0,0,36.9,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0017581,R0017581,,TRUE,11304,Theatre Props,paid,paid,0,41.13,0,0,41.13,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0017679,R0017679,,TRUE,11305,Theatre Costumes,paid,paid,0,439.82,0,0,439.82,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0017827,R0017827,,TRUE,11305,Theatre Costumes,paid,paid,0,61.94,0,0,61.94,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0017942,R0017942,,TRUE,11300,Theatre Scenic,paid,paid,0,148.89,0,0,148.89,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0017936,R0017936,,TRUE,11305,Theatre Costumes,paid,paid,0,138.44,0,0,138.44,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0017969,R0017969,,TRUE,11305,Theatre Costumes,paid,paid,0,33.96,0,0,33.96,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0017971,R0017971,,TRUE,11305,Theatre Costumes,paid,paid,0,13.98,0,0,13.98,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0017995,R0017995,,TRUE,11300,Theatre Scenic,paid,paid,0,28.99,0,0,28.99,,,,,2AC230
-Rumors,Fall 2025,,Grainger,,R0018031,R0018031,,TRUE,11300,Theatre Scenic,paid,paid,0,141.02,0,0,141.02,,,,,2AC230
-Rumors,Fall 2025,,The Costumer,,R0018043,R0018043,,TRUE,11305,Theatre Costumes,paid,paid,0,85.38,0,0,85.38,,,,,2AC230
-Rumors,Fall 2025,,B & H Foto & Electronics Corp.,,R0018079,R0018079,,TRUE,11301,Theatre Lighting,paid,paid,0,96.07,0,0,96.07,,,,,2AC230
-Rumors,Fall 2025,,Grainger,,R0018077,R0018077,,TRUE,11300,Theatre Scenic,paid,paid,0,39.29,0,0,39.29,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0018078,R0018078,,TRUE,11304,Theatre Props,paid,paid,0,33.03,0,0,33.03,,,,,2AC230
-Rumors,Fall 2025,,B & H Foto & Electronics Corp.,,R0018128,R0018128,,TRUE,11302,Theatre Sound,paid,paid,0,59.99,0,0,59.99,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0018118,R0018118,,TRUE,11304,Theatre Props,paid,paid,0,172.24,0,0,172.24,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0018131,R0018131,,TRUE,11304,Theatre Props,paid,paid,0,70.31,0,0,70.31,,,,,2AC230
-Dolly West's Kitchen,Fall 2025,,"Amazon Business, Inc.",,R0018189,R0018189,,TRUE,11308,Theatre Production Supplies,paid,paid,0,120,0,0,120,,,,,2AC230
-Rumors,Fall 2025,,B & H Foto & Electronics Corp.,,R0018233,R0018233,,TRUE,11302,Theatre Sound,paid,paid,0,28.96,0,0,28.96,,,,,2AC230
-Rumors,Fall 2025,,B & H Foto & Electronics Corp.,,R0018257,R0018257,,TRUE,11302,Theatre Sound,paid,paid,0,1499.98,0,0,1499.98,,,,,2AC230
-Rumors,Fall 2025,,WB Mason Company,,R0018357,R0018357,,TRUE,11305,Theatre Costumes,paid,paid,0,227.02,0,0,227.02,,,,,2AC230
-Rumors,Fall 2025,,B & H Foto & Electronics Corp.,,R0018401,R0018401,,TRUE,11302,Theatre Sound,paid,paid,0,347.33,0,0,347.33,,,,,2AC230
-,Fall 2025,,B & H Foto & Electronics Corp.,,R0018364,R0018364,,FALSE,15070,Equipment,paid,paid,0,4613.82,0,0,4613.82,,,,,2G0003
-,Fall 2025,,B & H Foto & Electronics Corp.,,R0018365,R0018365,,FALSE,11099,Non-Capitalized Equipment (<$5k),paid,paid,0,2363.24,0,0,2363.24,,,,,100903
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0018402,R0018402,,TRUE,11302,Theatre Sound,paid,paid,0,83.46,0,0,83.46,,,,,2AC230
-Rumors,Fall 2025,,"Amazon Business, Inc.",,R0018457,R0018457,,TRUE,11300,Theatre Scenic,paid,paid,0,39.99,0,0,39.99,,,,,2AC230
-Rumors,Fall 2025,,Conway Entertainment,,R0018664,R0018664,,TRUE,11300,Theatre Scenic,paid,paid,0,150,0,0,150,,,,,2AC230
-,Fall 2025,,Dream Lab Productions,,R0018663,R0018663,,FALSE,11088,Audio visual tapes,paid,paid,0,1090,0,0,1090,,,,,5A0001
-Rumors,Fall 2025,,B & H Foto & Electronics Corp.,,R0018785,R0018785,,TRUE,11302,Theatre Sound,invoice received,invoice received,0,112.48,112.48,0,0,,,,,2AC230
-Rumors,Fall 2025,,Best Cleaners,,R0018827,R0018827,,TRUE,11305,Theatre Costumes,paid,paid,0,400,0,0,400,,,,,2AC230
-Dolly West's Kitchen,Spring 2026,,"Amazon Business, Inc.",,R0019233,R0019233,,TRUE,11305,Theatre Costumes,invoice sent,invoice sent,0,84.36,84.36,0,0,,,,,2AC230
-,Spring 2026,,Dream Lab Productions,,R0018834,R0018834,,FALSE,12460,Miscellaneous Contract Services,invoice received,invoice received,0,12247.41,12247.41,0,0,,,,,100903
-,Spring 2026,,AJ Sign Co,,R0019217,R0019217,,FALSE,11031,Sign Supplies,invoice received,invoice received,0,220,220,0,0,,,,,6EC002
-Miscellaneous Production Supplies,Spring 2026,,B & H Foto & Electronics Corp.,,R0019510,R0019510,,TRUE,11303,Theatre Video,invoice sent,invoice sent,0,453.45,453.45,0,0,,,,,2AC230
-Miscellaneous Production Supplies,Spring 2026,,B & H Foto & Electronics Corp.,,R0019534,R0019534,,TRUE,11308,Theatre Production Supplies,invoice sent,invoice sent,0,103.81,103.81,0,0,,,,,2AC230
+Req#,PO#,Vendor,Department,Account,Amount,Status
+R0018663,EP018159,Dream Lab Productions,5A0001,11088,"$1,090.00 ",Paid
+R0019653,-,Propared,2AC230,13220,"$1,200.00 ",Requested
+R0012787,EP012471,Concord Theatricals Corp,2AC230,13220,"$1,015.00 ",Paid
+R0012788,EP012472,Concord Theatricals Corp,2AC230,13220,$133.55 ,Paid
+R0012818,EP012480,Casarotto Ramsay and Associates,2AC230,13220,$875.00 ,Paid
+R0018364,EP017853,B & H Foto & Electronics Corp.,2G0003,15070,"$4,613.82 ",Paid
+R0018834,EP018706,Dream Lab Productions,100903,12460,"$12,247.41 ",Invoice Received
+R0018365,EP017854,B & H Foto & Electronics Corp.,100903,11099,"$2,363.24 ",Paid
+R0019217,EP018782,AJ Sign Co,6EC002,11031,$220.00 ,Invoice Received
+R0017366,EP016879,"Amazon Business, Inc.",2AC230,11305,$156.31 ,Paid
+R0017478,EP016994,"Amazon Business, Inc.",2AC230,11305,$43.97 ,Paid
+R0017542,EP017057,"Amazon Business, Inc.",2AC230,11305,$36.90 ,Paid
+R0017679,EP017180,"Amazon Business, Inc.",2AC230,11305,$439.82 ,Paid
+R0017827,EP017323,"Amazon Business, Inc.",2AC230,11305,$61.94 ,Paid
+R0017936,EP017419,"Amazon Business, Inc.",2AC230,11305,$138.44 ,Paid
+R0017969,EP017438,"Amazon Business, Inc.",2AC230,11305,$33.96 ,Paid
+R0017971,EP017444,"Amazon Business, Inc.",2AC230,11305,$13.98 ,Paid
+R0018043,EP017512,The Costumer,2AC230,11305,$85.38 ,Paid
+R0018357,EP017819,WB Mason Company,2AC230,11305,$227.02 ,Paid
+R0018827,EP018271,Best Cleaners,2AC230,11305,$400.00 ,Paid
+R0019233,EP018647,"Amazon Business, Inc.",2AC230,11305,$84.36 ,Invoice Sent
+R0018079,EP017560,B & H Foto & Electronics Corp.,2AC230,11301,$96.07 ,Paid
+R0018189,EP017655,"Amazon Business, Inc.",2AC230,11308,$120.00 ,Paid
+R0019534,EP018975,B & H Foto & Electronics Corp.,2AC230,11308,$103.81 ,Invoice Sent
+R0017581,EP017120,"Amazon Business, Inc.",2AC230,11304,$41.13 ,Paid
+R0018078,EP017562,"Amazon Business, Inc.",2AC230,11304,$33.03 ,Paid
+R0018118,EP017592,"Amazon Business, Inc.",2AC230,11304,$172.24 ,Paid
+R0018131,EP017604,"Amazon Business, Inc.",2AC230,11304,$70.31 ,Paid
+R0019576,-,Curtis Lumber,2AC230,11300,$828.68 ,Requested
+R0016819,EP016349,Curtis Lumber,2AC230,11300,"$1,153.59 ",Paid
+R0017064,EP016575,Lowe's for Pros,2AC230,11300,$128.98 ,Paid
+R0016971,EP016576,Grainger,2AC230,11300,$324.85 ,Paid
+R0017154,EP016671,Curtis Lumber,2AC230,11300,$124.32 ,Paid
+R0017474,EP016995,"Amazon Business, Inc.",2AC230,11300,$30.56 ,Paid
+R0017470,EP016996,"Amazon Business, Inc.",2AC230,11300,$95.50 ,Paid
+R0017519,EP017056,Grainger,2AC230,11300,$43.40 ,Paid
+R0017942,EP017418,"Amazon Business, Inc.",2AC230,11300,$148.89 ,Paid
+R0017995,EP017479,"Amazon Business, Inc.",2AC230,11300,$28.99 ,Paid
+R0018031,EP017499,Grainger,2AC230,11300,$141.02 ,Paid
+R0018077,EP017561,Grainger,2AC230,11300,$39.29 ,Paid
+R0018457,EP017915,"Amazon Business, Inc.",2AC230,11300,$39.99 ,Paid
+R0018664,EP018102,Conway Entertainment,2AC230,11300,$150.00 ,Paid
+R0018128,EP017591,B & H Foto & Electronics Corp.,2AC230,11302,$59.99 ,Paid
+R0018233,EP017693,B & H Foto & Electronics Corp.,2AC230,11302,$28.96 ,Paid
+R0018257,EP017726,B & H Foto & Electronics Corp.,2AC230,11302,"$1,499.98 ",Paid
+R0018401,EP017852,B & H Foto & Electronics Corp.,2AC230,11302,$347.33 ,Paid
+R0018402,EP017855,"Amazon Business, Inc.",2AC230,11302,$83.46 ,Paid
+R0018785,EP018236,B & H Foto & Electronics Corp.,2AC230,11302,$112.48 ,Invoice Received
+R0016832,EP016353,B & H Foto & Electronics Corp.,2AC230,11303,$226.37 ,Paid
+R0019510,EP018904,B & H Foto & Electronics Corp.,2AC230,11303,$453.45 ,Invoice Sent

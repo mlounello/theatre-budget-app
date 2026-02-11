@@ -258,6 +258,18 @@ export async function deleteStatementMonthAction(formData: FormData): Promise<vo
     if (existingError || !existing) throw new Error("Statement month not found.");
     await requireCcManagerRole(supabase, user.id);
 
+    const { data: matchedLines, error: matchedLinesError } = await supabase
+      .from("cc_statement_lines")
+      .select("id, matched_purchase_ids")
+      .eq("statement_month_id", id);
+    if (matchedLinesError) throw new Error(matchedLinesError.message);
+    const hasMatchedPurchases = (matchedLines ?? []).some(
+      (line) => Array.isArray(line.matched_purchase_ids) && line.matched_purchase_ids.length > 0
+    );
+    if (hasMatchedPurchases) {
+      throw new Error("Cannot delete a statement month that has matched purchases. Remove matches first.");
+    }
+
     const { error } = await supabase.from("cc_statement_months").delete().eq("id", id);
     if (error) throw new Error(error.message);
 
