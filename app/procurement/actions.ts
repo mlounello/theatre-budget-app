@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import type { PurchaseStatus } from "@/lib/types";
 
 const PROCUREMENT_STATUSES = [
   "requested",
@@ -29,6 +30,13 @@ function parseStatus(value: FormDataEntryValue | null): ProcurementStatus {
     return normalized as ProcurementStatus;
   }
   return "requested";
+}
+
+function toBudgetStatus(procurementStatus: ProcurementStatus): PurchaseStatus {
+  if (procurementStatus === "requested") return "requested";
+  if (procurementStatus === "paid") return "posted";
+  if (procurementStatus === "cancelled") return "cancelled";
+  return "encumbered";
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -198,12 +206,17 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
 
     const { data: existing, error: existingError } = await supabase
       .from("purchases")
-      .select("id, project_id, requested_amount, budget_tracked, budget_line_id")
+      .select("id, project_id, status, requested_amount, budget_tracked, budget_line_id")
       .eq("id", id)
       .single();
     if (existingError || !existing) throw new Error("Purchase not found.");
 
     const nextRequested = orderValue > 0 ? orderValue : Number(existing.requested_amount ?? 0);
+    const nextBudgetStatus = toBudgetStatus(procurementStatus);
+    const nextRequestedAmount = nextBudgetStatus === "requested" ? nextRequested : 0;
+    const nextEncumberedAmount = nextBudgetStatus === "encumbered" ? nextRequested : 0;
+    const nextPostedAmount = nextBudgetStatus === "posted" ? nextRequested : 0;
+    const nextPendingCcAmount = 0;
 
     let verifiedBudgetLine: { id: string; account_code_id: string | null } | null = null;
     if (budgetTracked) {
@@ -226,6 +239,7 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
         budget_tracked: budgetTracked,
         budget_line_id: budgetTracked ? verifiedBudgetLine?.id ?? budgetLineId : null,
         procurement_status: procurementStatus,
+        status: nextBudgetStatus,
         reference_number: referenceNumber || null,
         requisition_number: requisitionNumber || null,
         po_number: poNumber || null,
@@ -236,7 +250,11 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
         received_on: receivedOn || null,
         paid_on: paidOn || null,
         estimated_amount: nextRequested,
-        requested_amount: nextRequested
+        requested_amount: nextRequestedAmount,
+        encumbered_amount: nextEncumberedAmount,
+        pending_cc_amount: nextPendingCcAmount,
+        posted_amount: nextPostedAmount,
+        posted_date: nextBudgetStatus === "posted" ? paidOn || receivedOn || new Date().toISOString().slice(0, 10) : null
       })
       .eq("id", id);
     if (error) throw new Error(error.message);
