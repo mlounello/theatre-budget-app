@@ -211,20 +211,21 @@ export async function createOrganizationAction(formData: FormData): Promise<void
     const supabase = await getSupabaseServerClient();
     const name = String(formData.get("name") ?? "").trim();
     const orgCode = String(formData.get("orgCode") ?? "").trim();
-    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
 
     if (!name || !orgCode) throw new Error("Organization name and org code are required.");
 
-    let maxSortQuery = supabase.from("organizations").select("sort_order").order("sort_order", { ascending: false }).limit(1);
-    maxSortQuery = fiscalYearId ? maxSortQuery.eq("fiscal_year_id", fiscalYearId) : maxSortQuery.is("fiscal_year_id", null);
-    const { data: maxSortRows, error: maxSortError } = await maxSortQuery;
+    const { data: maxSortRows, error: maxSortError } = await supabase
+      .from("organizations")
+      .select("sort_order")
+      .order("sort_order", { ascending: false })
+      .limit(1);
     if (maxSortError) throw new Error(maxSortError.message);
     const nextSort = ((maxSortRows?.[0]?.sort_order as number | null) ?? -1) + 1;
 
     const { error } = await supabase.from("organizations").insert({
       name,
       org_code: orgCode,
-      fiscal_year_id: fiscalYearId || null,
+      fiscal_year_id: null,
       sort_order: nextSort
     });
     if (error) throw new Error(error.message);
@@ -483,13 +484,12 @@ export async function updateOrganizationAction(formData: FormData): Promise<void
     const id = String(formData.get("id") ?? "").trim();
     const name = String(formData.get("name") ?? "").trim();
     const orgCode = String(formData.get("orgCode") ?? "").trim();
-    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
 
     if (!id || !name || !orgCode) throw new Error("Organization id, name, and org code are required.");
 
     const { error } = await supabase
       .from("organizations")
-      .update({ name, org_code: orgCode, fiscal_year_id: fiscalYearId || null })
+      .update({ name, org_code: orgCode, fiscal_year_id: null })
       .eq("id", id);
     if (error) throw new Error(error.message);
 
@@ -767,7 +767,6 @@ export async function reorderFiscalYearsAction(formData: FormData): Promise<void
 export async function reorderOrganizationsAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();
-    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const orderedIdsRaw = String(formData.get("orderedOrganizationIds") ?? "").trim();
     if (!orderedIdsRaw) throw new Error("No organization ordering payload provided.");
 
@@ -780,9 +779,7 @@ export async function reorderOrganizationsAction(formData: FormData): Promise<vo
     if (orderedIds.length === 0) throw new Error("No organizations provided for reorder.");
 
     for (let idx = 0; idx < orderedIds.length; idx += 1) {
-      let query = supabase.from("organizations").update({ sort_order: idx }).eq("id", orderedIds[idx]);
-      query = fiscalYearId ? query.eq("fiscal_year_id", fiscalYearId) : query.is("fiscal_year_id", null);
-      const { error } = await query;
+      const { error } = await supabase.from("organizations").update({ sort_order: idx }).eq("id", orderedIds[idx]);
       if (error) throw new Error(error.message);
     }
 

@@ -2,7 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createProcurementBatchAction } from "@/app/procurement/actions";
-import type { AccountCodeOption, ProcurementBudgetLineOption, ProcurementProjectOption, ProductionCategoryOption } from "@/lib/db";
+import type {
+  AccountCodeOption,
+  OrganizationOption,
+  ProcurementBudgetLineOption,
+  ProcurementProjectOption,
+  ProductionCategoryOption
+} from "@/lib/db";
 
 type BatchLine = {
   id: string;
@@ -30,11 +36,13 @@ function makeLine(): BatchLine {
 export function QuickBatchAddForm({
   projectOptions,
   budgetLineOptions,
+  organizationOptions,
   accountCodeOptions,
   productionCategoryOptions
 }: {
   projectOptions: ProcurementProjectOption[];
   budgetLineOptions: ProcurementBudgetLineOption[];
+  organizationOptions: OrganizationOption[];
   accountCodeOptions: AccountCodeOption[];
   productionCategoryOptions: ProductionCategoryOption[];
 }) {
@@ -43,7 +51,6 @@ export function QuickBatchAddForm({
   const [projectId, setProjectId] = useState("");
   const [productionCategoryId, setProductionCategoryId] = useState("");
   const [bannerAccountCodeId, setBannerAccountCodeId] = useState("");
-  const [budgetTracked, setBudgetTracked] = useState(true);
   const [lines, setLines] = useState<BatchLine[]>([makeLine(), makeLine(), makeLine()]);
 
   useEffect(() => {
@@ -53,13 +60,11 @@ export function QuickBatchAddForm({
     const project = window.localStorage.getItem("tba_batch_project_id");
     const category = window.localStorage.getItem("tba_batch_production_category_id");
     const banner = window.localStorage.getItem("tba_batch_banner_account_code_id");
-    const tracked = window.localStorage.getItem("tba_batch_budget_tracked");
     if (fy) setFiscalYearId(fy);
     if (org) setOrganizationId(org);
     if (project) setProjectId(project);
     if (category) setProductionCategoryId(category);
     if (banner) setBannerAccountCodeId(banner);
-    if (tracked === "0") setBudgetTracked(false);
   }, []);
 
   useEffect(() => {
@@ -69,8 +74,7 @@ export function QuickBatchAddForm({
     window.localStorage.setItem("tba_batch_project_id", projectId);
     window.localStorage.setItem("tba_batch_production_category_id", productionCategoryId);
     window.localStorage.setItem("tba_batch_banner_account_code_id", bannerAccountCodeId);
-    window.localStorage.setItem("tba_batch_budget_tracked", budgetTracked ? "1" : "0");
-  }, [fiscalYearId, organizationId, projectId, productionCategoryId, bannerAccountCodeId, budgetTracked]);
+  }, [fiscalYearId, organizationId, projectId, productionCategoryId, bannerAccountCodeId]);
 
   const fiscalYearOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -79,31 +83,36 @@ export function QuickBatchAddForm({
       const label = line.fiscalYearName ?? "No Fiscal Year";
       if (!map.has(key)) map.set(key, label);
     }
-    return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
-  }, [budgetLineOptions]);
-
-  const organizationOptions = useMemo(() => {
-    const map = new Map<string, { label: string; fiscalYearId: string }>();
-    for (const line of budgetLineOptions) {
-      const orgKey = line.organizationId ?? NONE_ORGANIZATION;
-      const fyKey = line.fiscalYearId ?? NONE_FISCAL_YEAR;
-      const label = line.organizationId ? `${line.orgCode ?? ""} | ${line.organizationName ?? "Organization"}` : "No Organization";
-      if (!map.has(orgKey)) map.set(orgKey, { label, fiscalYearId: fyKey });
+    for (const organization of organizationOptions) {
+      const key = organization.fiscalYearId ?? NONE_FISCAL_YEAR;
+      const label = organization.fiscalYearName ?? "No Fiscal Year";
+      if (!map.has(key)) map.set(key, label);
     }
-    return Array.from(map.entries())
-      .filter(([, value]) => !fiscalYearId || value.fiscalYearId === fiscalYearId)
-      .map(([value, meta]) => ({ value, label: meta.label }));
-  }, [budgetLineOptions, fiscalYearId]);
+    return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
+  }, [budgetLineOptions, organizationOptions]);
+
+  const filteredOrganizationOptions = useMemo(
+    () =>
+      organizationOptions
+        .filter((option) => !fiscalYearId || option.fiscalYearId === fiscalYearId || option.fiscalYearId === null)
+        .map((option) => ({ value: option.id, label: option.label })),
+    [organizationOptions, fiscalYearId]
+  );
 
   const filteredProjectOptions = useMemo(
     () =>
       projectOptions.filter((project) => {
-        const fyMatch = !fiscalYearId || (project.fiscalYearId ?? NONE_FISCAL_YEAR) === fiscalYearId;
+        if (project.isExternal) return true;
+        const fyKey = project.fiscalYearId ?? NONE_FISCAL_YEAR;
+        const fyMatch = !fiscalYearId || fyKey === fiscalYearId || fyKey === NONE_FISCAL_YEAR;
         const orgMatch = !organizationId || (project.organizationId ?? NONE_ORGANIZATION) === organizationId;
         return fyMatch && orgMatch;
       }),
     [projectOptions, fiscalYearId, organizationId]
   );
+
+  const selectedProject = filteredProjectOptions.find((project) => project.id === projectId) ?? null;
+  const isExternalProject = selectedProject?.isExternal ?? false;
 
   function updateLine(id: string, patch: Partial<BatchLine>): void {
     setLines((prev) => prev.map((line) => (line.id === id ? { ...line, ...patch } : line)));
@@ -157,7 +166,7 @@ export function QuickBatchAddForm({
           }}
         >
           <option value="">Select organization</option>
-          {organizationOptions.map((option) => (
+          {filteredOrganizationOptions.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
@@ -177,7 +186,12 @@ export function QuickBatchAddForm({
       </label>
       <label>
         Department (Production Category)
-        <select name="productionCategoryId" value={productionCategoryId} onChange={(event) => setProductionCategoryId(event.target.value)} required>
+        <select
+          name="productionCategoryId"
+          value={productionCategoryId}
+          onChange={(event) => setProductionCategoryId(event.target.value)}
+          required={!isExternalProject}
+        >
           <option value="">Select department</option>
           {productionCategoryOptions.map((category) => (
             <option key={category.id} value={category.id}>
@@ -197,10 +211,7 @@ export function QuickBatchAddForm({
           ))}
         </select>
       </label>
-      <label className="checkboxLabel">
-        <input name="budgetTracked" type="checkbox" checked={budgetTracked} onChange={(event) => setBudgetTracked(event.target.checked)} />
-        Track in budget
-      </label>
+      {isExternalProject ? <p className="heroSubtitle">External Procurement rows are automatically marked as off-budget.</p> : null}
 
       <div className="batchLinesBlock">
         <div className="batchLinesHeader">

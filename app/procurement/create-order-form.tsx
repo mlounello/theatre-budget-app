@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createProcurementOrderAction } from "@/app/procurement/actions";
 import type {
   AccountCodeOption,
+  OrganizationOption,
   ProcurementBudgetLineOption,
   ProcurementProjectOption,
   ProductionCategoryOption,
@@ -16,12 +17,14 @@ const NONE_ORGANIZATION = "__none_organization__";
 export function CreateOrderForm({
   projectOptions,
   budgetLineOptions,
+  organizationOptions,
   vendors,
   accountCodeOptions,
   productionCategoryOptions
 }: {
   projectOptions: ProcurementProjectOption[];
   budgetLineOptions: ProcurementBudgetLineOption[];
+  organizationOptions: OrganizationOption[];
   vendors: VendorOption[];
   accountCodeOptions: AccountCodeOption[];
   productionCategoryOptions: ProductionCategoryOption[];
@@ -29,7 +32,6 @@ export function CreateOrderForm({
   const [projectId, setProjectId] = useState("");
   const [fiscalYearId, setFiscalYearId] = useState("");
   const [organizationId, setOrganizationId] = useState("");
-  const [budgetTracked, setBudgetTracked] = useState(true);
   const [vendorId, setVendorId] = useState("");
   const [productionCategoryId, setProductionCategoryId] = useState("");
   const [bannerAccountCodeId, setBannerAccountCodeId] = useState("");
@@ -39,14 +41,12 @@ export function CreateOrderForm({
     const fy = window.localStorage.getItem("tba_procurement_fiscal_year_id");
     const org = window.localStorage.getItem("tba_procurement_org_id");
     const project = window.localStorage.getItem("tba_procurement_project_id");
-    const tracked = window.localStorage.getItem("tba_procurement_budget_tracked");
     const vendor = window.localStorage.getItem("tba_procurement_vendor_id");
     const productionCategory = window.localStorage.getItem("tba_procurement_production_category_id");
     const bannerCode = window.localStorage.getItem("tba_procurement_banner_account_code_id");
     if (fy) setFiscalYearId(fy);
     if (org) setOrganizationId(org);
     if (project) setProjectId(project);
-    if (tracked === "0") setBudgetTracked(false);
     if (vendor) setVendorId(vendor);
     if (productionCategory) setProductionCategoryId(productionCategory);
     if (bannerCode) setBannerAccountCodeId(bannerCode);
@@ -57,11 +57,10 @@ export function CreateOrderForm({
     window.localStorage.setItem("tba_procurement_fiscal_year_id", fiscalYearId);
     window.localStorage.setItem("tba_procurement_org_id", organizationId);
     window.localStorage.setItem("tba_procurement_project_id", projectId);
-    window.localStorage.setItem("tba_procurement_budget_tracked", budgetTracked ? "1" : "0");
     window.localStorage.setItem("tba_procurement_vendor_id", vendorId);
     window.localStorage.setItem("tba_procurement_production_category_id", productionCategoryId);
     window.localStorage.setItem("tba_procurement_banner_account_code_id", bannerAccountCodeId);
-  }, [budgetTracked, fiscalYearId, organizationId, projectId, vendorId, productionCategoryId, bannerAccountCodeId]);
+  }, [fiscalYearId, organizationId, projectId, vendorId, productionCategoryId, bannerAccountCodeId]);
 
   const fiscalYearOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -74,36 +73,34 @@ export function CreateOrderForm({
       const key = project.fiscalYearId ?? NONE_FISCAL_YEAR;
       if (!map.has(key)) map.set(key, key === NONE_FISCAL_YEAR ? "No Fiscal Year" : key);
     }
+    for (const organization of organizationOptions) {
+      const key = organization.fiscalYearId ?? NONE_FISCAL_YEAR;
+      const label = organization.fiscalYearName ?? "No Fiscal Year";
+      if (!map.has(key)) map.set(key, label);
+    }
     return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
-  }, [budgetLineOptions, projectOptions]);
+  }, [budgetLineOptions, projectOptions, organizationOptions]);
 
-  const organizationOptions = useMemo(() => {
-    const map = new Map<string, { label: string; fiscalYearId: string }>();
-    for (const line of budgetLineOptions) {
-      const orgKey = line.organizationId ?? NONE_ORGANIZATION;
-      const fyKey = line.fiscalYearId ?? NONE_FISCAL_YEAR;
-      const label = line.organizationId ? `${line.orgCode ?? ""} | ${line.organizationName ?? "Organization"}` : "No Organization";
-      if (!map.has(orgKey)) map.set(orgKey, { label, fiscalYearId: fyKey });
-    }
-    for (const project of projectOptions) {
-      const orgKey = project.organizationId ?? NONE_ORGANIZATION;
-      const fyKey = project.fiscalYearId ?? NONE_FISCAL_YEAR;
-      if (!map.has(orgKey)) map.set(orgKey, { label: orgKey === NONE_ORGANIZATION ? "No Organization" : orgKey, fiscalYearId: fyKey });
-    }
-    return Array.from(map.entries())
-      .filter(([, value]) => !fiscalYearId || value.fiscalYearId === fiscalYearId)
-      .map(([value, meta]) => ({ value, label: meta.label }));
-  }, [budgetLineOptions, projectOptions, fiscalYearId]);
+  const filteredOrganizationOptions = useMemo(() => {
+    return organizationOptions
+      .filter((option) => !fiscalYearId || option.fiscalYearId === fiscalYearId || option.fiscalYearId === null)
+      .map((option) => ({ value: option.id, label: option.label }));
+  }, [organizationOptions, fiscalYearId]);
 
   const filteredProjectOptions = useMemo(
     () =>
       projectOptions.filter((project) => {
-        const fyMatch = !fiscalYearId || (project.fiscalYearId ?? NONE_FISCAL_YEAR) === fiscalYearId;
+        if (project.isExternal) return true;
+        const fyKey = project.fiscalYearId ?? NONE_FISCAL_YEAR;
+        const fyMatch = !fiscalYearId || fyKey === fiscalYearId || fyKey === NONE_FISCAL_YEAR;
         const orgMatch = !organizationId || (project.organizationId ?? NONE_ORGANIZATION) === organizationId;
         return fyMatch && orgMatch;
       }),
     [projectOptions, fiscalYearId, organizationId]
   );
+
+  const selectedProject = filteredProjectOptions.find((project) => project.id === projectId) ?? null;
+  const isExternalProject = selectedProject?.isExternal ?? false;
 
   return (
     <form action={createProcurementOrderAction} className="requestForm">
@@ -135,7 +132,7 @@ export function CreateOrderForm({
           }}
         >
           <option value="">Select organization</option>
-          {organizationOptions.map((option) => (
+          {filteredOrganizationOptions.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>
@@ -155,7 +152,12 @@ export function CreateOrderForm({
       </label>
       <label>
         Department (Production Category)
-        <select name="productionCategoryId" value={productionCategoryId} onChange={(event) => setProductionCategoryId(event.target.value)} required>
+        <select
+          name="productionCategoryId"
+          value={productionCategoryId}
+          onChange={(event) => setProductionCategoryId(event.target.value)}
+          required={!isExternalProject}
+        >
           <option value="">Select department</option>
           {productionCategoryOptions.map((category) => (
             <option key={category.id} value={category.id}>
@@ -175,17 +177,7 @@ export function CreateOrderForm({
           ))}
         </select>
       </label>
-      <label className="checkboxLabel">
-        <input
-          name="budgetTracked"
-          type="checkbox"
-          checked={budgetTracked}
-          onChange={(event) => {
-            setBudgetTracked(event.target.checked);
-          }}
-        />
-        Track in budget
-      </label>
+      {isExternalProject ? <p className="heroSubtitle">External Procurement rows are automatically marked as off-budget.</p> : null}
       <input type="hidden" name="budgetLineId" value="" />
       <label>
         Title

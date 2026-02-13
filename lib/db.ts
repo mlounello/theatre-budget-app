@@ -166,9 +166,11 @@ export type ProcurementBudgetLineOption = {
 
 export type ProcurementProjectOption = {
   id: string;
+  name: string;
   label: string;
   organizationId: string | null;
   fiscalYearId: string | null;
+  isExternal: boolean;
 };
 
 export type ProductionCategoryOption = {
@@ -706,9 +708,11 @@ export async function getRequestsData(): Promise<{
 
   const projectOptions: ProcurementProjectOption[] = Array.from(projectLookup.entries()).map(([id, row]) => ({
     id,
+    name: row.projectName,
     label: `${row.projectName}${row.season ? ` (${row.season})` : ""}`,
     organizationId: row.organizationId,
-    fiscalYearId: row.fiscalYearId
+    fiscalYearId: row.fiscalYearId,
+    isExternal: row.projectName.trim().toLowerCase() === "external procurement"
   }));
 
   const productionCategoryOptions: ProductionCategoryOption[] = (
@@ -735,6 +739,7 @@ export async function getProcurementData(): Promise<{
   receipts: ProcurementReceiptRow[];
   budgetLineOptions: ProcurementBudgetLineOption[];
   projectOptions: ProcurementProjectOption[];
+  organizationOptions: OrganizationOption[];
   vendors: VendorOption[];
   accountCodeOptions: AccountCodeOption[];
   productionCategoryOptions: ProductionCategoryOption[];
@@ -742,7 +747,16 @@ export async function getProcurementData(): Promise<{
 }> {
   const supabase = await getSupabaseServerClient();
 
-  const [purchasesResponse, linesResponse, vendorsResponse, receiptsResponse, projectsResponse, accountCodeResponse, categoryResponse] =
+  const [
+    purchasesResponse,
+    linesResponse,
+    vendorsResponse,
+    receiptsResponse,
+    projectsResponse,
+    organizationsResponse,
+    accountCodeResponse,
+    categoryResponse
+  ] =
     await Promise.all([
     supabase
       .from("purchases")
@@ -764,6 +778,11 @@ export async function getProcurementData(): Promise<{
       .select("id, purchase_id, note, amount_received, fully_received, attachment_url, created_at")
       .order("created_at", { ascending: false }),
     supabase.from("projects").select("id, name, season, organization_id").order("name", { ascending: true }),
+    supabase
+      .from("organizations")
+      .select("id, name, org_code, fiscal_year_id, sort_order, fiscal_years(name)")
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true }),
     supabase.from("account_codes").select("id, code, category, name").eq("active", true).order("code", { ascending: true }),
     supabase
       .from("production_categories")
@@ -778,6 +797,7 @@ export async function getProcurementData(): Promise<{
   if (vendorsResponse.error) throw vendorsResponse.error;
   if (receiptsResponse.error) throw receiptsResponse.error;
   if (projectsResponse.error) throw projectsResponse.error;
+  if (organizationsResponse.error) throw organizationsResponse.error;
   if (accountCodeResponse.error) throw accountCodeResponse.error;
   if (categoryResponse.error) throw categoryResponse.error;
 
@@ -880,14 +900,20 @@ export async function getProcurementData(): Promise<{
     ? budgetLineOptionsRaw.filter((option) => manageableProjectIds.has(option.projectId))
     : budgetLineOptionsRaw;
 
-  const projectOptionsRaw: ProcurementProjectOption[] = (projectsResponse.data ?? []).map((row) => ({
-    id: row.id as string,
-    label: `${row.name as string}${(row.season as string | null) ? ` (${row.season as string})` : ""}`,
-    organizationId: (row.organization_id as string | null) ?? null,
-    fiscalYearId: null
-  }));
+  const projectOptionsRaw: ProcurementProjectOption[] = (projectsResponse.data ?? []).map((row) => {
+    const name = row.name as string;
+    const isExternal = name.trim().toLowerCase() === "external procurement";
+    return {
+      id: row.id as string,
+      name,
+      label: `${name}${(row.season as string | null) ? ` (${row.season as string})` : ""}`,
+      organizationId: (row.organization_id as string | null) ?? null,
+      fiscalYearId: null,
+      isExternal
+    };
+  });
   const projectOptions = canManageProcurement
-    ? projectOptionsRaw.filter((project) => manageableProjectIds.has(project.id))
+    ? projectOptionsRaw.filter((project) => manageableProjectIds.has(project.id) || project.isExternal)
     : projectOptionsRaw;
 
   const projectWithHierarchy = new Map<
@@ -911,6 +937,26 @@ export async function getProcurementData(): Promise<{
       fiscalYearId: hierarchy?.fiscalYearId ?? project.fiscalYearId ?? null
     };
   });
+
+  const organizationOptionsRaw: OrganizationOption[] = (organizationsResponse.data ?? []).map((row) => {
+    const fy = row.fiscal_years as { name?: string } | null;
+    const fiscalYearName = fy?.name ?? null;
+    return {
+      id: row.id as string,
+      name: row.name as string,
+      orgCode: row.org_code as string,
+      fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
+      fiscalYearName,
+      sortOrder: (row.sort_order as number | null) ?? 0,
+      label: `${row.org_code as string} | ${row.name as string}${fiscalYearName ? ` (${fiscalYearName})` : ""}`
+    };
+  });
+  const organizationIdsInProjects = new Set(
+    normalizedProjectOptions.map((project) => project.organizationId).filter((value): value is string => Boolean(value))
+  );
+  const organizationOptions = canManageProcurement
+    ? organizationOptionsRaw.filter((organization) => organizationIdsInProjects.has(organization.id))
+    : organizationOptionsRaw;
 
   const vendors: VendorOption[] = (vendorsResponse.data ?? []).map((row) => ({
     id: row.id as string,
@@ -950,6 +996,7 @@ export async function getProcurementData(): Promise<{
     receipts,
     budgetLineOptions,
     projectOptions: normalizedProjectOptions,
+    organizationOptions,
     vendors,
     accountCodeOptions,
     productionCategoryOptions,

@@ -19,7 +19,6 @@ import { ProjectReorder } from "@/app/settings/project-reorder";
 import {
   getAccountCodeOptions,
   getAccountCodesAdmin,
-  getFiscalYearOptions,
   getHierarchyRows,
   getOrganizationOptions,
   getProductionCategoriesAdmin,
@@ -82,7 +81,6 @@ export default async function SettingsPage({
   const allAccountCodes = await getAccountCodesAdmin();
   const productionCategories = await getProductionCategoryOptions();
   const allProductionCategories = await getProductionCategoriesAdmin();
-  const fiscalYears = await getFiscalYearOptions();
   const organizations = await getOrganizationOptions();
   const hierarchyRows = await getHierarchyRows();
 
@@ -188,7 +186,6 @@ export default async function SettingsPage({
 
       <div className="panelGrid">
         <AddEntityPanel
-          fiscalYears={fiscalYears}
           organizations={organizations}
           templates={templates}
           projects={projects}
@@ -529,17 +526,6 @@ export default async function SettingsPage({
               <label>
                 Org Code
                 <input name="orgCode" defaultValue={editingOrganization.orgCode} required />
-              </label>
-              <label>
-                Fiscal Year
-                <select name="fiscalYearId" defaultValue={editingOrganization.fiscalYearId ?? ""}>
-                  <option value="">No fiscal year</option>
-                  {fiscalYears.map((fyOption) => (
-                    <option key={fyOption.id} value={fyOption.id}>
-                      {fyOption.name}
-                    </option>
-                  ))}
-                </select>
               </label>
               <div className="modalActions">
                 <a className="tinyButton" href="/settings">

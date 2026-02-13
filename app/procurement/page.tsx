@@ -13,7 +13,17 @@ export default async function ProcurementPage({
   const okMessage = resolvedSearchParams?.ok;
   const errorMessage = resolvedSearchParams?.error;
 
-  const { purchases, receipts, budgetLineOptions, projectOptions, vendors, accountCodeOptions, productionCategoryOptions, canManageProcurement } =
+  const {
+    purchases,
+    receipts,
+    budgetLineOptions,
+    projectOptions,
+    organizationOptions,
+    vendors,
+    accountCodeOptions,
+    productionCategoryOptions,
+    canManageProcurement
+  } =
     await getProcurementData();
 
   return (
@@ -33,6 +43,7 @@ export default async function ProcurementPage({
             <CreateOrderForm
               projectOptions={projectOptions}
               budgetLineOptions={budgetLineOptions}
+              organizationOptions={organizationOptions}
               vendors={vendors}
               accountCodeOptions={accountCodeOptions}
               productionCategoryOptions={productionCategoryOptions}
@@ -58,6 +69,7 @@ export default async function ProcurementPage({
             <QuickBatchAddForm
               projectOptions={projectOptions}
               budgetLineOptions={budgetLineOptions}
+              organizationOptions={organizationOptions}
               accountCodeOptions={accountCodeOptions}
               productionCategoryOptions={productionCategoryOptions}
             />

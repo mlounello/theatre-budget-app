@@ -146,14 +146,15 @@ export function CreateRequestForm({
       }
     }
     return Array.from(map.entries())
-      .filter(([, value]) => !selectedFiscalYear || value.fiscalYearKey === selectedFiscalYear)
+      .filter(([, value]) => !selectedFiscalYear || value.fiscalYearKey === selectedFiscalYear || value.fiscalYearKey === NONE_FISCAL_YEAR)
       .map(([value, meta]) => ({ value, label: meta.label }));
   }, [budgetLineOptions, projectOptions, selectedFiscalYear]);
 
   const filteredProjectOptions = useMemo(
     () =>
       projectOptions.filter((project) => {
-        const fyMatch = !selectedFiscalYear || (project.fiscalYearId ?? NONE_FISCAL_YEAR) === selectedFiscalYear;
+        const fyKey = project.fiscalYearId ?? NONE_FISCAL_YEAR;
+        const fyMatch = !selectedFiscalYear || fyKey === selectedFiscalYear || fyKey === NONE_FISCAL_YEAR;
         const orgMatch = !selectedOrganization || (project.organizationId ?? NONE_ORGANIZATION) === selectedOrganization;
         return fyMatch && orgMatch;
       }),

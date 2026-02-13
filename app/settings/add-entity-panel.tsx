@@ -11,14 +11,12 @@ import {
 } from "@/app/settings/actions";
 import type {
   AccountCodeOption,
-  FiscalYearOption,
   OrganizationOption,
   ProductionCategoryOption,
   SettingsProject
 } from "@/lib/db";
 
 type Props = {
-  fiscalYears: FiscalYearOption[];
   organizations: OrganizationOption[];
   templates: string[];
   projects: SettingsProject[];
@@ -28,7 +26,7 @@ type Props = {
 
 type EntityType = "fiscal_year" | "organization" | "project" | "production_category" | "account_code" | "budget_line";
 
-export function AddEntityPanel({ fiscalYears, organizations, templates, projects, accountCodes, productionCategories }: Props) {
+export function AddEntityPanel({ organizations, templates, projects, accountCodes, productionCategories }: Props) {
   const [entityType, setEntityType] = useState<EntityType>("project");
 
   return (
@@ -77,17 +75,6 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
           <label>
             Org Code
             <input name="orgCode" required placeholder="Ex: ORG-THR" />
-          </label>
-          <label>
-            Fiscal Year
-            <select name="fiscalYearId">
-              <option value="">No fiscal year</option>
-              {fiscalYears.map((fy) => (
-                <option key={fy.id} value={fy.id}>
-                  {fy.name}
-                </option>
-              ))}
-            </select>
           </label>
           <button type="submit" className="buttonLink buttonPrimary">
             Add Organization

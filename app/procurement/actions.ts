@@ -104,6 +104,22 @@ function fail(message: string): never {
   redirect(`/procurement?error=${encodeURIComponent(message)}`);
 }
 
+function isExternalProcurementProjectName(name: string | null | undefined): boolean {
+  return String(name ?? "")
+    .trim()
+    .toLowerCase() === "external procurement";
+}
+
+async function getProjectMeta(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  projectId: string
+): Promise<{ id: string; name: string; isExternal: boolean }> {
+  const { data, error } = await supabase.from("projects").select("id, name").eq("id", projectId).single();
+  if (error || !data) throw new Error("Project not found.");
+  const name = data.name as string;
+  return { id: data.id as string, name, isExternal: isExternalProcurementProjectName(name) };
+}
+
 async function ensureProjectCreateAccess(
   supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
   userId: string,
@@ -117,9 +133,21 @@ async function ensureProjectCreateAccess(
     .maybeSingle();
   if (error) throw new Error(error.message);
   const role = (data?.role as string | undefined) ?? null;
-  if (!role || !["admin", "project_manager", "buyer"].includes(role)) {
+  if (role && ["admin", "project_manager", "buyer"].includes(role)) return;
+
+  const projectMeta = await getProjectMeta(supabase, projectId);
+  if (!projectMeta.isExternal) {
     throw new Error("You do not have permission to create purchases for this project.");
   }
+
+  const { data: elevated, error: elevatedError } = await supabase
+    .from("project_memberships")
+    .select("project_id")
+    .eq("user_id", userId)
+    .in("role", ["admin", "project_manager", "buyer"])
+    .limit(1);
+  if (elevatedError) throw new Error(elevatedError.message);
+  if (!elevated || elevated.length === 0) throw new Error("You do not have permission to create purchases for this project.");
 }
 
 async function ensureProjectPmOrAdminAccess(
@@ -170,7 +198,6 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
     const budgetLineId = String(formData.get("budgetLineId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
-    const budgetTracked = formData.get("budgetTracked") === "on";
     const title = String(formData.get("title") ?? "").trim();
     const orderValueRaw = String(formData.get("orderValue") ?? "").trim();
     const orderValue = parseMoney(formData.get("orderValue"));
@@ -179,9 +206,12 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
     const poNumber = String(formData.get("poNumber") ?? "").trim();
     const vendorId = String(formData.get("vendorId") ?? "").trim();
 
-    if (!projectId || !productionCategoryId || !title) throw new Error("Project, department, and title are required.");
+    if (!projectId || !title) throw new Error("Project and title are required.");
     if (orderValueRaw === "" || orderValue === 0) throw new Error("Order value must be non-zero.");
     await ensureProjectCreateAccess(supabase, user.id, projectId);
+    const projectMeta = await getProjectMeta(supabase, projectId);
+    const budgetTracked = !projectMeta.isExternal;
+    if (budgetTracked && !productionCategoryId) throw new Error("Department is required.");
 
     let line: { id: string; project_id: string; account_code_id: string | null } | null = null;
     if (budgetTracked) {
@@ -213,7 +243,7 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
       .insert({
         project_id: projectId,
         budget_line_id: line?.id ?? null,
-        production_category_id: productionCategoryId,
+        production_category_id: productionCategoryId || null,
         banner_account_code_id: bannerAccountCodeId || null,
         budget_tracked: budgetTracked,
         entered_by_user_id: user.id,
@@ -311,13 +341,15 @@ export async function createProcurementBatchAction(formData: FormData): Promise<
     const projectId = String(formData.get("projectId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
-    const budgetTracked = formData.get("budgetTracked") === "on";
     const lines = parseBatchLinesJson(formData.get("linesJson"));
 
-    if (!projectId || !productionCategoryId) throw new Error("Project and department are required.");
+    if (!projectId) throw new Error("Project is required.");
     if (lines.length === 0) throw new Error("Add at least one valid line (title + non-zero amount).");
 
     await ensureProjectCreateAccess(supabase, user.id, projectId);
+    const projectMeta = await getProjectMeta(supabase, projectId);
+    const budgetTracked = !projectMeta.isExternal;
+    if (budgetTracked && !productionCategoryId) throw new Error("Department is required.");
 
     let line: { id: string; account_code_id: string | null } | null = null;
     if (budgetTracked) {
@@ -359,7 +391,7 @@ export async function createProcurementBatchAction(formData: FormData): Promise<
         .insert({
           project_id: projectId,
           budget_line_id: line?.id ?? null,
-          production_category_id: productionCategoryId,
+          production_category_id: productionCategoryId || null,
           banner_account_code_id: bannerAccountCodeId || null,
           budget_tracked: budgetTracked,
           entered_by_user_id: user.id,
@@ -431,7 +463,7 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
     const projectId = String(formData.get("projectId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
-    const budgetTracked = formData.get("budgetTracked") === "on";
+    const requestedBudgetTracked = formData.get("budgetTracked") === "on";
     const budgetLineId = String(formData.get("budgetLineId") ?? "").trim();
     const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
     const requisitionNumber = String(formData.get("requisitionNumber") ?? "").trim();
@@ -456,6 +488,8 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
       .single();
     if (existingError || !existing) throw new Error("Purchase not found.");
     const nextProjectId = projectId || (existing.project_id as string);
+    const nextProjectMeta = await getProjectMeta(supabase, nextProjectId);
+    const budgetTracked = nextProjectMeta.isExternal ? false : requestedBudgetTracked;
 
     const isCreditCardPurchase =
       (existing.request_type as string | null) === "expense" && Boolean(existing.is_credit_card as boolean | null);
@@ -483,7 +517,7 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
             : "requested"
       : null;
 
-    if (!productionCategoryId) throw new Error("Department is required.");
+    if (budgetTracked && !productionCategoryId) throw new Error("Department is required.");
 
     let verifiedBudgetLine: { id: string; account_code_id: string | null } | null = null;
     if (budgetTracked) {
@@ -514,7 +548,7 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
         project_id: nextProjectId,
         budget_tracked: budgetTracked,
         budget_line_id: budgetTracked ? verifiedBudgetLine?.id ?? budgetLineId : null,
-        production_category_id: productionCategoryId,
+        production_category_id: productionCategoryId || null,
         banner_account_code_id: bannerAccountCodeId || null,
         procurement_status: procurementStatus,
         status: nextBudgetStatus,
@@ -772,6 +806,20 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
       await ensureProjectPmOrAdminAccess(supabase, user.id, targetProjectId);
     }
 
+    const projectIdsForMeta = new Set(existingProjectIds);
+    if (applyProject && targetProjectId) projectIdsForMeta.add(targetProjectId);
+    const { data: projectMetas, error: projectMetasError } = await supabase
+      .from("projects")
+      .select("id, name")
+      .in("id", Array.from(projectIdsForMeta));
+    if (projectMetasError) throw new Error(projectMetasError.message);
+    const externalByProjectId = new Map<string, boolean>(
+      ((projectMetas as Array<{ id?: unknown; name?: unknown }> | null) ?? []).map((row) => [
+        row.id as string,
+        isExternalProcurementProjectName(row.name as string)
+      ])
+    );
+
     // First pass: validate all target values before mutating any rows.
     for (const existing of rows) {
       const nextProjectId = applyProject ? targetProjectId : (existing.project_id as string);
@@ -779,7 +827,9 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
         ? targetProductionCategoryId
         : ((existing.production_category_id as string | null) ?? "");
       if (!nextProjectId) throw new Error("Project is required when applying project.");
-      if (!nextProductionCategoryId) throw new Error("Department is required.");
+      const nextProjectIsExternal = externalByProjectId.get(nextProjectId) ?? false;
+      const budgetTracked = nextProjectIsExternal ? false : Boolean(existing.budget_tracked);
+      if (budgetTracked && !nextProductionCategoryId) throw new Error("Department is required.");
 
       const isCreditCardPurchase =
         (existing.request_type as string | null) === "expense" && Boolean(existing.is_credit_card as boolean | null);
@@ -789,7 +839,7 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
         throw new Error("Order Value must be non-zero when applying order value.");
       }
 
-      if (Boolean(existing.budget_tracked)) {
+      if (budgetTracked) {
         const { data: ensuredLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {
           p_project_id: nextProjectId,
           p_production_category_id: nextProductionCategoryId
@@ -813,7 +863,9 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
         ? targetProductionCategoryId
         : ((existing.production_category_id as string | null) ?? "");
       if (!nextProjectId) throw new Error("Project is required when applying project.");
-      if (!nextProductionCategoryId) throw new Error("Department is required.");
+      const nextProjectIsExternal = externalByProjectId.get(nextProjectId) ?? false;
+      const budgetTracked = nextProjectIsExternal ? false : Boolean(existing.budget_tracked);
+      if (budgetTracked && !nextProductionCategoryId) throw new Error("Department is required.");
 
       const isCreditCardPurchase =
         (existing.request_type as string | null) === "expense" && Boolean(existing.is_credit_card as boolean | null);
@@ -849,7 +901,6 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
         : null;
 
       let verifiedBudgetLine: { id: string; account_code_id: string | null } | null = null;
-      const budgetTracked = Boolean(existing.budget_tracked);
       if (budgetTracked) {
         const { data: ensuredLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {
           p_project_id: nextProjectId,
@@ -876,8 +927,9 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
         .from("purchases")
         .update({
           project_id: nextProjectId,
+          budget_tracked: budgetTracked,
           budget_line_id: budgetTracked ? verifiedBudgetLine?.id ?? null : null,
-          production_category_id: nextProductionCategoryId,
+          production_category_id: nextProductionCategoryId || null,
           banner_account_code_id: nextBannerAccountCodeId,
           procurement_status: nextProcurementStatus,
           status: nextBudgetStatus,
@@ -901,9 +953,9 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
         .eq("id", rowId);
       if (updateError) throw new Error(updateError.message);
 
+      const { error: deleteAllocError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", rowId);
+      if (deleteAllocError) throw new Error(deleteAllocError.message);
       if (budgetTracked && verifiedBudgetLine) {
-        const { error: deleteAllocError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", rowId);
-        if (deleteAllocError) throw new Error(deleteAllocError.message);
         const allocationAmount =
           nextBudgetStatus === "encumbered"
             ? nextEncumberedAmount
