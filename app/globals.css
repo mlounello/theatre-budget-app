@@ -623,6 +623,29 @@ th {
   align-items: center;
 }
 
+.inlineFilters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.6rem;
+  align-items: end;
+}
+
+.inlineFilters label {
+  display: grid;
+  gap: 0.35rem;
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.86rem;
+}
+
+.inlineFilters input,
+.inlineFilters select {
+  border: 1px solid #cbd6ce;
+  border-radius: 8px;
+  padding: 0.42rem 0.5rem;
+  font-family: "Merriweather", "Georgia", serif;
+  min-width: 0;
+}
+
 .rowSelectHeader,
 .rowSelectCell {
   width: 2.2rem;

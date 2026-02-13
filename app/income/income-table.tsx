@@ -99,8 +99,24 @@ export function IncomeTable({
     sortFromUrl && SORT_KEYS.includes(sortFromUrl as SortKey) ? (sortFromUrl as SortKey) : "receivedOn"
   );
   const [direction, setDirection] = useState<SortDirection>(dirFromUrl === "asc" ? "asc" : "desc");
+  const [organizationFilter, setOrganizationFilter] = useState(searchParams.get("inc_f_org") ?? "");
+  const [typeFilter, setTypeFilter] = useState(searchParams.get("inc_f_type") ?? "");
+  const [categoryFilter, setCategoryFilter] = useState(searchParams.get("inc_f_cat") ?? "");
+  const [queryFilter, setQueryFilter] = useState(searchParams.get("inc_f_q") ?? "");
   const editingRow = rows.find((row) => row.id === editingId) ?? null;
-  const sortedRows = useMemo(() => sortRows(rows, sortKey, direction), [rows, sortKey, direction]);
+  const filteredRows = useMemo(() => {
+    const q = queryFilter.trim().toLowerCase();
+    return rows.filter((row) => {
+      if (organizationFilter && row.organizationId !== organizationFilter) return false;
+      if (typeFilter && row.incomeType !== typeFilter) return false;
+      if (categoryFilter && (row.productionCategoryId ?? "") !== categoryFilter) return false;
+      if (!q) return true;
+      const haystack =
+        `${row.projectName ?? ""} ${row.organizationLabel} ${row.productionCategoryName ?? ""} ${row.bannerAccountCode ?? ""} ${row.lineName} ${row.referenceNumber ?? ""}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [categoryFilter, organizationFilter, queryFilter, rows, typeFilter]);
+  const sortedRows = useMemo(() => sortRows(filteredRows, sortKey, direction), [filteredRows, sortKey, direction]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
@@ -162,6 +178,45 @@ export function IncomeTable({
             </button>
           </form>
         </div>
+      </div>
+
+      <div className="inlineFilters" style={{ marginBottom: "0.5rem" }}>
+        <label>
+          Organization
+          <select value={organizationFilter} onChange={(event) => setOrganizationFilter(event.target.value)}>
+            <option value="">All</option>
+            {organizations.map((organization) => (
+              <option key={organization.id} value={organization.id}>
+                {organization.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Type
+          <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+            <option value="">All</option>
+            <option value="starting_budget">Starting Budget</option>
+            <option value="donation">Donation</option>
+            <option value="ticket_sales">Ticket Sales</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>
+          Department
+          <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+            <option value="">All</option>
+            {productionCategoryOptions.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Search
+          <input value={queryFilter} onChange={(event) => setQueryFilter(event.target.value)} placeholder="Description, ref..." />
+        </label>
       </div>
 
       <div className="tableWrap">

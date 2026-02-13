@@ -199,13 +199,35 @@ export function ProcurementTable({
     sortFromUrl && SORT_KEYS.includes(sortFromUrl as SortKey) ? (sortFromUrl as SortKey) : "projectName"
   );
   const [direction, setDirection] = useState<SortDirection>(dirFromUrl === "desc" ? "desc" : "asc");
+  const [projectFilter, setProjectFilter] = useState(searchParams.get("pr_f_project") ?? "");
+  const [procurementStatusFilter, setProcurementStatusFilter] = useState(searchParams.get("pr_f_proc_status") ?? "");
+  const [budgetStatusFilter, setBudgetStatusFilter] = useState(searchParams.get("pr_f_budget_status") ?? "");
+  const [typeFilter, setTypeFilter] = useState(searchParams.get("pr_f_type") ?? "");
+  const [queryFilter, setQueryFilter] = useState(searchParams.get("pr_f_q") ?? "");
   const editingPurchase = useMemo(() => purchases.find((purchase) => purchase.id === editingId) ?? null, [purchases, editingId]);
   const [editProjectId, setEditProjectId] = useState("");
   const [editProductionCategoryId, setEditProductionCategoryId] = useState("");
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
-  const sortedPurchases = useMemo(() => sortRows(purchases, receipts, sortKey, direction), [purchases, receipts, sortKey, direction]);
+  const filteredPurchases = useMemo(() => {
+    const q = queryFilter.trim().toLowerCase();
+    return purchases.filter((purchase) => {
+      if (projectFilter && purchase.projectId !== projectFilter) return false;
+      if (procurementStatusFilter && purchase.procurementStatus !== procurementStatusFilter) return false;
+      if (budgetStatusFilter && purchase.budgetStatus !== budgetStatusFilter) return false;
+      if (typeFilter && purchase.requestType !== typeFilter) return false;
+      if (!q) return true;
+      const haystack =
+        `${purchase.projectName} ${purchase.productionCategoryName ?? ""} ${purchase.bannerAccountCode ?? ""} ${purchase.title} ${purchase.requisitionNumber ?? ""} ${purchase.poNumber ?? ""} ${purchase.vendorName ?? ""}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [budgetStatusFilter, procurementStatusFilter, projectFilter, purchases, queryFilter, typeFilter]);
+
+  const sortedPurchases = useMemo(
+    () => sortRows(filteredPurchases, receipts, sortKey, direction),
+    [filteredPurchases, receipts, sortKey, direction]
+  );
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedVisibleCount = useMemo(
     () => sortedPurchases.filter((purchase) => selectedSet.has(purchase.id)).length,
@@ -274,6 +296,55 @@ export function ProcurementTable({
             </button>
           </form>
         </div>
+      </div>
+
+      <div className="inlineFilters" style={{ marginBottom: "0.5rem" }}>
+        <label>
+          Project
+          <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}>
+            <option value="">All</option>
+            {Array.from(new Map(purchases.map((p) => [p.projectId, p.projectName])).entries()).map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Procurement
+          <select value={procurementStatusFilter} onChange={(event) => setProcurementStatusFilter(event.target.value)}>
+            <option value="">All</option>
+            {Array.from(new Set(purchases.map((purchase) => purchase.procurementStatus))).map((status) => (
+              <option key={status} value={status}>
+                {status}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Budget Status
+          <select value={budgetStatusFilter} onChange={(event) => setBudgetStatusFilter(event.target.value)}>
+            <option value="">All</option>
+            <option value="requested">Requested</option>
+            <option value="encumbered">Encumbered</option>
+            <option value="pending_cc">Pending CC</option>
+            <option value="posted">Posted</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </label>
+        <label>
+          Type
+          <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+            <option value="">All</option>
+            <option value="requisition">Requisition</option>
+            <option value="expense">Expense</option>
+            <option value="contract">Contract</option>
+          </select>
+        </label>
+        <label>
+          Search
+          <input value={queryFilter} onChange={(event) => setQueryFilter(event.target.value)} placeholder="Req, PO, vendor, title..." />
+        </label>
       </div>
 
       <div className="tableWrap">

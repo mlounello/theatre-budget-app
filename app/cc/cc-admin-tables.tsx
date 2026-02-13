@@ -8,6 +8,7 @@ import {
   bulkUpdateStatementMonthsAction,
   deleteCreditCardAction,
   deleteStatementMonthAction,
+  reopenStatementMonthAction,
   updateCreditCardAction,
   updateStatementMonthAction
 } from "@/app/cc/actions";
@@ -25,7 +26,17 @@ type StatementMonthRow = {
   creditCardName: string;
   statementMonth: string;
   postedAt: string | null;
+  postedToBannerAt: string | null;
 };
+
+type MonthSortKey = "statementMonth" | "creditCardName" | "state";
+type MonthSortDirection = "asc" | "desc";
+
+function monthStateValue(month: StatementMonthRow): string {
+  if (month.postedToBannerAt) return "posted_to_banner";
+  if (month.postedAt) return "statement_paid";
+  return "open";
+}
 
 export function CcAdminTables({
   cards,
@@ -36,11 +47,34 @@ export function CcAdminTables({
 }) {
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [selectedMonthIds, setSelectedMonthIds] = useState<string[]>([]);
+  const [monthSortKey, setMonthSortKey] = useState<MonthSortKey>("statementMonth");
+  const [monthSortDirection, setMonthSortDirection] = useState<MonthSortDirection>("desc");
   const selectedCardSet = useMemo(() => new Set(selectedCardIds), [selectedCardIds]);
   const selectedMonthSet = useMemo(() => new Set(selectedMonthIds), [selectedMonthIds]);
+  const sortedStatementMonths = useMemo(() => {
+    const dir = monthSortDirection === "asc" ? 1 : -1;
+    return [...statementMonths].sort((a, b) => {
+      const cmp =
+        monthSortKey === "statementMonth"
+          ? a.statementMonth.localeCompare(b.statementMonth)
+          : monthSortKey === "creditCardName"
+            ? a.creditCardName.localeCompare(b.creditCardName)
+            : monthStateValue(a).localeCompare(monthStateValue(b));
+      return cmp * dir;
+    });
+  }, [monthSortDirection, monthSortKey, statementMonths]);
 
   const allCardsSelected = cards.length > 0 && cards.every((card) => selectedCardSet.has(card.id));
-  const allMonthsSelected = statementMonths.length > 0 && statementMonths.every((month) => selectedMonthSet.has(month.id));
+  const allMonthsSelected = sortedStatementMonths.length > 0 && sortedStatementMonths.every((month) => selectedMonthSet.has(month.id));
+
+  function toggleMonthSort(key: MonthSortKey): void {
+    if (monthSortKey === key) {
+      setMonthSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setMonthSortKey(key);
+    setMonthSortDirection("asc");
+  }
 
   function toggleCard(id: string): void {
     setSelectedCardIds((prev) => (prev.includes(id) ? prev.filter((entry) => entry !== id) : [...prev, id]));
@@ -60,7 +94,7 @@ export function CcAdminTables({
       setSelectedMonthIds([]);
       return;
     }
-    setSelectedMonthIds(statementMonths.map((month) => month.id));
+    setSelectedMonthIds(sortedStatementMonths.map((month) => month.id));
   }
 
   return (
@@ -206,26 +240,38 @@ export function CcAdminTables({
               <th className="rowSelectHeader">
                 <input type="checkbox" checked={allMonthsSelected} onChange={toggleAllMonths} />
               </th>
-              <th>Month</th>
-              <th>Card</th>
-              <th>Status</th>
+              <th>
+                <button type="button" className="sortHeaderButton" onClick={() => toggleMonthSort("statementMonth")}>
+                  Month {monthSortKey === "statementMonth" ? (monthSortDirection === "asc" ? "▲" : "▼") : ""}
+                </button>
+              </th>
+              <th>
+                <button type="button" className="sortHeaderButton" onClick={() => toggleMonthSort("creditCardName")}>
+                  Card {monthSortKey === "creditCardName" ? (monthSortDirection === "asc" ? "▲" : "▼") : ""}
+                </button>
+              </th>
+              <th>
+                <button type="button" className="sortHeaderButton" onClick={() => toggleMonthSort("state")}>
+                  Status {monthSortKey === "state" ? (monthSortDirection === "asc" ? "▲" : "▼") : ""}
+                </button>
+              </th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {statementMonths.length === 0 ? (
+            {sortedStatementMonths.length === 0 ? (
               <tr>
                 <td colSpan={5}>No statement months yet.</td>
               </tr>
             ) : null}
-            {statementMonths.map((month) => (
+            {sortedStatementMonths.map((month) => (
               <tr key={month.id}>
                 <td className="rowSelectCell">
                   <input type="checkbox" checked={selectedMonthSet.has(month.id)} onChange={() => toggleMonth(month.id)} />
                 </td>
                 <td>{month.statementMonth.slice(0, 7)}</td>
                 <td>{month.creditCardName}</td>
-                <td>{month.postedAt ? "Statement Paid" : "Open"}</td>
+                <td>{month.postedToBannerAt ? "Posted To Banner" : month.postedAt ? "Statement Paid" : "Open"}</td>
                 <td className="actionCell">
                   {!month.postedAt ? (
                     <>
@@ -256,7 +302,16 @@ export function CcAdminTables({
                       </form>
                     </>
                   ) : (
-                    "-"
+                    month.postedToBannerAt ? (
+                      "-"
+                    ) : (
+                      <form action={reopenStatementMonthAction}>
+                        <input type="hidden" name="statementMonthId" value={month.id} />
+                        <button type="submit" className="tinyButton">
+                          Reopen
+                        </button>
+                      </form>
+                    )
                   )}
                 </td>
               </tr>

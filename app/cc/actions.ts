@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import type { PurchaseStatus } from "@/lib/types";
 
 function parseMoney(value: FormDataEntryValue | null): number {
   if (typeof value !== "string" || value.trim() === "") return 0;
@@ -229,10 +230,12 @@ export async function updateStatementMonthAction(formData: FormData): Promise<vo
 
     const { data: existing, error: existingError } = await supabase
       .from("cc_statement_months")
-      .select("id")
+      .select("id, posted_at, posted_to_banner_at")
       .eq("id", id)
       .single();
     if (existingError || !existing) throw new Error("Statement month not found.");
+    if (existing.posted_to_banner_at) throw new Error("Cannot edit a statement month that is already posted to Banner.");
+    if (existing.posted_at) throw new Error("Reopen this statement month before editing.");
     await requireCcManagerRole(supabase, user.id);
 
     const statementDate = toStatementDate(month);
@@ -392,12 +395,13 @@ export async function bulkUpdateStatementMonthsAction(formData: FormData): Promi
 
     const { data: months, error: monthsError } = await supabase
       .from("cc_statement_months")
-      .select("id, credit_card_id, statement_month, posted_at")
+      .select("id, credit_card_id, statement_month, posted_at, posted_to_banner_at")
       .in("id", ids);
     if (monthsError) throw new Error(monthsError.message);
     if (!months || months.length !== ids.length) throw new Error("Some selected statement months were not found.");
 
     for (const monthRow of months) {
+      if (monthRow.posted_to_banner_at) throw new Error("Cannot bulk edit statement months that are already posted to Banner.");
       if (monthRow.posted_at) throw new Error("Cannot bulk edit submitted statement months.");
       const { error: updateError } = await supabase
         .from("cc_statement_months")
@@ -649,7 +653,7 @@ export async function submitStatementMonthAction(formData: FormData): Promise<vo
 
     const { error: monthUpdateError } = await supabase
       .from("cc_statement_months")
-      .update({ posted_at: new Date().toISOString() })
+      .update({ posted_at: new Date().toISOString(), posted_to_banner_at: null })
       .eq("id", statementMonthId);
     if (monthUpdateError) throw new Error(monthUpdateError.message);
 
@@ -660,6 +664,276 @@ export async function submitStatementMonthAction(formData: FormData): Promise<vo
   } catch (error) {
     rethrowIfRedirect(error);
     ccError(getErrorMessage(error, "Could not submit statement month."));
+  }
+}
+
+export async function reopenStatementMonthAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+    await requireCcManagerRole(supabase, user.id);
+
+    const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
+    if (!statementMonthId) throw new Error("Statement month is required.");
+
+    const { data: statementMonth, error: statementMonthError } = await supabase
+      .from("cc_statement_months")
+      .select("id, posted_at, posted_to_banner_at, statement_month")
+      .eq("id", statementMonthId)
+      .single();
+    if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
+    if (!statementMonth.posted_at) throw new Error("Statement month is already open.");
+    if (statementMonth.posted_to_banner_at) {
+      throw new Error("Statement month is already posted to Banner. Reopening is blocked to protect posted totals.");
+    }
+
+    const { data: receiptRows, error: receiptError } = await supabase
+      .from("purchase_receipts")
+      .select("purchase_id")
+      .eq("cc_statement_month_id", statementMonthId);
+    if (receiptError) throw new Error(receiptError.message);
+
+    const purchaseIds = Array.from(
+      new Set((receiptRows ?? []).map((row) => String(row.purchase_id ?? "")).filter(Boolean))
+    );
+
+    if (purchaseIds.length > 0) {
+      const { data: purchases, error: purchasesError } = await supabase
+        .from("purchases")
+        .select("id, status, request_type, is_credit_card")
+        .in("id", purchaseIds);
+      if (purchasesError) throw new Error(purchasesError.message);
+
+      for (const purchase of purchases ?? []) {
+        const isCc = (purchase.request_type as string) === "expense" && Boolean(purchase.is_credit_card as boolean | null);
+        if (!isCc) continue;
+        if ((purchase.status as string) === "posted") {
+          throw new Error("One or more linked purchases are already posted. Reopen is blocked.");
+        }
+      }
+
+      const { error: purchaseResetError } = await supabase
+        .from("purchases")
+        .update({ cc_workflow_status: "receipts_uploaded", procurement_status: "receipts_uploaded" })
+        .in("id", purchaseIds);
+      if (purchaseResetError) throw new Error(purchaseResetError.message);
+    }
+
+    const { error: monthResetError } = await supabase
+      .from("cc_statement_months")
+      .update({ posted_at: null, posted_to_banner_at: null })
+      .eq("id", statementMonthId);
+    if (monthResetError) throw new Error(monthResetError.message);
+
+    revalidatePath("/cc");
+    revalidatePath("/requests");
+    ccSuccess("Statement month reopened.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    ccError(getErrorMessage(error, "Could not reopen statement month."));
+  }
+}
+
+export async function postStatementMonthToBannerAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+    await requireCcManagerRole(supabase, user.id);
+
+    const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
+    if (!statementMonthId) throw new Error("Statement month is required.");
+
+    const { data: statementMonth, error: statementMonthError } = await supabase
+      .from("cc_statement_months")
+      .select("id, statement_month, posted_at, posted_to_banner_at")
+      .eq("id", statementMonthId)
+      .single();
+    if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
+    if (!statementMonth.posted_at) throw new Error("Submit statement as paid before posting to Banner.");
+    if (statementMonth.posted_to_banner_at) throw new Error("Statement month is already posted to Banner.");
+
+    const { data: receiptRows, error: receiptError } = await supabase
+      .from("purchase_receipts")
+      .select("purchase_id, amount_received")
+      .eq("cc_statement_month_id", statementMonthId);
+    if (receiptError) throw new Error(receiptError.message);
+    if (!receiptRows || receiptRows.length === 0) throw new Error("No receipts are linked to this statement month.");
+
+    const totalsByPurchaseId = new Map<string, number>();
+    for (const row of receiptRows) {
+      const purchaseId = String(row.purchase_id ?? "").trim();
+      if (!purchaseId) continue;
+      const amount = Number(row.amount_received ?? 0);
+      totalsByPurchaseId.set(purchaseId, (totalsByPurchaseId.get(purchaseId) ?? 0) + (Number.isFinite(amount) ? amount : 0));
+    }
+    const purchaseIds = [...totalsByPurchaseId.keys()];
+
+    const { data: purchases, error: purchasesError } = await supabase
+      .from("purchases")
+      .select("id, project_id, status, estimated_amount, requested_amount, request_type, is_credit_card")
+      .in("id", purchaseIds);
+    if (purchasesError) throw new Error(purchasesError.message);
+
+    for (const purchase of purchases ?? []) {
+      const isCc = (purchase.request_type as string) === "expense" && Boolean(purchase.is_credit_card as boolean | null);
+      if (!isCc) continue;
+      if ((purchase.status as string) !== "pending_cc") continue;
+      const postedAmount = totalsByPurchaseId.get(purchase.id as string) ?? 0;
+
+      const { error: updateError } = await supabase
+        .from("purchases")
+        .update({
+          status: "posted",
+          requested_amount: 0,
+          encumbered_amount: 0,
+          pending_cc_amount: 0,
+          posted_amount: postedAmount,
+          posted_date: new Date().toISOString().slice(0, 10),
+          cc_workflow_status: "posted_to_account",
+          procurement_status: "posted_to_account"
+        })
+        .eq("id", purchase.id as string);
+      if (updateError) throw new Error(updateError.message);
+
+      const { error: eventError } = await supabase.from("purchase_events").insert({
+        purchase_id: purchase.id as string,
+        from_status: "pending_cc",
+        to_status: "posted",
+        estimated_amount_snapshot: Number(purchase.estimated_amount ?? 0),
+        requested_amount_snapshot: Number(purchase.requested_amount ?? 0),
+        encumbered_amount_snapshot: 0,
+        pending_cc_amount_snapshot: 0,
+        posted_amount_snapshot: postedAmount,
+        changed_by_user_id: user.id,
+        note: `Posted to Banner for statement ${(statementMonth.statement_month as string).slice(0, 7)}`
+      });
+      if (eventError) throw new Error(eventError.message);
+    }
+
+    const { error: statementUpdateError } = await supabase
+      .from("cc_statement_months")
+      .update({ posted_to_banner_at: new Date().toISOString() })
+      .eq("id", statementMonthId);
+    if (statementUpdateError) throw new Error(statementUpdateError.message);
+
+    revalidatePath("/cc");
+    revalidatePath("/requests");
+    revalidatePath("/");
+    ccSuccess("Statement month posted to Banner. Pending CC moved to YTD.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    ccError(getErrorMessage(error, "Could not post statement month to Banner."));
+  }
+}
+
+export async function createReimbursementRequestAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+
+    const projectId = String(formData.get("projectId") ?? "").trim();
+    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
+    const title = String(formData.get("title") ?? "").trim();
+    const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
+    const amount = parseMoney(formData.get("amount"));
+
+    if (!projectId || !productionCategoryId || !title) {
+      throw new Error("Project, department, and title are required.");
+    }
+    if (amount === 0) throw new Error("Amount must be non-zero.");
+
+    const { data: membership, error: membershipError } = await supabase
+      .from("project_memberships")
+      .select("role")
+      .eq("project_id", projectId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (membershipError) throw new Error(membershipError.message);
+    const role = (membership?.role as string | undefined) ?? null;
+    if (!role || !["admin", "project_manager", "buyer"].includes(role)) {
+      throw new Error("You do not have permission to create requests for this project.");
+    }
+
+    const { data: budgetLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {
+      p_project_id: projectId,
+      p_production_category_id: productionCategoryId
+    });
+    if (ensureLineError || !budgetLineId) throw new Error(ensureLineError?.message ?? "Unable to resolve reporting line.");
+
+    const { data: budgetLine, error: budgetLineError } = await supabase
+      .from("project_budget_lines")
+      .select("id, account_code_id")
+      .eq("id", budgetLineId as string)
+      .single();
+    if (budgetLineError || !budgetLine) throw new Error("Reporting line not found.");
+
+    const { data: inserted, error: insertError } = await supabase
+      .from("purchases")
+      .insert({
+        project_id: projectId,
+        budget_line_id: budgetLine.id,
+        production_category_id: productionCategoryId,
+        banner_account_code_id: bannerAccountCodeId || null,
+        entered_by_user_id: user.id,
+        title,
+        reference_number: referenceNumber || null,
+        requisition_number: null,
+        estimated_amount: amount,
+        requested_amount: amount,
+        encumbered_amount: 0,
+        pending_cc_amount: 0,
+        posted_amount: 0,
+        status: "requested",
+        request_type: "expense",
+        is_credit_card: false,
+        cc_workflow_status: null,
+        procurement_status: "requested"
+      })
+      .select("id")
+      .single();
+    if (insertError || !inserted) throw new Error(insertError?.message ?? "Could not create reimbursement.");
+
+    const { error: allocationError } = await supabase.from("purchase_allocations").insert({
+      purchase_id: inserted.id as string,
+      reporting_budget_line_id: budgetLine.id as string,
+      account_code_id: bannerAccountCodeId || (budgetLine.account_code_id as string | null) || null,
+      production_category_id: productionCategoryId,
+      amount,
+      reporting_bucket: "direct"
+    });
+    if (allocationError) throw new Error(allocationError.message);
+
+    const { error: eventError } = await supabase.from("purchase_events").insert({
+      purchase_id: inserted.id as string,
+      from_status: null,
+      to_status: "requested" as PurchaseStatus,
+      estimated_amount_snapshot: amount,
+      requested_amount_snapshot: amount,
+      encumbered_amount_snapshot: 0,
+      pending_cc_amount_snapshot: 0,
+      posted_amount_snapshot: 0,
+      changed_by_user_id: user.id,
+      note: "Reimbursement request created"
+    });
+    if (eventError) throw new Error(eventError.message);
+
+    revalidatePath("/cc");
+    revalidatePath("/requests");
+    revalidatePath("/");
+    ccSuccess("Reimbursement request saved.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    ccError(getErrorMessage(error, "Could not save reimbursement request."));
   }
 }
 

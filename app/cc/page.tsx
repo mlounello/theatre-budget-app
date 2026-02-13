@@ -1,12 +1,15 @@
 import {
   assignReceiptsToStatementAction,
+  createReimbursementRequestAction,
   createCreditCardAction,
+  postStatementMonthToBannerAction,
+  reopenStatementMonthAction,
   submitStatementMonthAction,
   unassignReceiptFromStatementAction
 } from "@/app/cc/actions";
 import { CcAdminTables } from "@/app/cc/cc-admin-tables";
 import { CreateStatementMonthForm } from "@/app/cc/create-statement-month-form";
-import { getCcPendingRows, getSettingsProjects } from "@/lib/db";
+import { getAccountCodeOptions, getCcPendingRows, getProductionCategoryOptions, getSettingsProjects } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
@@ -16,6 +19,7 @@ type StatementMonthRow = {
   creditCardName: string;
   statementMonth: string;
   postedAt: string | null;
+  postedToBannerAt: string | null;
 };
 
 type PendingReceiptRow = {
@@ -36,7 +40,16 @@ type PendingReceiptRow = {
 export default async function CreditCardPage({
   searchParams
 }: {
-  searchParams?: Promise<{ ok?: string; error?: string }>;
+  searchParams?: Promise<{
+    ok?: string;
+    error?: string;
+    cc_month_card?: string;
+    cc_month_state?: string;
+    cc_month_q?: string;
+    cc_pending_project?: string;
+    cc_pending_card?: string;
+    cc_pending_q?: string;
+  }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const okMessage = resolvedSearchParams?.ok;
@@ -49,14 +62,16 @@ export default async function CreditCardPage({
     cardsResponse,
     monthsResponse,
     pendingPurchasesResponse,
-    membershipsResponse
+    membershipsResponse,
+    accountCodeOptions,
+    productionCategoryOptions
   ] = await Promise.all([
     getCcPendingRows(),
     getSettingsProjects(),
     supabase.from("credit_cards").select("id, nickname, masked_number, active").order("nickname", { ascending: true }),
     supabase
       .from("cc_statement_months")
-      .select("id, credit_card_id, statement_month, posted_at, credit_cards(nickname)")
+      .select("id, credit_card_id, statement_month, posted_at, posted_to_banner_at, credit_cards(nickname)")
       .order("statement_month", { ascending: false }),
     supabase
       .from("purchase_receipts")
@@ -67,7 +82,9 @@ export default async function CreditCardPage({
       .eq("purchases.request_type", "expense")
       .eq("purchases.is_credit_card", true)
       .order("created_at", { ascending: true }),
-    supabase.from("project_memberships").select("project_id, role")
+    supabase.from("project_memberships").select("project_id, role"),
+    getAccountCodeOptions(),
+    getProductionCategoryOptions()
   ]);
 
   if (cardsResponse.error) throw cardsResponse.error;
@@ -99,8 +116,27 @@ export default async function CreditCardPage({
       creditCardId: row.credit_card_id as string,
       creditCardName: card?.nickname ?? "Unknown Card",
       statementMonth: row.statement_month as string,
-      postedAt: (row.posted_at as string | null) ?? null
+      postedAt: (row.posted_at as string | null) ?? null,
+      postedToBannerAt: (row.posted_to_banner_at as string | null) ?? null
     };
+  });
+
+  const selectedMonthCard = (resolvedSearchParams?.cc_month_card ?? "").trim();
+  const selectedMonthState = (resolvedSearchParams?.cc_month_state ?? "").trim();
+  const selectedMonthQuery = (resolvedSearchParams?.cc_month_q ?? "").trim().toLowerCase();
+
+  const filteredStatementMonths = statementMonths.filter((month) => {
+    if (selectedMonthCard && month.creditCardId !== selectedMonthCard) return false;
+    if (selectedMonthState === "open" && month.postedAt) return false;
+    if (selectedMonthState === "statement_paid" && (!month.postedAt || month.postedToBannerAt)) return false;
+    if (selectedMonthState === "posted_to_banner" && !month.postedToBannerAt) return false;
+    if (selectedMonthQuery) {
+      const hay = `${month.creditCardName} ${month.statementMonth.slice(0, 7)} ${month.postedAt ? "statement paid" : "open"} ${
+        month.postedToBannerAt ? "posted to banner" : ""
+      }`.toLowerCase();
+      if (!hay.includes(selectedMonthQuery)) return false;
+    }
+    return true;
   });
 
   const pendingReceipts: PendingReceiptRow[] = (pendingPurchasesResponse.data ?? []).map((row) => {
@@ -138,6 +174,18 @@ export default async function CreditCardPage({
   const projectNameById = new Map(
     projects.map((project) => [project.id, `${project.name}${project.season ? ` (${project.season})` : ""}`])
   );
+  const selectedPendingProject = (resolvedSearchParams?.cc_pending_project ?? "").trim();
+  const selectedPendingCard = (resolvedSearchParams?.cc_pending_card ?? "").trim();
+  const selectedPendingQuery = (resolvedSearchParams?.cc_pending_q ?? "").trim().toLowerCase();
+  const filteredPendingRows = rows
+    .filter((row) => {
+      if (selectedPendingProject && row.projectId !== selectedPendingProject) return false;
+      if (selectedPendingCard && (row.creditCardName ?? "") !== selectedPendingCard) return false;
+      if (!selectedPendingQuery) return true;
+      const hay = `${projectNameById.get(row.projectId) ?? row.projectId} ${row.budgetCode} ${row.creditCardName ?? "Unassigned"}`.toLowerCase();
+      return hay.includes(selectedPendingQuery);
+    })
+    .sort((a, b) => b.pendingCcTotal - a.pendingCcTotal);
 
   return (
     <section>
@@ -180,14 +228,103 @@ export default async function CreditCardPage({
             <p className="errorNote">You need Admin or Project Manager access to manage statements.</p>
           ) : null}
         </article>
+
+        {manageableProjects.length > 0 || hasGlobalAdmin ? (
+          <article className="panel">
+            <h2>Add Reimbursement</h2>
+            <form action={createReimbursementRequestAction} className="requestForm">
+              <label>
+                Project
+                <select name="projectId" required>
+                  <option value="">Select project</option>
+                  {manageableProjects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                      {project.season ? ` (${project.season})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Department
+                <select name="productionCategoryId" required>
+                  <option value="">Select department</option>
+                  {productionCategoryOptions.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Banner Code
+                <select name="bannerAccountCodeId" defaultValue="">
+                  <option value="">Unassigned</option>
+                  {accountCodeOptions.map((accountCode) => (
+                    <option key={accountCode.id} value={accountCode.id}>
+                      {accountCode.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Title
+                <input name="title" required placeholder="Reimbursement request title" />
+              </label>
+              <label>
+                Reference (optional)
+                <input name="referenceNumber" placeholder="Receipt / claim reference" />
+              </label>
+              <label>
+                Amount
+                <input name="amount" type="number" step="0.01" required />
+              </label>
+              <button type="submit" className="buttonLink buttonPrimary">
+                Save Reimbursement
+              </button>
+            </form>
+          </article>
+        ) : null}
       </div>
 
       <article className="panel panelFull">
         <h2>Statement Months</h2>
-        <p className="heroSubtitle">Use the bulk table above to edit/delete statement months. Expand a month below to assign or reconcile receipts.</p>
-        {statementMonths.length === 0 ? <p>No statement months yet.</p> : null}
+        <p className="heroSubtitle">
+          Use the bulk table above to edit/delete statement months. Expand a month below to assign receipts, mark statement paid, then
+          post to Banner.
+        </p>
+        <form method="get" className="requestForm inlineFilterForm" style={{ marginBottom: "0.6rem" }}>
+          <label>
+            Card
+            <select name="cc_month_card" defaultValue={selectedMonthCard}>
+              <option value="">All cards</option>
+              {cards.map((card) => (
+                <option key={card.id} value={card.id}>
+                  {card.nickname}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            State
+            <select name="cc_month_state" defaultValue={selectedMonthState}>
+              <option value="">All states</option>
+              <option value="open">Open</option>
+              <option value="statement_paid">Statement Paid</option>
+              <option value="posted_to_banner">Posted To Banner</option>
+            </select>
+          </label>
+          <label>
+            Search
+            <input name="cc_month_q" defaultValue={selectedMonthQuery} placeholder="Card or month" />
+          </label>
+          <button type="submit" className="tinyButton">
+            Filter
+          </button>
+        </form>
+        {filteredStatementMonths.length === 0 ? <p>No statement months match the current filter.</p> : null}
 
-        {statementMonths.map((month) => {
+        {filteredStatementMonths.map((month) => {
           const assignedReceipts = pendingReceipts.filter((receipt) => receipt.statementMonthId === month.id);
           const unassignedCandidates = pendingReceipts.filter(
             (receipt) =>
@@ -199,7 +336,7 @@ export default async function CreditCardPage({
             <details key={month.id} className="treeNode" open>
               <summary>
                 <strong>{month.statementMonth.slice(0, 7)}</strong> | {month.creditCardName} |{" "}
-                {month.postedAt ? "Statement Paid" : "Open"}
+                {month.postedToBannerAt ? "Posted To Banner" : month.postedAt ? "Statement Paid" : "Open"}
               </summary>
 
               <div className="tableWrap">
@@ -277,7 +414,27 @@ export default async function CreditCardPage({
                   </form>
                 </>
               ) : (
-                <p className="successNote">Statement submitted and linked receipts marked as Statement Paid.</p>
+                <>
+                  <p className="successNote">Statement submitted and linked receipts marked as Statement Paid.</p>
+                  {!month.postedToBannerAt ? (
+                    <form action={postStatementMonthToBannerAction} className="inlineEditForm" style={{ marginTop: "0.5rem" }}>
+                      <input type="hidden" name="statementMonthId" value={month.id} />
+                      <button type="submit" className="buttonLink buttonPrimary">
+                        Post To Banner (Move Pending CC To YTD)
+                      </button>
+                    </form>
+                  ) : (
+                    <p className="successNote">Posted to Banner: {month.postedToBannerAt.slice(0, 10)}</p>
+                  )}
+                  {!month.postedToBannerAt ? (
+                    <form action={reopenStatementMonthAction} className="inlineEditForm" style={{ marginTop: "0.4rem" }}>
+                      <input type="hidden" name="statementMonthId" value={month.id} />
+                      <button type="submit" className="tinyButton">
+                        Reopen Statement Month
+                      </button>
+                    </form>
+                  ) : null}
+                </>
               )}
             </details>
           );
@@ -287,6 +444,39 @@ export default async function CreditCardPage({
       <article className="panel panelFull">
         <h2>Current Pending CC by Budget Code</h2>
         <p className="heroSubtitle">Live pending balances still waiting to be posted.</p>
+        <form method="get" className="requestForm inlineFilterForm" style={{ marginTop: "0.6rem" }}>
+          <label>
+            Project
+            <select name="cc_pending_project" defaultValue={selectedPendingProject}>
+              <option value="">All projects</option>
+              {Array.from(new Map(rows.map((row) => [row.projectId, projectNameById.get(row.projectId) ?? row.projectId])).entries()).map(
+                ([id, label]) => (
+                  <option key={id} value={id}>
+                    {label}
+                  </option>
+                )
+              )}
+            </select>
+          </label>
+          <label>
+            Card
+            <select name="cc_pending_card" defaultValue={selectedPendingCard}>
+              <option value="">All cards</option>
+              {Array.from(new Set(rows.map((row) => row.creditCardName ?? "Unassigned"))).map((cardName) => (
+                <option key={cardName} value={cardName}>
+                  {cardName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Search
+            <input name="cc_pending_q" defaultValue={selectedPendingQuery} placeholder="Project or budget code" />
+          </label>
+          <button type="submit" className="tinyButton">
+            Filter
+          </button>
+        </form>
       </article>
 
       <div className="tableWrap">
@@ -300,12 +490,12 @@ export default async function CreditCardPage({
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {filteredPendingRows.length === 0 ? (
               <tr>
                 <td colSpan={4}>No pending credit card balances.</td>
               </tr>
             ) : null}
-            {rows.map((row, idx) => (
+            {filteredPendingRows.map((row, idx) => (
               <tr key={`${row.projectId}-${row.budgetCode}-${row.creditCardName ?? "na"}-${idx}`}>
                 <td>{projectNameById.get(row.projectId) ?? row.projectId}</td>
                 <td>{row.budgetCode}</td>

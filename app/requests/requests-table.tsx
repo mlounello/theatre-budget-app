@@ -118,10 +118,31 @@ export function RequestsTable({
   const initialDirection: SortDirection = dirFromUrl === "desc" ? "desc" : "asc";
   const [sortKey, setSortKey] = useState<SortKey>(initialSortKey);
   const [direction, setDirection] = useState<SortDirection>(initialDirection);
+  const [projectFilter, setProjectFilter] = useState(searchParams.get("rq_f_project") ?? "");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("rq_f_status") ?? "");
+  const [typeFilter, setTypeFilter] = useState(searchParams.get("rq_f_type") ?? "");
+  const [ccFilter, setCcFilter] = useState(searchParams.get("rq_f_cc") ?? "");
+  const [queryFilter, setQueryFilter] = useState(searchParams.get("rq_f_q") ?? "");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
 
-  const sortedPurchases = useMemo(() => sortRows(purchases, sortKey, direction), [purchases, sortKey, direction]);
+  const filteredPurchases = useMemo(() => {
+    const q = queryFilter.trim().toLowerCase();
+    return purchases.filter((purchase) => {
+      if (projectFilter && purchase.projectId !== projectFilter) return false;
+      if (statusFilter && purchase.status !== statusFilter) return false;
+      if (typeFilter && purchase.requestType !== typeFilter) return false;
+      if (ccFilter === "cc_only" && !purchase.isCreditCard) return false;
+      if (ccFilter === "non_cc_only" && purchase.isCreditCard) return false;
+      if (!q) return true;
+      const requestNumber = purchase.requestType === "requisition" ? purchase.requisitionNumber : purchase.referenceNumber;
+      const haystack =
+        `${purchase.projectName} ${purchase.productionCategoryName ?? ""} ${purchase.bannerAccountCode ?? ""} ${requestNumber ?? ""} ${purchase.title} ${purchase.status} ${purchase.requestType}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [ccFilter, projectFilter, purchases, queryFilter, statusFilter, typeFilter]);
+
+  const sortedPurchases = useMemo(() => sortRows(filteredPurchases, sortKey, direction), [filteredPurchases, sortKey, direction]);
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedVisibleCount = useMemo(
     () => sortedPurchases.filter((purchase) => selectedSet.has(purchase.id)).length,
@@ -186,6 +207,52 @@ export function RequestsTable({
             </button>
           </form>
         </div>
+      </div>
+
+      <div className="inlineFilters" style={{ marginBottom: "0.5rem" }}>
+        <label>
+          Project
+          <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}>
+            <option value="">All</option>
+            {Array.from(new Map(purchases.map((p) => [p.projectId, p.projectName])).entries()).map(([id, label]) => (
+              <option key={id} value={id}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Status
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="">All</option>
+            <option value="requested">Requested</option>
+            <option value="encumbered">Encumbered</option>
+            <option value="pending_cc">Pending CC</option>
+            <option value="posted">Posted</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </label>
+        <label>
+          Type
+          <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
+            <option value="">All</option>
+            <option value="requisition">Requisition</option>
+            <option value="expense">Expense</option>
+            <option value="contract">Contract</option>
+          </select>
+        </label>
+        <label>
+          CC
+          <select value={ccFilter} onChange={(event) => setCcFilter(event.target.value)}>
+            <option value="">All</option>
+            <option value="cc_only">CC only</option>
+            <option value="non_cc_only">Non-CC only</option>
+          </select>
+        </label>
+        <label>
+          Search
+          <input value={queryFilter} onChange={(event) => setQueryFilter(event.target.value)} placeholder="Title, req/ref, dept..." />
+        </label>
       </div>
 
       <div className="tableWrap">
