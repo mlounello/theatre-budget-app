@@ -38,6 +38,29 @@ export type BudgetLineTotal = {
   remainingIfRequestedApproved: number;
 };
 
+export type ProjectCategoryRollup = {
+  category: string;
+  allocatedTotal: number;
+  requestedOpenTotal: number;
+  encTotal: number;
+  pendingCcTotal: number;
+  ytdTotal: number;
+  obligatedTotal: number;
+  remainingTrue: number;
+  remainingIfRequestedApproved: number;
+};
+
+export type ProjectBannerRollup = {
+  bannerAccountCode: string;
+  bannerCategory: string;
+  bannerName: string;
+  requestedTotal: number;
+  encTotal: number;
+  pendingCcTotal: number;
+  ytdTotal: number;
+  obligatedTotal: number;
+};
+
 export type PurchaseRow = {
   id: string;
   projectId: string;
@@ -396,7 +419,11 @@ export async function getDashboardProjects(): Promise<DashboardProject[]> {
   });
 }
 
-export async function getProjectBudgetBoard(projectId: string): Promise<{ projectName: string; lines: BudgetLineTotal[] }> {
+export async function getProjectBudgetBoard(projectId: string): Promise<{
+  projectName: string;
+  categoryRollups: ProjectCategoryRollup[];
+  bannerRollups: ProjectBannerRollup[];
+}> {
   const supabase = await getSupabaseServerClient();
 
   const { data: projectData, error: projectError } = await supabase
@@ -422,21 +449,66 @@ export async function getProjectBudgetBoard(projectId: string): Promise<{ projec
     throw error;
   }
 
+  const lines: BudgetLineTotal[] = (data ?? []).map((row) => ({
+    projectBudgetLineId: row.project_budget_line_id as string,
+    budgetCode: row.budget_code as string,
+    category: row.category as string,
+    lineName: row.line_name as string,
+    allocatedAmount: asNumber(row.allocated_amount as string | number | null),
+    requestedOpenTotal: asNumber(row.requested_open_total as string | number | null),
+    encTotal: asNumber(row.enc_total as string | number | null),
+    pendingCcTotal: asNumber(row.pending_cc_total as string | number | null),
+    ytdTotal: asNumber(row.ytd_total as string | number | null),
+    obligatedTotal: asNumber(row.obligated_total as string | number | null),
+    remainingTrue: asNumber(row.remaining_true as string | number | null),
+    remainingIfRequestedApproved: asNumber(row.remaining_if_requested_approved as string | number | null)
+  }));
+
+  const categoryMap = new Map<string, ProjectCategoryRollup>();
+  for (const line of lines) {
+    const key = line.category || "Uncategorized";
+    const current = categoryMap.get(key) ?? {
+      category: key,
+      allocatedTotal: 0,
+      requestedOpenTotal: 0,
+      encTotal: 0,
+      pendingCcTotal: 0,
+      ytdTotal: 0,
+      obligatedTotal: 0,
+      remainingTrue: 0,
+      remainingIfRequestedApproved: 0
+    };
+    current.allocatedTotal += line.allocatedAmount;
+    current.requestedOpenTotal += line.requestedOpenTotal;
+    current.encTotal += line.encTotal;
+    current.pendingCcTotal += line.pendingCcTotal;
+    current.ytdTotal += line.ytdTotal;
+    current.obligatedTotal += line.obligatedTotal;
+    current.remainingTrue += line.remainingTrue;
+    current.remainingIfRequestedApproved += line.remainingIfRequestedApproved;
+    categoryMap.set(key, current);
+  }
+
+  const { data: bannerData, error: bannerError } = await supabase
+    .from("v_actuals_by_banner_code")
+    .select("banner_account_code, banner_category, banner_name, requested_total, enc_total, pending_cc_total, posted_total, obligated_total")
+    .eq("project_id", projectId)
+    .order("banner_account_code", { ascending: true });
+
+  if (bannerError) throw bannerError;
+
   return {
     projectName: (projectData.name as string) ?? "Project",
-    lines: (data ?? []).map((row) => ({
-      projectBudgetLineId: row.project_budget_line_id as string,
-      budgetCode: row.budget_code as string,
-      category: row.category as string,
-      lineName: row.line_name as string,
-      allocatedAmount: asNumber(row.allocated_amount as string | number | null),
-      requestedOpenTotal: asNumber(row.requested_open_total as string | number | null),
+    categoryRollups: [...categoryMap.values()].sort((a, b) => a.category.localeCompare(b.category)),
+    bannerRollups: (bannerData ?? []).map((row) => ({
+      bannerAccountCode: (row.banner_account_code as string) ?? "UNASSIGNED",
+      bannerCategory: (row.banner_category as string) ?? "Unassigned",
+      bannerName: (row.banner_name as string) ?? "Unassigned",
+      requestedTotal: asNumber(row.requested_total as string | number | null),
       encTotal: asNumber(row.enc_total as string | number | null),
       pendingCcTotal: asNumber(row.pending_cc_total as string | number | null),
-      ytdTotal: asNumber(row.ytd_total as string | number | null),
-      obligatedTotal: asNumber(row.obligated_total as string | number | null),
-      remainingTrue: asNumber(row.remaining_true as string | number | null),
-      remainingIfRequestedApproved: asNumber(row.remaining_if_requested_approved as string | number | null)
+      ytdTotal: asNumber(row.posted_total as string | number | null),
+      obligatedTotal: asNumber(row.obligated_total as string | number | null)
     }))
   };
 }
