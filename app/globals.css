@@ -540,6 +540,29 @@ th {
   gap: 0.5rem;
 }
 
+.batchLinesBlock {
+  grid-column: 1 / -1;
+  border: 1px solid #d9e1da;
+  border-radius: 10px;
+  padding: 0.6rem;
+  background: #f8fbf8;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.batchLinesHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.batchLineRow {
+  display: grid;
+  grid-template-columns: 2fr 1.2fr 1.2fr 1fr 1fr auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
 .checkboxStack {
   display: grid;
   gap: 0.35rem;
@@ -707,6 +730,10 @@ th {
   }
 
   .splitRow {
+    grid-template-columns: 1fr;
+  }
+
+  .batchLineRow {
     grid-template-columns: 1fr;
   }
 

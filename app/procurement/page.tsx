@@ -1,5 +1,6 @@
 import { createVendorAction } from "@/app/procurement/actions";
 import { CreateOrderForm } from "@/app/procurement/create-order-form";
+import { QuickBatchAddForm } from "@/app/procurement/quick-batch-add-form";
 import { ProcurementTable } from "@/app/procurement/procurement-table";
 import { getProcurementData } from "@/lib/db";
 
@@ -49,6 +50,17 @@ export default async function ProcurementPage({
                 Save Vendor
               </button>
             </form>
+          </article>
+
+          <article className="panel panelFull">
+            <h2>Quick Batch Add</h2>
+            <p className="heroSubtitle">Set shared context once, then add many requisition/CC rows at once.</p>
+            <QuickBatchAddForm
+              projectOptions={projectOptions}
+              budgetLineOptions={budgetLineOptions}
+              accountCodeOptions={accountCodeOptions}
+              productionCategoryOptions={productionCategoryOptions}
+            />
           </article>
         </div>
       ) : null}

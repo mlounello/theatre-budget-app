@@ -255,6 +255,157 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
   }
 }
 
+type BatchProcurementLine = {
+  title: string;
+  requisitionNumber: string | null;
+  poNumber: string | null;
+  amount: number;
+  entryType: "requisition" | "cc";
+};
+
+function parseBatchLinesJson(value: FormDataEntryValue | null): BatchProcurementLine[] {
+  if (typeof value !== "string" || value.trim() === "") return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((entry): BatchProcurementLine => ({
+        title: String((entry as { title?: unknown }).title ?? "").trim(),
+        requisitionNumber: String((entry as { requisitionNumber?: unknown }).requisitionNumber ?? "").trim() || null,
+        poNumber: String((entry as { poNumber?: unknown }).poNumber ?? "").trim() || null,
+        amount: Number.parseFloat(String((entry as { amount?: unknown }).amount ?? "0")),
+        entryType: String((entry as { entryType?: unknown }).entryType ?? "").trim().toLowerCase() === "cc" ? "cc" : "requisition"
+      }))
+      .filter((line) => line.title && Number.isFinite(line.amount) && line.amount !== 0);
+  } catch {
+    return [];
+  }
+}
+
+export async function createProcurementBatchAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+
+    const projectId = String(formData.get("projectId") ?? "").trim();
+    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
+    const budgetTracked = formData.get("budgetTracked") === "on";
+    const lines = parseBatchLinesJson(formData.get("linesJson"));
+
+    if (!projectId || !productionCategoryId) throw new Error("Project and department are required.");
+    if (lines.length === 0) throw new Error("Add at least one valid line (title + non-zero amount).");
+
+    await ensureProjectCreateAccess(supabase, user.id, projectId);
+
+    let line: { id: string; account_code_id: string | null } | null = null;
+    if (budgetTracked) {
+      const { data: ensuredLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {
+        p_project_id: projectId,
+        p_production_category_id: productionCategoryId
+      });
+      if (ensureLineError || !ensuredLineId) throw new Error(ensureLineError?.message ?? "Could not resolve reporting line.");
+
+      const { data: lineData, error: lineError } = await supabase
+        .from("project_budget_lines")
+        .select("id, project_id, account_code_id")
+        .eq("id", ensuredLineId as string)
+        .single();
+      if (lineError || !lineData) throw new Error("Invalid budget line.");
+      if ((lineData.project_id as string) !== projectId) throw new Error("Budget line must belong to selected project.");
+      line = {
+        id: lineData.id as string,
+        account_code_id: (lineData.account_code_id as string | null) ?? null
+      };
+    }
+
+    // Prevalidate row-level details before writes.
+    for (const entry of lines) {
+      if (!entry.title) throw new Error("Each line needs a title.");
+      if (!Number.isFinite(entry.amount) || entry.amount === 0) throw new Error("Each line amount must be non-zero.");
+      if (entry.entryType !== "requisition" && entry.entryType !== "cc") throw new Error("Invalid line type.");
+    }
+
+    const createdPurchaseIds: string[] = [];
+    for (const entry of lines) {
+      const isCc = entry.entryType === "cc";
+      const toStatus: PurchaseStatus = isCc ? "pending_cc" : "requested";
+      const requisitionNumber = entry.requisitionNumber;
+      const poNumber = entry.poNumber;
+
+      const { data: purchase, error: insertError } = await supabase
+        .from("purchases")
+        .insert({
+          project_id: projectId,
+          budget_line_id: line?.id ?? null,
+          production_category_id: productionCategoryId,
+          banner_account_code_id: bannerAccountCodeId || null,
+          budget_tracked: budgetTracked,
+          entered_by_user_id: user.id,
+          title: entry.title,
+          reference_number: null,
+          requisition_number: requisitionNumber,
+          po_number: poNumber,
+          estimated_amount: entry.amount,
+          requested_amount: isCc ? 0 : entry.amount,
+          encumbered_amount: 0,
+          pending_cc_amount: isCc ? entry.amount : 0,
+          posted_amount: 0,
+          request_type: isCc ? "expense" : "requisition",
+          is_credit_card: isCc,
+          cc_workflow_status: isCc ? "requested" : null,
+          status: toStatus,
+          procurement_status: "requested"
+        })
+        .select("id")
+        .single();
+
+      if (insertError || !purchase) {
+        throw new Error(insertError?.message ?? "Failed creating one of the batch rows.");
+      }
+      createdPurchaseIds.push(purchase.id as string);
+
+      if (budgetTracked && line) {
+        const { error: allocationError } = await supabase.from("purchase_allocations").insert({
+          purchase_id: purchase.id,
+          reporting_budget_line_id: line.id,
+          account_code_id: bannerAccountCodeId || line.account_code_id,
+          production_category_id: productionCategoryId,
+          amount: entry.amount,
+          reporting_bucket: "direct"
+        });
+        if (allocationError) throw new Error(allocationError.message);
+      }
+
+      const { error: eventError } = await supabase.from("purchase_events").insert({
+        purchase_id: purchase.id,
+        from_status: null,
+        to_status: toStatus,
+        estimated_amount_snapshot: entry.amount,
+        requested_amount_snapshot: isCc ? 0 : entry.amount,
+        encumbered_amount_snapshot: 0,
+        pending_cc_amount_snapshot: isCc ? entry.amount : 0,
+        posted_amount_snapshot: 0,
+        changed_by_user_id: user.id,
+        note: isCc ? "Batch created credit-card entry" : "Batch created requisition entry"
+      });
+      if (eventError) throw new Error(eventError.message);
+    }
+
+    revalidatePath("/procurement");
+    revalidatePath("/requests");
+    revalidatePath("/");
+    revalidatePath(`/projects/${projectId}`);
+    ok(`Batch added (${createdPurchaseIds.length} rows).`);
+  } catch (error) {
+    rethrowIfRedirect(error);
+    fail(getErrorMessage(error, "Could not create batch orders."));
+  }
+}
+
 export async function updateProcurementAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();
