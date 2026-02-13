@@ -776,6 +776,10 @@ export async function bulkUpdateRequestsAction(formData: FormData): Promise<void
   if (!purchases || purchases.length !== purchaseIds.length) throw new Error("Some selected requests were not found.");
 
   const projectIds = [...new Set(purchases.map((row) => row.project_id as string))];
+  if (applyProject) {
+    if (!targetProjectId) throw new Error("Project is required when applying project.");
+    projectIds.push(targetProjectId);
+  }
   const { data: memberships, error: membershipError } = await supabase
     .from("project_memberships")
     .select("project_id, role")
@@ -805,8 +809,31 @@ export async function bulkUpdateRequestsAction(formData: FormData): Promise<void
     throw new Error("Bulk edit does not support split allocation rows. Edit those requests individually.");
   }
 
+  type RequestBulkPlan = {
+    purchaseId: string;
+    oldProjectId: string;
+    nextProjectId: string;
+    nextProductionCategoryId: string;
+    resolvedBudgetLineId: string;
+    budgetLineAccountCodeId: string | null;
+    nextRequestType: "requisition" | "expense" | "contract";
+    nextIsCreditCard: boolean;
+    nextCcWorkflowStatus: "requested" | "posted_to_account" | null;
+    nextTitle: string;
+    nextEstimatedAmount: number;
+    nextRequestedAmount: number;
+    requisitionNumber: string | null;
+    referenceNumber: string | null;
+    bannerAccountCodeId: string | null;
+    allocationAmount: number;
+  };
+
+  const plans: RequestBulkPlan[] = [];
+
+  // First pass: validate all selected rows and build their update plans.
   for (const purchase of purchases) {
     const purchaseId = purchase.id as string;
+    const oldProjectId = purchase.project_id as string;
     const nextProjectId = applyProject ? targetProjectId : (purchase.project_id as string);
     const nextProductionCategoryId = applyCategory
       ? targetProductionCategoryId
@@ -863,44 +890,66 @@ export async function bulkUpdateRequestsAction(formData: FormData): Promise<void
       ? targetBannerAccountCodeId || null
       : ((purchase.banner_account_code_id as string | null) ?? null);
 
-    const { error: updateError } = await supabase
-      .from("purchases")
-      .update({
-        project_id: nextProjectId,
-        budget_line_id: resolvedBudgetLineId,
-        production_category_id: nextProductionCategoryId,
-        banner_account_code_id: bannerAccountCodeId,
-        title: nextTitle,
-        request_type: nextRequestType,
-        is_credit_card: nextIsCreditCard,
-        cc_workflow_status: nextCcWorkflowStatus,
-        estimated_amount: nextEstimatedAmount,
-        requested_amount: nextRequestedAmount,
-        requisition_number: requisitionNumber,
-        reference_number: referenceNumber
-      })
-      .eq("id", purchaseId);
-    if (updateError) throw new Error(updateError.message);
-
     const status = purchase.status as PurchaseStatus;
     const allocationAmount =
       status === "encumbered"
         ? Number(purchase.encumbered_amount ?? 0)
         : status === "pending_cc"
           ? Number(purchase.pending_cc_amount ?? 0)
-          : status === "posted"
+        : status === "posted"
             ? Number(purchase.posted_amount ?? 0)
             : nextRequestedAmount;
 
-    const { error: deleteAllocError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", purchaseId);
+    plans.push({
+      purchaseId,
+      oldProjectId,
+      nextProjectId,
+      nextProductionCategoryId,
+      resolvedBudgetLineId,
+      budgetLineAccountCodeId: (budgetLine.account_code_id as string | null) ?? null,
+      nextRequestType,
+      nextIsCreditCard,
+      nextCcWorkflowStatus,
+      nextTitle,
+      nextEstimatedAmount,
+      nextRequestedAmount,
+      requisitionNumber,
+      referenceNumber,
+      bannerAccountCodeId,
+      allocationAmount
+    });
+  }
+
+  // Second pass: apply updates only after all rows validate.
+  for (const plan of plans) {
+    const { error: updateError } = await supabase
+      .from("purchases")
+      .update({
+        project_id: plan.nextProjectId,
+        budget_line_id: plan.resolvedBudgetLineId,
+        production_category_id: plan.nextProductionCategoryId,
+        banner_account_code_id: plan.bannerAccountCodeId,
+        title: plan.nextTitle,
+        request_type: plan.nextRequestType,
+        is_credit_card: plan.nextIsCreditCard,
+        cc_workflow_status: plan.nextCcWorkflowStatus,
+        estimated_amount: plan.nextEstimatedAmount,
+        requested_amount: plan.nextRequestedAmount,
+        requisition_number: plan.requisitionNumber,
+        reference_number: plan.referenceNumber
+      })
+      .eq("id", plan.purchaseId);
+    if (updateError) throw new Error(updateError.message);
+
+    const { error: deleteAllocError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", plan.purchaseId);
     if (deleteAllocError) throw new Error(deleteAllocError.message);
 
     const { error: insertAllocError } = await supabase.from("purchase_allocations").insert({
-      purchase_id: purchaseId,
-      reporting_budget_line_id: resolvedBudgetLineId,
-      account_code_id: bannerAccountCodeId || ((budgetLine.account_code_id as string | null) ?? null),
-      production_category_id: nextProductionCategoryId,
-      amount: allocationAmount,
+      purchase_id: plan.purchaseId,
+      reporting_budget_line_id: plan.resolvedBudgetLineId,
+      account_code_id: plan.bannerAccountCodeId || plan.budgetLineAccountCodeId,
+      production_category_id: plan.nextProductionCategoryId,
+      amount: plan.allocationAmount,
       reporting_bucket: "direct"
     });
     if (insertAllocError) throw new Error(insertAllocError.message);
@@ -908,6 +957,10 @@ export async function bulkUpdateRequestsAction(formData: FormData): Promise<void
 
   revalidatePath("/requests");
   revalidatePath("/");
+  const affectedProjectIds = new Set<string>(plans.flatMap((plan) => [plan.oldProjectId, plan.nextProjectId]));
+  for (const projectId of affectedProjectIds) {
+    revalidatePath(`/projects/${projectId}`);
+  }
 }
 
 export async function bulkDeleteRequestsAction(formData: FormData): Promise<void> {
@@ -946,4 +999,7 @@ export async function bulkDeleteRequestsAction(formData: FormData): Promise<void
 
   revalidatePath("/requests");
   revalidatePath("/");
+  for (const projectId of projectIds) {
+    revalidatePath(`/projects/${projectId}`);
+  }
 }

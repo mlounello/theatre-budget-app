@@ -597,6 +597,44 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
     for (const projectId of existingProjectIds) {
       await ensureProjectPmOrAdminAccess(supabase, user.id, projectId);
     }
+    if (applyProject) {
+      if (!targetProjectId) throw new Error("Project is required when applying project.");
+      await ensureProjectPmOrAdminAccess(supabase, user.id, targetProjectId);
+    }
+
+    // First pass: validate all target values before mutating any rows.
+    for (const existing of rows) {
+      const nextProjectId = applyProject ? targetProjectId : (existing.project_id as string);
+      const nextProductionCategoryId = applyCategory
+        ? targetProductionCategoryId
+        : ((existing.production_category_id as string | null) ?? "");
+      if (!nextProjectId) throw new Error("Project is required when applying project.");
+      if (!nextProductionCategoryId) throw new Error("Department is required.");
+
+      const isCreditCardPurchase =
+        (existing.request_type as string | null) === "expense" && Boolean(existing.is_credit_card as boolean | null);
+      parseStatus(applyProcurementStatus ? targetProcurementStatusRaw : (existing.procurement_status as string), isCreditCardPurchase);
+
+      if (applyOrderValue && (targetOrderValueRaw === "" || targetOrderValue === 0)) {
+        throw new Error("Order Value must be non-zero when applying order value.");
+      }
+
+      if (Boolean(existing.budget_tracked)) {
+        const { data: ensuredLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {
+          p_project_id: nextProjectId,
+          p_production_category_id: nextProductionCategoryId
+        });
+        if (ensureLineError || !ensuredLineId) throw new Error(ensureLineError?.message ?? "Could not resolve reporting line.");
+
+        const { data: line, error: lineError } = await supabase
+          .from("project_budget_lines")
+          .select("id, project_id")
+          .eq("id", ensuredLineId as string)
+          .single();
+        if (lineError || !line) throw new Error("Invalid budget line.");
+        if ((line.project_id as string) !== nextProjectId) throw new Error("Budget line must belong to selected project.");
+      }
+    }
 
     for (const existing of rows) {
       const rowId = existing.id as string;

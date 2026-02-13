@@ -255,6 +255,21 @@ export async function bulkUpdateIncomeEntriesAction(formData: FormData): Promise
     if (existingError) throw new Error(existingError.message);
     if (!existingRows || existingRows.length !== ids.length) throw new Error("Some selected income entries were not found.");
 
+    // First pass: validate all derived values before mutating rows.
+    for (const row of existingRows) {
+      const nextOrganizationId = applyOrganization ? targetOrganizationId : ((row.organization_id as string | null) ?? "");
+      if (!nextOrganizationId) throw new Error("Organization cannot be empty.");
+
+      const nextIncomeType = applyType ? targetIncomeType : parseIncomeType(String(row.income_type ?? "other"));
+      const nextLineName = applyLineName
+        ? targetLineName || defaultLineName(nextIncomeType)
+        : (String(row.line_name ?? "").trim() || defaultLineName(nextIncomeType));
+      if (!nextLineName) throw new Error("Line name cannot be empty.");
+
+      const nextAmount = applyAmount ? targetAmount : Number(row.amount ?? 0);
+      if (nextAmount === 0) throw new Error("Amount cannot be zero.");
+    }
+
     for (const row of existingRows) {
       const nextOrganizationId = applyOrganization ? targetOrganizationId : ((row.organization_id as string | null) ?? "");
       if (!nextOrganizationId) throw new Error("Organization cannot be empty.");
