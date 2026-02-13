@@ -12,6 +12,17 @@ function parseMoney(value: FormDataEntryValue | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseIdsJson(value: FormDataEntryValue | null): string[] {
+  if (typeof value !== "string" || value.trim() === "") return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item) => String(item)).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 function parseIncomeType(value: string): IncomeType {
   if (value === "starting_budget" || value === "donation" || value === "ticket_sales" || value === "other") {
     return value;
@@ -197,5 +208,132 @@ export async function deleteIncomeEntryAction(formData: FormData): Promise<void>
   } catch (error) {
     rethrowIfRedirect(error);
     redirect(`/income?error=${encodeURIComponent(getErrorMessage(error, "Could not delete income entry."))}`);
+  }
+}
+
+export async function bulkUpdateIncomeEntriesAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (!user) throw new Error("You must be signed in.");
+
+    const ids = parseIdsJson(formData.get("selectedIdsJson"));
+    if (ids.length === 0) throw new Error("Select at least one income entry.");
+
+    const applyOrganization = formData.get("applyOrganization") === "on";
+    const applyType = formData.get("applyIncomeType") === "on";
+    const applyCategory = formData.get("applyProductionCategory") === "on";
+    const applyBanner = formData.get("applyBannerAccountCode") === "on";
+    const applyLineName = formData.get("applyLineName") === "on";
+    const applyReference = formData.get("applyReferenceNumber") === "on";
+    const applyAmount = formData.get("applyAmount") === "on";
+    const applyReceivedOn = formData.get("applyReceivedOn") === "on";
+
+    if (!applyOrganization && !applyType && !applyCategory && !applyBanner && !applyLineName && !applyReference && !applyAmount && !applyReceivedOn) {
+      throw new Error("Choose at least one field to apply.");
+    }
+
+    const targetOrganizationId = String(formData.get("organizationId") ?? "").trim();
+    const targetIncomeType = parseIncomeType(String(formData.get("incomeType") ?? "other"));
+    const targetProductionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const targetBannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
+    const targetLineName = String(formData.get("lineName") ?? "").trim();
+    const targetReferenceNumber = String(formData.get("referenceNumber") ?? "").trim();
+    const targetAmount = parseMoney(formData.get("amount"));
+    const targetReceivedOn = String(formData.get("receivedOn") ?? "").trim();
+
+    if (applyOrganization && !targetOrganizationId) throw new Error("Organization is required when applying organization.");
+    if (applyAmount && targetAmount === 0) throw new Error("Amount must be non-zero when applying amount.");
+
+    const { data: existingRows, error: existingError } = await supabase
+      .from("income_lines")
+      .select("id, organization_id, production_category_id, banner_account_code_id, income_type, line_name, reference_number, amount, received_on")
+      .in("id", ids);
+    if (existingError) throw new Error(existingError.message);
+    if (!existingRows || existingRows.length !== ids.length) throw new Error("Some selected income entries were not found.");
+
+    for (const row of existingRows) {
+      const nextOrganizationId = applyOrganization ? targetOrganizationId : ((row.organization_id as string | null) ?? "");
+      if (!nextOrganizationId) throw new Error("Organization cannot be empty.");
+
+      const nextIncomeType = applyType ? targetIncomeType : parseIncomeType(String(row.income_type ?? "other"));
+      const nextLineName = applyLineName
+        ? targetLineName || defaultLineName(nextIncomeType)
+        : (String(row.line_name ?? "").trim() || defaultLineName(nextIncomeType));
+      const nextAmount = applyAmount ? targetAmount : Number(row.amount ?? 0);
+      if (nextAmount === 0) throw new Error("Amount cannot be zero.");
+
+      const withType = await supabase
+        .from("income_lines")
+        .update({
+          organization_id: nextOrganizationId,
+          project_id: null,
+          production_category_id: applyCategory
+            ? targetProductionCategoryId || null
+            : ((row.production_category_id as string | null) ?? null),
+          banner_account_code_id: applyBanner ? targetBannerAccountCodeId || null : ((row.banner_account_code_id as string | null) ?? null),
+          income_type: nextIncomeType,
+          line_name: nextLineName,
+          reference_number: applyReference ? targetReferenceNumber || null : ((row.reference_number as string | null) ?? null),
+          amount: nextAmount,
+          received_on: applyReceivedOn ? targetReceivedOn || null : ((row.received_on as string | null) ?? null)
+        })
+        .eq("id", row.id as string);
+
+      if (withType.error) {
+        const fallback = await supabase
+          .from("income_lines")
+          .update({
+            organization_id: nextOrganizationId,
+            project_id: null,
+            production_category_id: applyCategory
+              ? targetProductionCategoryId || null
+              : ((row.production_category_id as string | null) ?? null),
+            banner_account_code_id: applyBanner ? targetBannerAccountCodeId || null : ((row.banner_account_code_id as string | null) ?? null),
+            line_name: nextLineName,
+            reference_number: applyReference ? targetReferenceNumber || null : ((row.reference_number as string | null) ?? null),
+            amount: nextAmount,
+            received_on: applyReceivedOn ? targetReceivedOn || null : ((row.received_on as string | null) ?? null)
+          })
+          .eq("id", row.id as string);
+        if (fallback.error) throw new Error(fallback.error.message);
+      }
+    }
+
+    revalidatePath("/");
+    revalidatePath("/overview");
+    revalidatePath("/income");
+    redirect("/income?ok=Bulk%20income%20update%20saved.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    redirect(`/income?error=${encodeURIComponent(getErrorMessage(error, "Could not bulk update income entries."))}`);
+  }
+}
+
+export async function bulkDeleteIncomeEntriesAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (!user) throw new Error("You must be signed in.");
+
+    const ids = parseIdsJson(formData.get("selectedIdsJson"));
+    if (ids.length === 0) throw new Error("Select at least one income entry.");
+
+    const { error } = await supabase.from("income_lines").delete().in("id", ids);
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/");
+    revalidatePath("/overview");
+    revalidatePath("/income");
+    redirect("/income?ok=Selected%20income%20entries%20deleted.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    redirect(`/income?error=${encodeURIComponent(getErrorMessage(error, "Could not delete selected income entries."))}`);
   }
 }

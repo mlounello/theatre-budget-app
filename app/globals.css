@@ -580,6 +580,32 @@ th {
   align-items: center;
 }
 
+.bulkToolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  margin: 0 0 0.6rem;
+}
+
+.bulkMeta {
+  margin: 0;
+  font-family: "Gudea", "Arial", sans-serif;
+  color: var(--text-muted);
+}
+
+.bulkActions {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.rowSelectHeader,
+.rowSelectCell {
+  width: 2.2rem;
+  text-align: center;
+}
+
 .modalOverlay {
   position: fixed;
   inset: 0;
@@ -682,6 +708,11 @@ th {
 
   .splitRow {
     grid-template-columns: 1fr;
+  }
+
+  .bulkToolbar {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 

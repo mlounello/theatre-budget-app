@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   addProcurementReceiptAction,
+  bulkDeleteProcurementAction,
+  bulkUpdateProcurementAction,
+  deleteProcurementAction,
   deleteProcurementReceiptAction,
   updateProcurementAction
 } from "@/app/procurement/actions";
@@ -200,7 +203,16 @@ export function ProcurementTable({
   const [editProjectId, setEditProjectId] = useState("");
   const [editProductionCategoryId, setEditProductionCategoryId] = useState("");
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const sortedPurchases = useMemo(() => sortRows(purchases, receipts, sortKey, direction), [purchases, receipts, sortKey, direction]);
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedVisibleCount = useMemo(
+    () => sortedPurchases.filter((purchase) => selectedSet.has(purchase.id)).length,
+    [selectedSet, sortedPurchases]
+  );
+  const allVisibleSelected = sortedPurchases.length > 0 && selectedVisibleCount === sortedPurchases.length;
+  const selectedIdsJson = JSON.stringify(selectedIds);
   useEffect(() => {
     if (!editingPurchase) return;
     setEditProjectId(editingPurchase.projectId);
@@ -223,12 +235,54 @@ export function ProcurementTable({
     setDirection("asc");
   }
 
+  function toggleRowSelection(id: string): void {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((entry) => entry !== id) : [...prev, id]));
+  }
+
+  function toggleSelectAllVisible(): void {
+    setSelectedIds((prev) => {
+      const visibleIds = sortedPurchases.map((purchase) => purchase.id);
+      if (visibleIds.length === 0) return prev;
+      const prevSet = new Set(prev);
+      const allVisible = visibleIds.every((id) => prevSet.has(id));
+      if (allVisible) return prev.filter((id) => !visibleIds.includes(id));
+      return [...new Set([...prev, ...visibleIds])];
+    });
+  }
+
   return (
     <>
+      <div className="bulkToolbar">
+        <p className="bulkMeta">
+          Selected: {selectedIds.length} total ({selectedVisibleCount} visible)
+        </p>
+        <div className="bulkActions">
+          <button type="button" className="tinyButton" disabled={selectedIds.length === 0} onClick={() => setBulkEditOpen(true)}>
+            Bulk Edit
+          </button>
+          <form
+            action={bulkDeleteProcurementAction}
+            onSubmit={(event) => {
+              if (!window.confirm(`Delete ${selectedIds.length} selected procurement row(s)?`)) {
+                event.preventDefault();
+              }
+            }}
+          >
+            <input type="hidden" name="selectedIdsJson" value={selectedIdsJson} />
+            <button type="submit" className="tinyButton dangerButton" disabled={selectedIds.length === 0}>
+              Bulk Delete
+            </button>
+          </form>
+        </div>
+      </div>
+
       <div className="tableWrap">
         <table>
           <thead>
             <tr>
+              <th className="rowSelectHeader">
+                <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} />
+              </th>
               <SortTh label="Project" sortKey="projectName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <SortTh
                 label="Department"
@@ -264,7 +318,7 @@ export function ProcurementTable({
           <tbody>
             {sortedPurchases.length === 0 ? (
               <tr>
-                <td colSpan={12}>No procurement records yet.</td>
+                <td colSpan={13}>No procurement records yet.</td>
               </tr>
             ) : null}
             {sortedPurchases.map((purchase) => {
@@ -282,6 +336,9 @@ export function ProcurementTable({
                         : purchase.postedAmount;
               return (
                 <tr key={purchase.id}>
+                  <td className="rowSelectCell">
+                    <input type="checkbox" checked={selectedSet.has(purchase.id)} onChange={() => toggleRowSelection(purchase.id)} />
+                  </td>
                   <td>
                     {purchase.projectName}
                     {purchase.season ? <div>{purchase.season}</div> : null}
@@ -304,9 +361,22 @@ export function ProcurementTable({
                   <td>{formatCurrency(receiptTotal)}</td>
                   <td>
                     {canManageProcurement ? (
-                      <button type="button" className="tinyButton" onClick={() => setEditingId(purchase.id)}>
-                        Edit
-                      </button>
+                      <div className="actionCell">
+                        <button type="button" className="tinyButton" onClick={() => setEditingId(purchase.id)}>
+                          Edit
+                        </button>
+                        <form
+                          action={deleteProcurementAction}
+                          onSubmit={(event) => {
+                            if (!window.confirm("Delete this procurement row?")) event.preventDefault();
+                          }}
+                        >
+                          <input type="hidden" name="id" value={purchase.id} />
+                          <button type="submit" className="tinyButton dangerButton">
+                            Trash
+                          </button>
+                        </form>
+                      </div>
                     ) : (
                       "-"
                     )}
@@ -505,6 +575,192 @@ export function ProcurementTable({
                 {receipts.filter((receipt) => receipt.purchaseId === editingPurchase.id).length === 0 ? <li>(none)</li> : null}
               </ul>
             </article>
+          </div>
+        </div>
+      ) : null}
+
+      {bulkEditOpen ? (
+        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Bulk edit procurement rows">
+          <div className="modalPanel">
+            <h2>Bulk Edit Procurement Rows</h2>
+            <p className="heroSubtitle">Only checked fields are applied to all selected rows.</p>
+            <form action={bulkUpdateProcurementAction} className="requestForm">
+              <input type="hidden" name="selectedIdsJson" value={selectedIdsJson} />
+
+              <label className="checkboxLabel">
+                <input name="applyProject" type="checkbox" />
+                Apply Project
+              </label>
+              <label>
+                Project
+                <select name="projectId">
+                  <option value="">Select project</option>
+                  {projectOptions.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyProductionCategory" type="checkbox" />
+                Apply Department
+              </label>
+              <label>
+                Department
+                <select name="productionCategoryId">
+                  <option value="">Select department</option>
+                  {productionCategoryOptions.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyBannerAccountCode" type="checkbox" />
+                Apply Banner Code
+              </label>
+              <label>
+                Banner Code
+                <select name="bannerAccountCodeId">
+                  <option value="">Unassigned</option>
+                  {accountCodeOptions.map((accountCode) => (
+                    <option key={accountCode.id} value={accountCode.id}>
+                      {accountCode.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyProcurementStatus" type="checkbox" />
+                Apply Procurement Status
+              </label>
+              <label>
+                Procurement Status
+                <select name="procurementStatus" defaultValue="requested">
+                  {PROCUREMENT_STATUSES.map((status) => (
+                    <option key={status.value} value={status.value}>
+                      {status.label}
+                    </option>
+                  ))}
+                  {CC_PROCUREMENT_STATUSES.map((status) => (
+                    <option key={`cc-${status.value}`} value={status.value}>
+                      {status.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyVendor" type="checkbox" />
+                Apply Vendor
+              </label>
+              <label>
+                Vendor
+                <select name="vendorId">
+                  <option value="">No vendor</option>
+                  {vendors.map((vendor) => (
+                    <option key={vendor.id} value={vendor.id}>
+                      {vendor.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyOrderValue" type="checkbox" />
+                Apply Order Value
+              </label>
+              <label>
+                Order Value
+                <input name="orderValue" type="number" step="0.01" />
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyReferenceNumber" type="checkbox" />
+                Apply Reference #
+              </label>
+              <label>
+                Reference #
+                <input name="referenceNumber" />
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyRequisitionNumber" type="checkbox" />
+                Apply Requisition #
+              </label>
+              <label>
+                Requisition #
+                <input name="requisitionNumber" />
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyPoNumber" type="checkbox" />
+                Apply PO #
+              </label>
+              <label>
+                PO #
+                <input name="poNumber" />
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyInvoiceNumber" type="checkbox" />
+                Apply Invoice #
+              </label>
+              <label>
+                Invoice #
+                <input name="invoiceNumber" />
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyNotes" type="checkbox" />
+                Apply Notes
+              </label>
+              <label>
+                Notes
+                <input name="notes" />
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyOrderedOn" type="checkbox" />
+                Apply Ordered On
+              </label>
+              <label>
+                Ordered On
+                <input name="orderedOn" type="date" />
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyReceivedOn" type="checkbox" />
+                Apply Received On
+              </label>
+              <label>
+                Received On
+                <input name="receivedOn" type="date" />
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyPaidOn" type="checkbox" />
+                Apply Paid On
+              </label>
+              <label>
+                Paid On
+                <input name="paidOn" type="date" />
+              </label>
+
+              <div className="modalActions">
+                <button type="button" className="tinyButton" onClick={() => setBulkEditOpen(false)}>
+                  Close
+                </button>
+                <button type="submit" className="tinyButton">
+                  Save Bulk Edit
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}

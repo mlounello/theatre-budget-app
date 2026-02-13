@@ -10,6 +10,17 @@ function parseMoney(value: FormDataEntryValue | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseIdsJson(value: FormDataEntryValue | null): string[] {
+  if (typeof value !== "string" || value.trim() === "") return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item) => String(item)).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 function toStatementDate(monthValue: string): string {
   const trimmed = monthValue.trim();
   if (!/^\d{4}-\d{2}$/.test(trimmed)) throw new Error("Statement month must be in YYYY-MM format.");
@@ -286,6 +297,166 @@ export async function deleteStatementMonthAction(formData: FormData): Promise<vo
   } catch (error) {
     rethrowIfRedirect(error);
     ccError(getErrorMessage(error, "Could not delete statement month."));
+  }
+}
+
+export async function bulkUpdateCreditCardsAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+    await requireGlobalAdmin(supabase, user.id);
+
+    const ids = parseIdsJson(formData.get("selectedIdsJson"));
+    if (ids.length === 0) throw new Error("Select at least one credit card.");
+
+    const applyActive = formData.get("applyActive") === "on";
+    const applyMaskedNumber = formData.get("applyMaskedNumber") === "on";
+    if (!applyActive && !applyMaskedNumber) throw new Error("Choose at least one field to apply.");
+
+    const activeValue = String(formData.get("activeValue") ?? "").trim().toLowerCase();
+    const nextActive = activeValue === "true";
+    const maskedNumber = String(formData.get("maskedNumber") ?? "").trim();
+
+    const { data: cards, error: cardsError } = await supabase.from("credit_cards").select("id, active, masked_number").in("id", ids);
+    if (cardsError) throw new Error(cardsError.message);
+    if (!cards || cards.length !== ids.length) throw new Error("Some selected cards were not found.");
+
+    for (const card of cards) {
+      const { error: updateError } = await supabase
+        .from("credit_cards")
+        .update({
+          active: applyActive ? nextActive : Boolean(card.active as boolean | null),
+          masked_number: applyMaskedNumber ? maskedNumber || null : ((card.masked_number as string | null) ?? null)
+        })
+        .eq("id", card.id as string);
+      if (updateError) throw new Error(updateError.message);
+    }
+
+    revalidatePath("/cc");
+    revalidatePath("/requests");
+    ccSuccess("Selected credit cards updated.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    ccError(getErrorMessage(error, "Could not bulk update credit cards."));
+  }
+}
+
+export async function bulkDeleteCreditCardsAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+    await requireGlobalAdmin(supabase, user.id);
+
+    const ids = parseIdsJson(formData.get("selectedIdsJson"));
+    if (ids.length === 0) throw new Error("Select at least one credit card.");
+
+    const { error } = await supabase.from("credit_cards").delete().in("id", ids);
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/cc");
+    revalidatePath("/requests");
+    ccSuccess("Selected credit cards deleted.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    ccError(getErrorMessage(error, "Could not delete selected credit cards."));
+  }
+}
+
+export async function bulkUpdateStatementMonthsAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+    await requireCcManagerRole(supabase, user.id);
+
+    const ids = parseIdsJson(formData.get("selectedIdsJson"));
+    if (ids.length === 0) throw new Error("Select at least one statement month.");
+
+    const applyCreditCard = formData.get("applyCreditCard") === "on";
+    const applyMonth = formData.get("applyStatementMonth") === "on";
+    if (!applyCreditCard && !applyMonth) throw new Error("Choose at least one field to apply.");
+
+    const creditCardId = String(formData.get("creditCardId") ?? "").trim();
+    const month = String(formData.get("statementMonth") ?? "").trim();
+    const statementDate = applyMonth ? toStatementDate(month) : null;
+    if (applyCreditCard && !creditCardId) throw new Error("Credit card is required when applying credit card.");
+    if (applyMonth && !month) throw new Error("Statement month is required when applying month.");
+
+    const { data: months, error: monthsError } = await supabase
+      .from("cc_statement_months")
+      .select("id, credit_card_id, statement_month, posted_at")
+      .in("id", ids);
+    if (monthsError) throw new Error(monthsError.message);
+    if (!months || months.length !== ids.length) throw new Error("Some selected statement months were not found.");
+
+    for (const monthRow of months) {
+      if (monthRow.posted_at) throw new Error("Cannot bulk edit submitted statement months.");
+      const { error: updateError } = await supabase
+        .from("cc_statement_months")
+        .update({
+          credit_card_id: applyCreditCard ? creditCardId : (monthRow.credit_card_id as string),
+          statement_month: applyMonth ? (statementDate as string) : (monthRow.statement_month as string)
+        })
+        .eq("id", monthRow.id as string);
+      if (updateError) throw new Error(updateError.message);
+    }
+
+    revalidatePath("/cc");
+    ccSuccess("Selected statement months updated.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    ccError(getErrorMessage(error, "Could not bulk update statement months."));
+  }
+}
+
+export async function bulkDeleteStatementMonthsAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+    await requireCcManagerRole(supabase, user.id);
+
+    const ids = parseIdsJson(formData.get("selectedIdsJson"));
+    if (ids.length === 0) throw new Error("Select at least one statement month.");
+
+    const { data: linkedPurchases, error: linkedError } = await supabase
+      .from("purchases")
+      .select("id, cc_statement_month_id")
+      .in("cc_statement_month_id", ids)
+      .limit(1);
+    if (linkedError) throw new Error(linkedError.message);
+    if ((linkedPurchases ?? []).length > 0) {
+      throw new Error("Cannot bulk delete statement months that have linked purchases.");
+    }
+
+    const { data: linkedReceipts, error: linkedReceiptsError } = await supabase
+      .from("purchase_receipts")
+      .select("id, cc_statement_month_id")
+      .in("cc_statement_month_id", ids)
+      .limit(1);
+    if (linkedReceiptsError) throw new Error(linkedReceiptsError.message);
+    if ((linkedReceipts ?? []).length > 0) {
+      throw new Error("Cannot bulk delete statement months that have linked receipts.");
+    }
+
+    const { error } = await supabase.from("cc_statement_months").delete().in("id", ids);
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/cc");
+    ccSuccess("Selected statement months deleted.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    ccError(getErrorMessage(error, "Could not bulk delete statement months."));
   }
 }
 

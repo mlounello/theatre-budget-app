@@ -10,6 +10,17 @@ function parseMoney(value: FormDataEntryValue | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseIdsJson(value: FormDataEntryValue | null): string[] {
+  if (typeof value !== "string" || value.trim() === "") return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item) => String(item)).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 type AllocationInput = {
   reportingBudgetLineId: string;
   accountCodeId: string;
@@ -703,4 +714,236 @@ export async function deleteRequestAction(formData: FormData): Promise<void> {
   revalidatePath("/requests");
   revalidatePath("/");
   revalidatePath(`/projects/${existing.project_id as string}`);
+}
+
+export async function bulkUpdateRequestsAction(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("You must be signed in.");
+
+  const purchaseIds = parseIdsJson(formData.get("selectedIdsJson"));
+  if (purchaseIds.length === 0) throw new Error("Select at least one request.");
+
+  const applyProject = formData.get("applyProject") === "on";
+  const applyCategory = formData.get("applyProductionCategory") === "on";
+  const applyBannerCode = formData.get("applyBannerAccountCode") === "on";
+  const applyTitle = formData.get("applyTitle") === "on";
+  const applyType = formData.get("applyRequestType") === "on";
+  const applyCreditCard = formData.get("applyIsCreditCard") === "on";
+  const applyEstimated = formData.get("applyEstimatedAmount") === "on";
+  const applyRequested = formData.get("applyRequestedAmount") === "on";
+  const applyRequisition = formData.get("applyRequisitionNumber") === "on";
+  const applyReference = formData.get("applyReferenceNumber") === "on";
+
+  if (
+    !applyProject &&
+    !applyCategory &&
+    !applyBannerCode &&
+    !applyTitle &&
+    !applyType &&
+    !applyCreditCard &&
+    !applyEstimated &&
+    !applyRequested &&
+    !applyRequisition &&
+    !applyReference
+  ) {
+    throw new Error("Choose at least one field to apply.");
+  }
+
+  const targetProjectId = String(formData.get("projectId") ?? "").trim();
+  const targetProductionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+  const targetBannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
+  const targetTitle = String(formData.get("title") ?? "").trim();
+  const targetRequestTypeRaw = String(formData.get("requestType") ?? "").trim().toLowerCase();
+  const targetRequestType =
+    targetRequestTypeRaw === "expense" || targetRequestTypeRaw === "contract" ? targetRequestTypeRaw : ("requisition" as const);
+  const targetIsCreditCardRaw = String(formData.get("isCreditCard") ?? "").trim().toLowerCase();
+  const targetIsCreditCard = targetIsCreditCardRaw === "true";
+  const targetEstimatedAmount = parseMoney(formData.get("estimatedAmount"));
+  const targetRequestedAmount = parseMoney(formData.get("requestedAmount"));
+  const targetRequisitionNumber = String(formData.get("requisitionNumber") ?? "").trim();
+  const targetReferenceNumber = String(formData.get("referenceNumber") ?? "").trim();
+
+  const { data: purchases, error: purchasesError } = await supabase
+    .from("purchases")
+    .select(
+      "id, project_id, status, title, request_type, is_credit_card, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, requisition_number, reference_number, production_category_id, banner_account_code_id"
+    )
+    .in("id", purchaseIds);
+  if (purchasesError) throw new Error(purchasesError.message);
+  if (!purchases || purchases.length !== purchaseIds.length) throw new Error("Some selected requests were not found.");
+
+  const projectIds = [...new Set(purchases.map((row) => row.project_id as string))];
+  const { data: memberships, error: membershipError } = await supabase
+    .from("project_memberships")
+    .select("project_id, role")
+    .eq("user_id", user.id)
+    .in("project_id", projectIds);
+  if (membershipError) throw new Error(membershipError.message);
+  const membershipByProject = new Map((memberships ?? []).map((row) => [row.project_id as string, row.role as string]));
+  for (const projectId of projectIds) {
+    const role = membershipByProject.get(projectId);
+    if (!role || (role !== "admin" && role !== "project_manager")) {
+      throw new Error("Only Admin or Project Manager can bulk edit selected requests.");
+    }
+  }
+
+  const { data: allocationRows, error: allocationRowsError } = await supabase
+    .from("purchase_allocations")
+    .select("purchase_id")
+    .in("purchase_id", purchaseIds);
+  if (allocationRowsError) throw new Error(allocationRowsError.message);
+  const allocationCounts = new Map<string, number>();
+  for (const row of allocationRows ?? []) {
+    const purchaseId = row.purchase_id as string;
+    allocationCounts.set(purchaseId, (allocationCounts.get(purchaseId) ?? 0) + 1);
+  }
+  const splitIds = purchaseIds.filter((id) => (allocationCounts.get(id) ?? 0) > 1);
+  if (splitIds.length > 0) {
+    throw new Error("Bulk edit does not support split allocation rows. Edit those requests individually.");
+  }
+
+  for (const purchase of purchases) {
+    const purchaseId = purchase.id as string;
+    const nextProjectId = applyProject ? targetProjectId : (purchase.project_id as string);
+    const nextProductionCategoryId = applyCategory
+      ? targetProductionCategoryId
+      : ((purchase.production_category_id as string | null) ?? "");
+    if (!nextProjectId) throw new Error("Project is required.");
+    if (!nextProductionCategoryId) throw new Error("Production category is required.");
+
+    const { data: ensuredLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {
+      p_project_id: nextProjectId,
+      p_production_category_id: nextProductionCategoryId
+    });
+    if (ensureLineError || !ensuredLineId) {
+      throw new Error(ensureLineError?.message ?? "Could not resolve reporting line for selected category.");
+    }
+    const resolvedBudgetLineId = ensuredLineId as string;
+
+    const { data: budgetLine, error: budgetLineError } = await supabase
+      .from("project_budget_lines")
+      .select("id, account_code_id")
+      .eq("id", resolvedBudgetLineId)
+      .single();
+    if (budgetLineError || !budgetLine) throw new Error("Could not resolve account code for reporting line.");
+
+    const existingRequestType = ((purchase.request_type as string | null) ?? "requisition") as "requisition" | "expense" | "contract";
+    const nextRequestType = applyType ? targetRequestType : existingRequestType;
+    const nextIsCreditCard = nextRequestType === "expense" ? (applyCreditCard ? targetIsCreditCard : Boolean(purchase.is_credit_card)) : false;
+    const nextCcWorkflowStatus: "requested" | "posted_to_account" | null =
+      nextRequestType === "expense" && nextIsCreditCard
+        ? (purchase.status as PurchaseStatus) === "posted"
+          ? "posted_to_account"
+          : "requested"
+        : null;
+
+    const nextTitle = applyTitle ? targetTitle : ((purchase.title as string) ?? "");
+    if (!nextTitle) throw new Error("Title cannot be blank when applying title.");
+
+    const nextEstimatedAmount = applyEstimated ? targetEstimatedAmount : Number(purchase.estimated_amount ?? 0);
+    const nextRequestedAmount = applyRequested ? targetRequestedAmount : Number(purchase.requested_amount ?? 0);
+
+    const requisitionNumber =
+      nextRequestType === "requisition"
+        ? applyRequisition
+          ? targetRequisitionNumber || null
+          : ((purchase.requisition_number as string | null) ?? null)
+        : null;
+    const referenceNumber =
+      nextRequestType === "requisition"
+        ? null
+        : applyReference
+          ? targetReferenceNumber || null
+          : ((purchase.reference_number as string | null) ?? null);
+
+    const bannerAccountCodeId = applyBannerCode
+      ? targetBannerAccountCodeId || null
+      : ((purchase.banner_account_code_id as string | null) ?? null);
+
+    const { error: updateError } = await supabase
+      .from("purchases")
+      .update({
+        project_id: nextProjectId,
+        budget_line_id: resolvedBudgetLineId,
+        production_category_id: nextProductionCategoryId,
+        banner_account_code_id: bannerAccountCodeId,
+        title: nextTitle,
+        request_type: nextRequestType,
+        is_credit_card: nextIsCreditCard,
+        cc_workflow_status: nextCcWorkflowStatus,
+        estimated_amount: nextEstimatedAmount,
+        requested_amount: nextRequestedAmount,
+        requisition_number: requisitionNumber,
+        reference_number: referenceNumber
+      })
+      .eq("id", purchaseId);
+    if (updateError) throw new Error(updateError.message);
+
+    const status = purchase.status as PurchaseStatus;
+    const allocationAmount =
+      status === "encumbered"
+        ? Number(purchase.encumbered_amount ?? 0)
+        : status === "pending_cc"
+          ? Number(purchase.pending_cc_amount ?? 0)
+          : status === "posted"
+            ? Number(purchase.posted_amount ?? 0)
+            : nextRequestedAmount;
+
+    const { error: deleteAllocError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", purchaseId);
+    if (deleteAllocError) throw new Error(deleteAllocError.message);
+
+    const { error: insertAllocError } = await supabase.from("purchase_allocations").insert({
+      purchase_id: purchaseId,
+      reporting_budget_line_id: resolvedBudgetLineId,
+      account_code_id: bannerAccountCodeId || ((budgetLine.account_code_id as string | null) ?? null),
+      production_category_id: nextProductionCategoryId,
+      amount: allocationAmount,
+      reporting_bucket: "direct"
+    });
+    if (insertAllocError) throw new Error(insertAllocError.message);
+  }
+
+  revalidatePath("/requests");
+  revalidatePath("/");
+}
+
+export async function bulkDeleteRequestsAction(formData: FormData): Promise<void> {
+  const supabase = await getSupabaseServerClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) throw new Error("You must be signed in.");
+
+  const purchaseIds = parseIdsJson(formData.get("selectedIdsJson"));
+  if (purchaseIds.length === 0) throw new Error("Select at least one request.");
+
+  const { data: purchases, error: purchasesError } = await supabase
+    .from("purchases")
+    .select("id, project_id")
+    .in("id", purchaseIds);
+  if (purchasesError) throw new Error(purchasesError.message);
+  if (!purchases || purchases.length !== purchaseIds.length) throw new Error("Some selected requests were not found.");
+
+  const projectIds = [...new Set(purchases.map((row) => row.project_id as string))];
+  const { data: memberships, error: membershipError } = await supabase
+    .from("project_memberships")
+    .select("project_id, role")
+    .eq("user_id", user.id)
+    .in("project_id", projectIds);
+  if (membershipError) throw new Error(membershipError.message);
+
+  const membershipByProject = new Map((memberships ?? []).map((row) => [row.project_id as string, row.role as string]));
+  for (const projectId of projectIds) {
+    const role = membershipByProject.get(projectId);
+    if (role !== "admin") throw new Error("Only Admin can bulk delete selected requests.");
+  }
+
+  const { error: deleteError } = await supabase.from("purchases").delete().in("id", purchaseIds);
+  if (deleteError) throw new Error(deleteError.message);
+
+  revalidatePath("/requests");
+  revalidatePath("/");
 }

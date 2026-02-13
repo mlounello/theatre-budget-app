@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { bulkDeleteRequestsAction, bulkUpdateRequestsAction } from "@/app/requests/actions";
 import { CcReconcileModal } from "@/app/requests/cc-reconcile-modal";
 import { RequestRowActions } from "@/app/requests/request-row-actions";
 import { formatCurrency } from "@/lib/format";
@@ -65,8 +66,8 @@ function sortRows(rows: PurchaseRow[], key: SortKey, direction: SortDirection): 
       key === "receiptTotal"
         ? (a[key] as number) - (b[key] as number)
         : key === "requestNumber"
-            ? asString(aRequestNumber).localeCompare(asString(bRequestNumber))
-            : asString(a[key] as string | null).localeCompare(asString(b[key] as string | null));
+          ? asString(aRequestNumber).localeCompare(asString(bRequestNumber))
+          : asString(a[key] as string | null).localeCompare(asString(b[key] as string | null));
     return cmp * dir;
   });
 }
@@ -117,14 +118,22 @@ export function RequestsTable({
   const initialDirection: SortDirection = dirFromUrl === "desc" ? "desc" : "asc";
   const [sortKey, setSortKey] = useState<SortKey>(initialSortKey);
   const [direction, setDirection] = useState<SortDirection>(initialDirection);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
 
   const sortedPurchases = useMemo(() => sortRows(purchases, sortKey, direction), [purchases, sortKey, direction]);
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedVisibleCount = useMemo(
+    () => sortedPurchases.filter((purchase) => selectedSet.has(purchase.id)).length,
+    [selectedSet, sortedPurchases]
+  );
+  const allVisibleSelected = sortedPurchases.length > 0 && selectedVisibleCount === sortedPurchases.length;
+  const selectedIdsJson = JSON.stringify(selectedIds);
 
   function onToggle(key: SortKey): void {
     const nextDirection: SortDirection = key === sortKey ? (direction === "asc" ? "desc" : "asc") : "asc";
-    const nextKey = key;
     const params = new URLSearchParams(searchParams.toString());
-    params.set("rq_sort", nextKey);
+    params.set("rq_sort", key);
     params.set("rq_dir", nextDirection);
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
 
@@ -136,98 +145,293 @@ export function RequestsTable({
     setDirection("asc");
   }
 
+  function toggleRowSelection(purchaseId: string): void {
+    setSelectedIds((prev) => (prev.includes(purchaseId) ? prev.filter((id) => id !== purchaseId) : [...prev, purchaseId]));
+  }
+
+  function toggleSelectAllVisible(): void {
+    setSelectedIds((prev) => {
+      const visibleIds = sortedPurchases.map((purchase) => purchase.id);
+      if (visibleIds.length === 0) return prev;
+      const prevSet = new Set(prev);
+      const allVisible = visibleIds.every((id) => prevSet.has(id));
+      if (allVisible) return prev.filter((id) => !visibleIds.includes(id));
+      const merged = new Set(prev);
+      for (const id of visibleIds) merged.add(id);
+      return [...merged];
+    });
+  }
+
   return (
-    <div className="tableWrap">
-      <table>
-        <thead>
-          <tr>
-            <SortTh label="Project" sortKey="projectName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-            <SortTh
-              label="Department"
-              sortKey="productionCategoryName"
-              activeKey={sortKey}
-              direction={direction}
-              onToggle={onToggle}
-            />
-            <SortTh
-              label="Banner Code"
-              sortKey="bannerAccountCode"
-              activeKey={sortKey}
-              direction={direction}
-              onToggle={onToggle}
-            />
-            <SortTh label="Req/Ref #" sortKey="requestNumber" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-            <SortTh label="Title" sortKey="title" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-            <SortTh label="Type" sortKey="requestType" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-            <SortTh label="Status" sortKey="status" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-            <SortTh
-              label="CC Workflow"
-              sortKey="ccWorkflowStatus"
-              activeKey={sortKey}
-              direction={direction}
-              onToggle={onToggle}
-            />
-            <SortTh label="Estimated" sortKey="estimatedAmount" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-            <SortTh label="Requested" sortKey="requestedAmount" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-            <SortTh label="ENC" sortKey="encumberedAmount" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-            <SortTh label="Pending CC" sortKey="pendingCcAmount" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-            <SortTh label="Posted" sortKey="postedAmount" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-            <SortTh label="Receipts" sortKey="receiptTotal" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-            <th>CC Reconcile</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sortedPurchases.length === 0 ? (
+    <>
+      <div className="bulkToolbar">
+        <p className="bulkMeta">
+          Selected: {selectedIds.length} total ({selectedVisibleCount} visible)
+        </p>
+        <div className="bulkActions">
+          <button type="button" className="tinyButton" disabled={selectedIds.length === 0} onClick={() => setBulkEditOpen(true)}>
+            Bulk Edit
+          </button>
+          <form
+            action={bulkDeleteRequestsAction}
+            onSubmit={(event) => {
+              if (!window.confirm(`Delete ${selectedIds.length} selected request(s)? This cannot be undone.`)) {
+                event.preventDefault();
+              }
+            }}
+          >
+            <input type="hidden" name="selectedIdsJson" value={selectedIdsJson} />
+            <button type="submit" className="tinyButton dangerButton" disabled={selectedIds.length === 0}>
+              Bulk Delete
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <div className="tableWrap">
+        <table>
+          <thead>
             <tr>
-              <td colSpan={16}>No purchases yet. Create your first request above.</td>
+              <th className="rowSelectHeader">
+                <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} aria-label="Select all visible rows" />
+              </th>
+              <SortTh label="Project" sortKey="projectName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh
+                label="Department"
+                sortKey="productionCategoryName"
+                activeKey={sortKey}
+                direction={direction}
+                onToggle={onToggle}
+              />
+              <SortTh
+                label="Banner Code"
+                sortKey="bannerAccountCode"
+                activeKey={sortKey}
+                direction={direction}
+                onToggle={onToggle}
+              />
+              <SortTh label="Req/Ref #" sortKey="requestNumber" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Title" sortKey="title" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Type" sortKey="requestType" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Status" sortKey="status" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh
+                label="CC Workflow"
+                sortKey="ccWorkflowStatus"
+                activeKey={sortKey}
+                direction={direction}
+                onToggle={onToggle}
+              />
+              <SortTh label="Estimated" sortKey="estimatedAmount" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Requested" sortKey="requestedAmount" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="ENC" sortKey="encumberedAmount" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Pending CC" sortKey="pendingCcAmount" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Posted" sortKey="postedAmount" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Receipts" sortKey="receiptTotal" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <th>CC Reconcile</th>
+              <th>Actions</th>
             </tr>
-          ) : null}
-          {sortedPurchases.map((purchase) => (
-            <tr key={purchase.id}>
-              <td>{purchase.projectName}</td>
-              <td>{purchase.productionCategoryName ?? purchase.category ?? "-"}</td>
-              <td>{purchase.bannerAccountCode ?? purchase.budgetCode}</td>
-              <td>{purchase.requestType === "requisition" ? (purchase.requisitionNumber ?? "-") : (purchase.referenceNumber ?? "-")}</td>
-              <td>{purchase.title}</td>
-              <td>
-                {purchase.requestType}
-                {purchase.requestType === "expense" ? (purchase.isCreditCard ? " (cc)" : " (reimb)") : ""}
-              </td>
-              <td>
-                <span className={`statusChip status-${purchase.status}`}>{purchase.status}</span>
-              </td>
-              <td>{purchase.isCreditCard ? (purchase.ccWorkflowStatus ?? "requested") : "-"}</td>
-              <td>{formatCurrency(purchase.estimatedAmount)}</td>
-              <td>{formatCurrency(purchase.requestedAmount)}</td>
-              <td>{formatCurrency(purchase.encumberedAmount)}</td>
-              <td>{formatCurrency(purchase.pendingCcAmount)}</td>
-              <td>{formatCurrency(purchase.postedAmount)}</td>
-              <td>
-                {purchase.requestType === "expense" ? (
-                  <>
-                    <strong>{formatCurrency(purchase.receiptTotal)}</strong>
-                    <div>{purchase.receiptCount} receipts</div>
-                  </>
-                ) : (
-                  "-"
-                )}
-              </td>
-              <td>
-                <CcReconcileModal purchase={purchase} receipts={receipts} />
-              </td>
-              <td>
-                <RequestRowActions
-                  purchase={purchase}
-                  projectOptions={projectOptions}
-                  accountCodeOptions={accountCodeOptions}
-                  productionCategoryOptions={productionCategoryOptions}
-                />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {sortedPurchases.length === 0 ? (
+              <tr>
+                <td colSpan={17}>No purchases yet. Create your first request above.</td>
+              </tr>
+            ) : null}
+            {sortedPurchases.map((purchase) => (
+              <tr key={purchase.id}>
+                <td className="rowSelectCell">
+                  <input
+                    type="checkbox"
+                    checked={selectedSet.has(purchase.id)}
+                    onChange={() => toggleRowSelection(purchase.id)}
+                    aria-label={`Select request ${purchase.title}`}
+                  />
+                </td>
+                <td>{purchase.projectName}</td>
+                <td>{purchase.productionCategoryName ?? purchase.category ?? "-"}</td>
+                <td>{purchase.bannerAccountCode ?? purchase.budgetCode}</td>
+                <td>{purchase.requestType === "requisition" ? (purchase.requisitionNumber ?? "-") : (purchase.referenceNumber ?? "-")}</td>
+                <td>{purchase.title}</td>
+                <td>
+                  {purchase.requestType}
+                  {purchase.requestType === "expense" ? (purchase.isCreditCard ? " (cc)" : " (reimb)") : ""}
+                </td>
+                <td>
+                  <span className={`statusChip status-${purchase.status}`}>{purchase.status}</span>
+                </td>
+                <td>{purchase.isCreditCard ? (purchase.ccWorkflowStatus ?? "requested") : "-"}</td>
+                <td>{formatCurrency(purchase.estimatedAmount)}</td>
+                <td>{formatCurrency(purchase.requestedAmount)}</td>
+                <td>{formatCurrency(purchase.encumberedAmount)}</td>
+                <td>{formatCurrency(purchase.pendingCcAmount)}</td>
+                <td>{formatCurrency(purchase.postedAmount)}</td>
+                <td>
+                  {purchase.requestType === "expense" ? (
+                    <>
+                      <strong>{formatCurrency(purchase.receiptTotal)}</strong>
+                      <div>{purchase.receiptCount} receipts</div>
+                    </>
+                  ) : (
+                    "-"
+                  )}
+                </td>
+                <td>
+                  <CcReconcileModal purchase={purchase} receipts={receipts} />
+                </td>
+                <td>
+                  <RequestRowActions
+                    purchase={purchase}
+                    projectOptions={projectOptions}
+                    accountCodeOptions={accountCodeOptions}
+                    productionCategoryOptions={productionCategoryOptions}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {bulkEditOpen ? (
+        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Bulk edit requests">
+          <div className="modalPanel">
+            <h2>Bulk Edit Requests</h2>
+            <p className="heroSubtitle">
+              Select fields to apply, then set the new value. Only checked fields are updated for all selected rows.
+            </p>
+            <form action={bulkUpdateRequestsAction} className="requestForm">
+              <input type="hidden" name="selectedIdsJson" value={selectedIdsJson} />
+
+              <label className="checkboxLabel">
+                <input name="applyProject" type="checkbox" />
+                Apply Project
+              </label>
+              <label>
+                Project
+                <select name="projectId">
+                  <option value="">Select project</option>
+                  {projectOptions.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyProductionCategory" type="checkbox" />
+                Apply Department
+              </label>
+              <label>
+                Department
+                <select name="productionCategoryId">
+                  <option value="">Select department</option>
+                  {productionCategoryOptions.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyBannerAccountCode" type="checkbox" />
+                Apply Banner Code
+              </label>
+              <label>
+                Banner Code
+                <select name="bannerAccountCodeId">
+                  <option value="">Unassigned</option>
+                  {accountCodeOptions.map((accountCode) => (
+                    <option key={accountCode.id} value={accountCode.id}>
+                      {accountCode.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyTitle" type="checkbox" />
+                Apply Title
+              </label>
+              <label>
+                Title
+                <input name="title" />
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyRequestType" type="checkbox" />
+                Apply Type
+              </label>
+              <label>
+                Type
+                <select name="requestType" defaultValue="requisition">
+                  <option value="requisition">Requisition</option>
+                  <option value="expense">Expense</option>
+                  <option value="contract">Contract</option>
+                </select>
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyIsCreditCard" type="checkbox" />
+                Apply Credit Card Flag
+              </label>
+              <label>
+                Credit Card
+                <select name="isCreditCard" defaultValue="false">
+                  <option value="false">No</option>
+                  <option value="true">Yes</option>
+                </select>
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyEstimatedAmount" type="checkbox" />
+                Apply Estimated
+              </label>
+              <label>
+                Estimated
+                <input name="estimatedAmount" type="number" step="0.01" />
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyRequestedAmount" type="checkbox" />
+                Apply Requested
+              </label>
+              <label>
+                Requested
+                <input name="requestedAmount" type="number" step="0.01" />
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyRequisitionNumber" type="checkbox" />
+                Apply Requisition #
+              </label>
+              <label>
+                Requisition #
+                <input name="requisitionNumber" />
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyReferenceNumber" type="checkbox" />
+                Apply Reference #
+              </label>
+              <label>
+                Reference #
+                <input name="referenceNumber" />
+              </label>
+
+              <div className="modalActions">
+                <button type="button" className="tinyButton" onClick={() => setBulkEditOpen(false)}>
+                  Close
+                </button>
+                <button type="submit" className="tinyButton">
+                  Save Bulk Edit
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

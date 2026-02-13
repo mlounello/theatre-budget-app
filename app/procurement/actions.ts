@@ -26,6 +26,17 @@ function parseMoney(value: FormDataEntryValue | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function parseIdsJson(value: FormDataEntryValue | null): string[] {
+  if (typeof value !== "string" || value.trim() === "") return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item) => String(item)).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 function parseStatus(value: FormDataEntryValue | null, isCreditCardPurchase: boolean): ProcurementStatus {
   const normalized = String(value ?? "").trim().toLowerCase();
   const allowed = new Set<string>(isCreditCardPurchase ? CC_PROCUREMENT_STATUSES : PROCUREMENT_STATUSES);
@@ -90,6 +101,42 @@ async function ensureProjectCreateAccess(
   const role = (data?.role as string | undefined) ?? null;
   if (!role || !["admin", "project_manager", "buyer"].includes(role)) {
     throw new Error("You do not have permission to create purchases for this project.");
+  }
+}
+
+async function ensureProjectPmOrAdminAccess(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  userId: string,
+  projectId: string
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("project_memberships")
+    .select("role")
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const role = (data?.role as string | undefined) ?? null;
+  if (!role || !["admin", "project_manager"].includes(role)) {
+    throw new Error("Only Admin or Project Manager can edit procurement rows.");
+  }
+}
+
+async function ensureProjectAdminAccess(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  userId: string,
+  projectId: string
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("project_memberships")
+    .select("role")
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const role = (data?.role as string | undefined) ?? null;
+  if (role !== "admin") {
+    throw new Error("Only Admin can delete procurement rows.");
   }
 }
 
@@ -408,6 +455,276 @@ export async function deleteProcurementReceiptAction(formData: FormData): Promis
   } catch (error) {
     rethrowIfRedirect(error);
     fail(getErrorMessage(error, "Could not delete receipt log."));
+  }
+}
+
+export async function deleteProcurementAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+
+    const id = String(formData.get("id") ?? "").trim();
+    if (!id) throw new Error("Purchase id is required.");
+
+    const { data: row, error: rowError } = await supabase.from("purchases").select("id, project_id").eq("id", id).single();
+    if (rowError || !row) throw new Error("Purchase not found.");
+    await ensureProjectAdminAccess(supabase, user.id, row.project_id as string);
+
+    const { error } = await supabase.from("purchases").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/procurement");
+    revalidatePath("/requests");
+    revalidatePath("/");
+    revalidatePath(`/projects/${row.project_id as string}`);
+    ok("Procurement row deleted.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    fail(getErrorMessage(error, "Could not delete procurement row."));
+  }
+}
+
+export async function bulkDeleteProcurementAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+
+    const ids = parseIdsJson(formData.get("selectedIdsJson"));
+    if (ids.length === 0) throw new Error("Select at least one procurement row.");
+
+    const { data: rows, error: rowsError } = await supabase.from("purchases").select("id, project_id").in("id", ids);
+    if (rowsError) throw new Error(rowsError.message);
+    if (!rows || rows.length !== ids.length) throw new Error("Some selected rows were not found.");
+
+    const projectIds = Array.from(new Set(rows.map((row) => row.project_id as string)));
+    for (const projectId of projectIds) {
+      await ensureProjectAdminAccess(supabase, user.id, projectId);
+    }
+
+    const { error: deleteError } = await supabase.from("purchases").delete().in("id", ids);
+    if (deleteError) throw new Error(deleteError.message);
+
+    revalidatePath("/procurement");
+    revalidatePath("/requests");
+    revalidatePath("/");
+    for (const projectId of projectIds) {
+      revalidatePath(`/projects/${projectId}`);
+    }
+    ok("Selected procurement rows deleted.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    fail(getErrorMessage(error, "Could not delete selected procurement rows."));
+  }
+}
+
+export async function bulkUpdateProcurementAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+
+    const ids = parseIdsJson(formData.get("selectedIdsJson"));
+    if (ids.length === 0) throw new Error("Select at least one procurement row.");
+
+    const applyProject = formData.get("applyProject") === "on";
+    const applyCategory = formData.get("applyProductionCategory") === "on";
+    const applyBanner = formData.get("applyBannerAccountCode") === "on";
+    const applyProcurementStatus = formData.get("applyProcurementStatus") === "on";
+    const applyVendor = formData.get("applyVendor") === "on";
+    const applyReference = formData.get("applyReferenceNumber") === "on";
+    const applyRequisition = formData.get("applyRequisitionNumber") === "on";
+    const applyPo = formData.get("applyPoNumber") === "on";
+    const applyInvoice = formData.get("applyInvoiceNumber") === "on";
+    const applyNotes = formData.get("applyNotes") === "on";
+    const applyOrderedOn = formData.get("applyOrderedOn") === "on";
+    const applyReceivedOn = formData.get("applyReceivedOn") === "on";
+    const applyPaidOn = formData.get("applyPaidOn") === "on";
+    const applyOrderValue = formData.get("applyOrderValue") === "on";
+
+    if (
+      !applyProject &&
+      !applyCategory &&
+      !applyBanner &&
+      !applyProcurementStatus &&
+      !applyVendor &&
+      !applyReference &&
+      !applyRequisition &&
+      !applyPo &&
+      !applyInvoice &&
+      !applyNotes &&
+      !applyOrderedOn &&
+      !applyReceivedOn &&
+      !applyPaidOn &&
+      !applyOrderValue
+    ) {
+      throw new Error("Choose at least one field to apply.");
+    }
+
+    const targetProjectId = String(formData.get("projectId") ?? "").trim();
+    const targetProductionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const targetBannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
+    const targetProcurementStatusRaw = String(formData.get("procurementStatus") ?? "").trim();
+    const targetVendorId = String(formData.get("vendorId") ?? "").trim();
+    const targetReferenceNumber = String(formData.get("referenceNumber") ?? "").trim();
+    const targetRequisitionNumber = String(formData.get("requisitionNumber") ?? "").trim();
+    const targetPoNumber = String(formData.get("poNumber") ?? "").trim();
+    const targetInvoiceNumber = String(formData.get("invoiceNumber") ?? "").trim();
+    const targetNotes = String(formData.get("notes") ?? "").trim();
+    const targetOrderedOn = String(formData.get("orderedOn") ?? "").trim();
+    const targetReceivedOn = String(formData.get("receivedOn") ?? "").trim();
+    const targetPaidOn = String(formData.get("paidOn") ?? "").trim();
+    const targetOrderValue = parseMoney(formData.get("orderValue"));
+    const targetOrderValueRaw = String(formData.get("orderValue") ?? "").trim();
+
+    const { data: rows, error: rowsError } = await supabase
+      .from("purchases")
+      .select(
+        "id, project_id, budget_tracked, budget_line_id, production_category_id, banner_account_code_id, status, procurement_status, request_type, is_credit_card, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, reference_number, requisition_number, po_number, invoice_number, vendor_id, notes, ordered_on, received_on, paid_on"
+      )
+      .in("id", ids);
+    if (rowsError) throw new Error(rowsError.message);
+    if (!rows || rows.length !== ids.length) throw new Error("Some selected procurement rows were not found.");
+
+    const existingProjectIds = Array.from(new Set(rows.map((row) => row.project_id as string)));
+    for (const projectId of existingProjectIds) {
+      await ensureProjectPmOrAdminAccess(supabase, user.id, projectId);
+    }
+
+    for (const existing of rows) {
+      const rowId = existing.id as string;
+      const nextProjectId = applyProject ? targetProjectId : (existing.project_id as string);
+      const nextProductionCategoryId = applyCategory
+        ? targetProductionCategoryId
+        : ((existing.production_category_id as string | null) ?? "");
+      if (!nextProjectId) throw new Error("Project is required when applying project.");
+      if (!nextProductionCategoryId) throw new Error("Department is required.");
+
+      const isCreditCardPurchase =
+        (existing.request_type as string | null) === "expense" && Boolean(existing.is_credit_card as boolean | null);
+      const nextProcurementStatus = applyProcurementStatus
+        ? parseStatus(targetProcurementStatusRaw, isCreditCardPurchase)
+        : parseStatus(existing.procurement_status as string, isCreditCardPurchase);
+
+      const currentValue =
+        Number(existing.estimated_amount ?? 0) ||
+        Number(existing.requested_amount ?? 0) ||
+        Number(existing.encumbered_amount ?? 0) ||
+        Number(existing.pending_cc_amount ?? 0) ||
+        Number(existing.posted_amount ?? 0);
+      const nextValue = applyOrderValue ? targetOrderValue : currentValue;
+      if (applyOrderValue && (targetOrderValueRaw === "" || targetOrderValue === 0)) {
+        throw new Error("Order Value must be non-zero when applying order value.");
+      }
+
+      const nextBudgetStatus = toBudgetStatus(nextProcurementStatus, isCreditCardPurchase);
+      const nextRequestedAmount = nextBudgetStatus === "requested" ? nextValue : 0;
+      const nextEncumberedAmount = nextBudgetStatus === "encumbered" ? nextValue : 0;
+      const nextPendingCcAmount = nextBudgetStatus === "pending_cc" ? nextValue : 0;
+      const nextPostedAmount = nextBudgetStatus === "posted" ? nextValue : 0;
+      const nextCcWorkflowStatus = isCreditCardPurchase
+        ? nextProcurementStatus === "posted_to_account"
+          ? "posted_to_account"
+          : nextProcurementStatus === "statement_paid"
+            ? "statement_paid"
+            : nextProcurementStatus === "receipts_uploaded"
+              ? "receipts_uploaded"
+              : "requested"
+        : null;
+
+      let verifiedBudgetLine: { id: string; account_code_id: string | null } | null = null;
+      const budgetTracked = Boolean(existing.budget_tracked);
+      if (budgetTracked) {
+        const { data: ensuredLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {
+          p_project_id: nextProjectId,
+          p_production_category_id: nextProductionCategoryId
+        });
+        if (ensureLineError || !ensuredLineId) throw new Error(ensureLineError?.message ?? "Could not resolve reporting line.");
+        const { data: line, error: lineError } = await supabase
+          .from("project_budget_lines")
+          .select("id, project_id, account_code_id")
+          .eq("id", ensuredLineId as string)
+          .single();
+        if (lineError || !line) throw new Error("Invalid budget line.");
+        if ((line.project_id as string) !== nextProjectId) throw new Error("Budget line must belong to selected project.");
+        verifiedBudgetLine = { id: line.id as string, account_code_id: (line.account_code_id as string | null) ?? null };
+      }
+
+      const nextBannerAccountCodeId = applyBanner
+        ? targetBannerAccountCodeId || null
+        : ((existing.banner_account_code_id as string | null) ?? null);
+      const nextReceivedOn = applyReceivedOn ? targetReceivedOn || null : ((existing.received_on as string | null) ?? null);
+      const nextPaidOn = applyPaidOn ? targetPaidOn || null : ((existing.paid_on as string | null) ?? null);
+
+      const { error: updateError } = await supabase
+        .from("purchases")
+        .update({
+          project_id: nextProjectId,
+          budget_line_id: budgetTracked ? verifiedBudgetLine?.id ?? null : null,
+          production_category_id: nextProductionCategoryId,
+          banner_account_code_id: nextBannerAccountCodeId,
+          procurement_status: nextProcurementStatus,
+          status: nextBudgetStatus,
+          reference_number: applyReference ? targetReferenceNumber || null : ((existing.reference_number as string | null) ?? null),
+          requisition_number: applyRequisition ? targetRequisitionNumber || null : ((existing.requisition_number as string | null) ?? null),
+          po_number: applyPo ? targetPoNumber || null : ((existing.po_number as string | null) ?? null),
+          invoice_number: applyInvoice ? targetInvoiceNumber || null : ((existing.invoice_number as string | null) ?? null),
+          vendor_id: applyVendor ? targetVendorId || null : ((existing.vendor_id as string | null) ?? null),
+          notes: applyNotes ? targetNotes || null : ((existing.notes as string | null) ?? null),
+          ordered_on: applyOrderedOn ? targetOrderedOn || null : ((existing.ordered_on as string | null) ?? null),
+          received_on: nextReceivedOn,
+          paid_on: nextPaidOn,
+          estimated_amount: nextValue,
+          requested_amount: nextRequestedAmount,
+          encumbered_amount: nextEncumberedAmount,
+          pending_cc_amount: nextPendingCcAmount,
+          posted_amount: nextPostedAmount,
+          posted_date: nextBudgetStatus === "posted" ? nextPaidOn || nextReceivedOn || new Date().toISOString().slice(0, 10) : null,
+          cc_workflow_status: nextCcWorkflowStatus
+        })
+        .eq("id", rowId);
+      if (updateError) throw new Error(updateError.message);
+
+      if (budgetTracked && verifiedBudgetLine) {
+        const { error: deleteAllocError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", rowId);
+        if (deleteAllocError) throw new Error(deleteAllocError.message);
+        const allocationAmount =
+          nextBudgetStatus === "encumbered"
+            ? nextEncumberedAmount
+            : nextBudgetStatus === "pending_cc"
+              ? nextPendingCcAmount
+              : nextBudgetStatus === "posted"
+                ? nextPostedAmount
+                : nextRequestedAmount;
+        const { error: insertAllocError } = await supabase.from("purchase_allocations").insert({
+          purchase_id: rowId,
+          reporting_budget_line_id: verifiedBudgetLine.id,
+          account_code_id: nextBannerAccountCodeId || verifiedBudgetLine.account_code_id,
+          production_category_id: nextProductionCategoryId,
+          amount: allocationAmount,
+          reporting_bucket: "direct"
+        });
+        if (insertAllocError) throw new Error(insertAllocError.message);
+      }
+    }
+
+    revalidatePath("/procurement");
+    revalidatePath("/requests");
+    revalidatePath("/");
+    for (const projectId of existingProjectIds) {
+      revalidatePath(`/projects/${projectId}`);
+    }
+    ok("Bulk procurement update saved.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    fail(getErrorMessage(error, "Could not bulk update procurement rows."));
   }
 }
 

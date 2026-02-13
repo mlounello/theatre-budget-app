@@ -1,13 +1,10 @@
 import {
   assignReceiptsToStatementAction,
   createCreditCardAction,
-  deleteCreditCardAction,
-  deleteStatementMonthAction,
   submitStatementMonthAction,
-  unassignReceiptFromStatementAction,
-  updateCreditCardAction,
-  updateStatementMonthAction
+  unassignReceiptFromStatementAction
 } from "@/app/cc/actions";
+import { CcAdminTables } from "@/app/cc/cc-admin-tables";
 import { CreateStatementMonthForm } from "@/app/cc/create-statement-month-form";
 import { getCcPendingRows, getSettingsProjects } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
@@ -173,57 +170,7 @@ export default async function CreditCardPage({
             </button>
           </form>
 
-          <div className="tableWrap" style={{ marginTop: "0.75rem" }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Nickname</th>
-                  <th>Masked</th>
-                  <th>Active</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cards.length === 0 ? (
-                  <tr>
-                    <td colSpan={4}>No cards yet.</td>
-                  </tr>
-                ) : null}
-                {cards.map((card) => (
-                  <tr key={card.id}>
-                    <td>{card.nickname}</td>
-                    <td>{card.maskedNumber ?? "-"}</td>
-                    <td>{card.active ? "Yes" : "No"}</td>
-                    <td>
-                      <details>
-                        <summary className="tinyButton" style={{ display: "inline-block", listStyle: "none", cursor: "pointer" }}>
-                          Edit
-                        </summary>
-                        <form action={updateCreditCardAction} className="inlineEditForm" style={{ marginTop: "0.4rem" }}>
-                          <input type="hidden" name="id" value={card.id} />
-                          <input name="nickname" defaultValue={card.nickname} required />
-                          <input name="maskedNumber" defaultValue={card.maskedNumber ?? ""} placeholder="****1234" />
-                          <label className="checkboxLabel">
-                            <input name="active" type="checkbox" defaultChecked={card.active} />
-                            Active
-                          </label>
-                          <button type="submit" className="tinyButton">
-                            Save
-                          </button>
-                        </form>
-                      </details>
-                      <form action={deleteCreditCardAction} className="inlineEditForm">
-                        <input type="hidden" name="id" value={card.id} />
-                        <button type="submit" className="tinyButton dangerButton">
-                          Trash
-                        </button>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <CcAdminTables cards={cards} statementMonths={statementMonths} />
         </article>
 
         <article className="panel">
@@ -237,6 +184,7 @@ export default async function CreditCardPage({
 
       <article className="panel panelFull">
         <h2>Statement Months</h2>
+        <p className="heroSubtitle">Use the bulk table above to edit/delete statement months. Expand a month below to assign or reconcile receipts.</p>
         {statementMonths.length === 0 ? <p>No statement months yet.</p> : null}
 
         {statementMonths.map((month) => {
@@ -253,28 +201,6 @@ export default async function CreditCardPage({
                 <strong>{month.statementMonth.slice(0, 7)}</strong> | {month.creditCardName} |{" "}
                 {month.postedAt ? "Statement Paid" : "Open"}
               </summary>
-
-              <form action={updateStatementMonthAction} className="inlineEditForm" style={{ marginBottom: "0.45rem" }}>
-                <input type="hidden" name="id" value={month.id} />
-                <input type="month" name="statementMonth" defaultValue={month.statementMonth.slice(0, 7)} required />
-                <select name="creditCardId" defaultValue={month.creditCardId} required>
-                  {cards.map((card) => (
-                    <option key={card.id} value={card.id}>
-                      {card.nickname} {card.maskedNumber ? `(${card.maskedNumber})` : ""}
-                    </option>
-                  ))}
-                </select>
-                <button type="submit" className="tinyButton">
-                  Save Month
-                </button>
-              </form>
-
-              <form action={deleteStatementMonthAction} className="inlineEditForm" style={{ marginBottom: "0.45rem" }}>
-                <input type="hidden" name="id" value={month.id} />
-                <button type="submit" className="tinyButton dangerButton">
-                  Trash Statement Month
-                </button>
-              </form>
 
               <div className="tableWrap">
                 <table>

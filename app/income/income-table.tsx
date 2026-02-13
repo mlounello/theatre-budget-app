@@ -2,7 +2,12 @@
 
 import { useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { deleteIncomeEntryAction, updateIncomeEntryAction } from "@/app/income/actions";
+import {
+  bulkDeleteIncomeEntriesAction,
+  bulkUpdateIncomeEntriesAction,
+  deleteIncomeEntryAction,
+  updateIncomeEntryAction
+} from "@/app/income/actions";
 import { formatCurrency } from "@/lib/format";
 import type { AccountCodeOption, IncomeRow, OrganizationOption, ProductionCategoryOption } from "@/lib/db";
 
@@ -96,6 +101,12 @@ export function IncomeTable({
   const [direction, setDirection] = useState<SortDirection>(dirFromUrl === "asc" ? "asc" : "desc");
   const editingRow = rows.find((row) => row.id === editingId) ?? null;
   const sortedRows = useMemo(() => sortRows(rows, sortKey, direction), [rows, sortKey, direction]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const selectedVisibleCount = useMemo(() => sortedRows.filter((row) => selectedSet.has(row.id)).length, [selectedSet, sortedRows]);
+  const allVisibleSelected = sortedRows.length > 0 && selectedVisibleCount === sortedRows.length;
+  const selectedIdsJson = JSON.stringify(selectedIds);
 
   function onToggle(key: SortKey): void {
     const nextDirection: SortDirection = key === sortKey ? (direction === "asc" ? "desc" : "asc") : "asc";
@@ -112,12 +123,54 @@ export function IncomeTable({
     setDirection("asc");
   }
 
+  function toggleRowSelection(id: string): void {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((entry) => entry !== id) : [...prev, id]));
+  }
+
+  function toggleSelectAllVisible(): void {
+    setSelectedIds((prev) => {
+      const visibleIds = sortedRows.map((row) => row.id);
+      if (visibleIds.length === 0) return prev;
+      const prevSet = new Set(prev);
+      const allVisible = visibleIds.every((id) => prevSet.has(id));
+      if (allVisible) return prev.filter((id) => !visibleIds.includes(id));
+      return [...new Set([...prev, ...visibleIds])];
+    });
+  }
+
   return (
     <>
+      <div className="bulkToolbar">
+        <p className="bulkMeta">
+          Selected: {selectedIds.length} total ({selectedVisibleCount} visible)
+        </p>
+        <div className="bulkActions">
+          <button type="button" className="tinyButton" disabled={selectedIds.length === 0} onClick={() => setBulkEditOpen(true)}>
+            Bulk Edit
+          </button>
+          <form
+            action={bulkDeleteIncomeEntriesAction}
+            onSubmit={(event) => {
+              if (!window.confirm(`Delete ${selectedIds.length} selected income entries?`)) {
+                event.preventDefault();
+              }
+            }}
+          >
+            <input type="hidden" name="selectedIdsJson" value={selectedIdsJson} />
+            <button type="submit" className="tinyButton dangerButton" disabled={selectedIds.length === 0}>
+              Bulk Delete
+            </button>
+          </form>
+        </div>
+      </div>
+
       <div className="tableWrap">
         <table>
           <thead>
             <tr>
+              <th className="rowSelectHeader">
+                <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} aria-label="Select all visible rows" />
+              </th>
               <SortTh label="Project" sortKey="projectName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <SortTh
                 label="Organization"
@@ -151,11 +204,14 @@ export function IncomeTable({
           <tbody>
             {sortedRows.length === 0 ? (
               <tr>
-                <td colSpan={10}>No income entries yet.</td>
+                <td colSpan={11}>No income entries yet.</td>
               </tr>
             ) : null}
             {sortedRows.map((row) => (
               <tr key={row.id}>
+                <td className="rowSelectCell">
+                  <input type="checkbox" checked={selectedSet.has(row.id)} onChange={() => toggleRowSelection(row.id)} />
+                </td>
                 <td>{row.projectName ?? "-"}</td>
                 <td>{row.organizationLabel}</td>
                 <td>{row.productionCategoryName ?? "-"}</td>
@@ -258,6 +314,124 @@ export function IncomeTable({
                 </button>
                 <button type="submit" className="buttonLink buttonPrimary">
                   Save
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {bulkEditOpen ? (
+        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Bulk edit income entries">
+          <div className="modalPanel">
+            <h2>Bulk Edit Income Entries</h2>
+            <p className="heroSubtitle">Only checked fields are applied to all selected rows.</p>
+            <form action={bulkUpdateIncomeEntriesAction} className="requestForm">
+              <input type="hidden" name="selectedIdsJson" value={selectedIdsJson} />
+              <label className="checkboxLabel">
+                <input name="applyOrganization" type="checkbox" />
+                Apply Organization
+              </label>
+              <label>
+                Organization
+                <select name="organizationId">
+                  <option value="">Select organization</option>
+                  {organizations.map((organization) => (
+                    <option key={organization.id} value={organization.id}>
+                      {organization.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyIncomeType" type="checkbox" />
+                Apply Income Type
+              </label>
+              <label>
+                Income Type
+                <select name="incomeType" defaultValue="other">
+                  <option value="starting_budget">Starting Budget</option>
+                  <option value="donation">Donation</option>
+                  <option value="ticket_sales">Ticket Sales</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyProductionCategory" type="checkbox" />
+                Apply Department
+              </label>
+              <label>
+                Department
+                <select name="productionCategoryId">
+                  <option value="">Unassigned</option>
+                  {productionCategoryOptions.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyBannerAccountCode" type="checkbox" />
+                Apply Banner Code
+              </label>
+              <label>
+                Banner Code
+                <select name="bannerAccountCodeId">
+                  <option value="">Unassigned</option>
+                  {accountCodeOptions.map((accountCode) => (
+                    <option key={accountCode.id} value={accountCode.id}>
+                      {accountCode.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyLineName" type="checkbox" />
+                Apply Description
+              </label>
+              <label>
+                Description
+                <input name="lineName" />
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyReferenceNumber" type="checkbox" />
+                Apply Reference
+              </label>
+              <label>
+                Reference
+                <input name="referenceNumber" />
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyAmount" type="checkbox" />
+                Apply Amount
+              </label>
+              <label>
+                Amount
+                <input name="amount" type="number" step="0.01" />
+              </label>
+
+              <label className="checkboxLabel">
+                <input name="applyReceivedOn" type="checkbox" />
+                Apply Received On
+              </label>
+              <label>
+                Received On
+                <input name="receivedOn" type="date" />
+              </label>
+
+              <div className="modalActions">
+                <button type="button" className="tinyButton" onClick={() => setBulkEditOpen(false)}>
+                  Close
+                </button>
+                <button type="submit" className="tinyButton">
+                  Save Bulk Edit
                 </button>
               </div>
             </form>
