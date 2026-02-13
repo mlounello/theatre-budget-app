@@ -20,6 +20,24 @@ const CC_PROCUREMENT_STATUSES = ["requested", "receipts_uploaded", "statement_pa
 
 type ProcurementStatus = (typeof PROCUREMENT_STATUSES)[number] | (typeof CC_PROCUREMENT_STATUSES)[number];
 
+function getStatusAmount(
+  status: string | null | undefined,
+  amounts: {
+    estimated: number;
+    requested: number;
+    encumbered: number;
+    pendingCc: number;
+    posted: number;
+  }
+): number {
+  const normalized = (status ?? "").toLowerCase();
+  if (normalized === "posted") return amounts.posted;
+  if (normalized === "pending_cc") return amounts.pendingCc;
+  if (normalized === "encumbered") return amounts.encumbered;
+  if (normalized === "requested") return amounts.requested !== 0 ? amounts.requested : amounts.estimated;
+  return amounts.estimated !== 0 ? amounts.estimated : amounts.requested !== 0 ? amounts.requested : amounts.posted;
+}
+
 function parseMoney(value: FormDataEntryValue | null): number {
   if (typeof value !== "string" || value.trim() === "") return 0;
   const parsed = Number.parseFloat(value);
@@ -442,12 +460,13 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
     const isCreditCardPurchase =
       (existing.request_type as string | null) === "expense" && Boolean(existing.is_credit_card as boolean | null);
     const procurementStatus = parseStatus(formData.get("procurementStatus"), isCreditCardPurchase);
-    const existingOrderValue =
-      Number(existing.estimated_amount ?? 0) ||
-      Number(existing.requested_amount ?? 0) ||
-      Number(existing.encumbered_amount ?? 0) ||
-      Number(existing.pending_cc_amount ?? 0) ||
-      Number(existing.posted_amount ?? 0);
+    const existingOrderValue = getStatusAmount(existing.status as string, {
+      estimated: Number(existing.estimated_amount ?? 0),
+      requested: Number(existing.requested_amount ?? 0),
+      encumbered: Number(existing.encumbered_amount ?? 0),
+      pendingCc: Number(existing.pending_cc_amount ?? 0),
+      posted: Number(existing.posted_amount ?? 0)
+    });
     const nextRequested = orderValueRaw !== "" ? orderValue : existingOrderValue;
     const nextBudgetStatus = toBudgetStatus(procurementStatus, isCreditCardPurchase);
     const nextRequestedAmount = nextBudgetStatus === "requested" ? nextRequested : 0;
@@ -802,12 +821,13 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
         ? parseStatus(targetProcurementStatusRaw, isCreditCardPurchase)
         : parseStatus(existing.procurement_status as string, isCreditCardPurchase);
 
-      const currentValue =
-        Number(existing.estimated_amount ?? 0) ||
-        Number(existing.requested_amount ?? 0) ||
-        Number(existing.encumbered_amount ?? 0) ||
-        Number(existing.pending_cc_amount ?? 0) ||
-        Number(existing.posted_amount ?? 0);
+      const currentValue = getStatusAmount(existing.status as string, {
+        estimated: Number(existing.estimated_amount ?? 0),
+        requested: Number(existing.requested_amount ?? 0),
+        encumbered: Number(existing.encumbered_amount ?? 0),
+        pendingCc: Number(existing.pending_cc_amount ?? 0),
+        posted: Number(existing.posted_amount ?? 0)
+      });
       const nextValue = applyOrderValue ? targetOrderValue : currentValue;
       if (applyOrderValue && (targetOrderValueRaw === "" || targetOrderValue === 0)) {
         throw new Error("Order Value must be non-zero when applying order value.");

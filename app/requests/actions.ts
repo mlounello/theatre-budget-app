@@ -604,7 +604,7 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
 
   const { data: existing, error: existingError } = await supabase
     .from("purchases")
-    .select("id, project_id, status, budget_line_id, encumbered_amount, pending_cc_amount, posted_amount")
+    .select("id, project_id, status, budget_line_id, requested_amount, encumbered_amount, pending_cc_amount, posted_amount")
     .eq("id", purchaseId)
     .single();
   if (existingError || !existing) throw new Error("Purchase not found.");
@@ -634,6 +634,19 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
   const nextCcWorkflowStatus = nextIsCc
     ? ((existing.status as PurchaseStatus) === "posted" ? "posted_to_account" : "requested")
     : null;
+  const currentPostedAmount = Number(existing.posted_amount ?? 0);
+  const currentPendingCcAmount = Number(existing.pending_cc_amount ?? 0);
+  const currentEncumberedAmount = Number(existing.encumbered_amount ?? 0);
+  const currentRequestedAmount = Number(existing.requested_amount ?? 0);
+  const statusLockedEstimatedAmount =
+    (existing.status as PurchaseStatus) === "posted"
+      ? currentPostedAmount
+      : (existing.status as PurchaseStatus) === "pending_cc"
+        ? currentPendingCcAmount
+        : (existing.status as PurchaseStatus) === "encumbered"
+          ? currentEncumberedAmount
+          : currentRequestedAmount;
+
   const nextValues = {
     project_id: projectId,
     budget_line_id: resolvedBudgetLineId,
@@ -642,7 +655,7 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
     title,
     reference_number: requestType === "requisition" ? null : referenceNumber || null,
     requisition_number: requestType === "requisition" ? requisitionNumber || null : null,
-    estimated_amount: estimatedAmount,
+    estimated_amount: (existing.status as PurchaseStatus) === "requested" ? estimatedAmount : statusLockedEstimatedAmount,
     requested_amount: existing.status === "requested" ? nextRequested : nextRequested,
     request_type: requestType,
     is_credit_card: isCreditCard,

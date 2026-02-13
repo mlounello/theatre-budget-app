@@ -32,6 +32,9 @@ type PendingReceiptRow = {
   requestNumber: string | null;
   purchasePendingCcAmount: number;
   purchaseCreditCardId: string | null;
+  purchaseStatus: string;
+  purchaseRequestType: string;
+  purchaseIsCreditCard: boolean;
   statementMonthId: string | null;
   projectLabel: string;
   budgetLineLabel: string;
@@ -61,7 +64,7 @@ export default async function CreditCardPage({
     projects,
     cardsResponse,
     monthsResponse,
-    pendingPurchasesResponse,
+    receiptsResponse,
     membershipsResponse,
     accountCodeOptions,
     productionCategoryOptions
@@ -78,9 +81,6 @@ export default async function CreditCardPage({
       .select(
         "id, purchase_id, amount_received, note, created_at, cc_statement_month_id, purchases!inner(id, title, reference_number, requisition_number, pending_cc_amount, credit_card_id, status, request_type, is_credit_card, projects(name, season), project_budget_lines(budget_code, category, line_name))"
       )
-      .eq("purchases.status", "pending_cc")
-      .eq("purchases.request_type", "expense")
-      .eq("purchases.is_credit_card", true)
       .order("created_at", { ascending: true }),
     supabase.from("project_memberships").select("project_id, role"),
     getAccountCodeOptions(),
@@ -89,7 +89,7 @@ export default async function CreditCardPage({
 
   if (cardsResponse.error) throw cardsResponse.error;
   if (monthsResponse.error) throw monthsResponse.error;
-  if (pendingPurchasesResponse.error) throw pendingPurchasesResponse.error;
+  if (receiptsResponse.error) throw receiptsResponse.error;
   if (membershipsResponse.error) throw membershipsResponse.error;
 
   const membershipRows = membershipsResponse.data ?? [];
@@ -139,7 +139,7 @@ export default async function CreditCardPage({
     return true;
   });
 
-  const pendingReceipts: PendingReceiptRow[] = (pendingPurchasesResponse.data ?? []).map((row) => {
+  const pendingReceipts: PendingReceiptRow[] = (receiptsResponse.data ?? []).map((row) => {
     const purchase = row.purchases as
       | {
           id?: string;
@@ -148,6 +148,9 @@ export default async function CreditCardPage({
           requisition_number?: string | null;
           pending_cc_amount?: number | string | null;
           credit_card_id?: string | null;
+          status?: string;
+          request_type?: string;
+          is_credit_card?: boolean | null;
           projects?: { name?: string; season?: string | null } | null;
           project_budget_lines?: { budget_code?: string; category?: string; line_name?: string } | null;
         }
@@ -165,6 +168,9 @@ export default async function CreditCardPage({
       requestNumber: reqOrRef,
       purchasePendingCcAmount: Number(purchase?.pending_cc_amount ?? 0),
       purchaseCreditCardId: (purchase?.credit_card_id as string | null) ?? null,
+      purchaseStatus: (purchase?.status as string | undefined) ?? "",
+      purchaseRequestType: (purchase?.request_type as string | undefined) ?? "",
+      purchaseIsCreditCard: Boolean(purchase?.is_credit_card as boolean | null | undefined),
       statementMonthId: (row.cc_statement_month_id as string | null) ?? null,
       projectLabel: `${project?.name ?? "Unknown Project"}${project?.season ? ` (${project.season})` : ""}`,
       budgetLineLabel: `${budgetLine?.budget_code ?? "-"} | ${budgetLine?.category ?? "-"} | ${budgetLine?.line_name ?? "-"}`
@@ -329,6 +335,9 @@ export default async function CreditCardPage({
           const unassignedCandidates = pendingReceipts.filter(
             (receipt) =>
               !receipt.statementMonthId &&
+              receipt.purchaseStatus === "pending_cc" &&
+              receipt.purchaseRequestType === "expense" &&
+              receipt.purchaseIsCreditCard &&
               (receipt.purchaseCreditCardId === month.creditCardId || receipt.purchaseCreditCardId === null)
           );
           const assignedTotal = assignedReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
