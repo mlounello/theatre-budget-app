@@ -4,6 +4,7 @@ import {
   deleteProductionCategoryAction,
   deleteAccountCodeAction,
   importHierarchyCsvAction,
+  updateAppSettingsAction,
   updateProductionCategoryAction,
   updateAccountCodeAction,
   updateBudgetLineAction,
@@ -19,6 +20,7 @@ import { ProjectReorder } from "@/app/settings/project-reorder";
 import {
   getAccountCodeOptions,
   getAccountCodesAdmin,
+  getAppSettings,
   getHierarchyRows,
   getOrganizationOptions,
   getProductionCategoriesAdmin,
@@ -82,6 +84,7 @@ export default async function SettingsPage({
   const productionCategories = await getProductionCategoryOptions();
   const allProductionCategories = await getProductionCategoriesAdmin();
   const organizations = await getOrganizationOptions();
+  const appSettings = await getAppSettings();
   const hierarchyRows = await getHierarchyRows();
 
   const groupedByFiscalYear = new Map<string, FiscalYearGroup>();
@@ -192,6 +195,20 @@ export default async function SettingsPage({
           accountCodes={accountCodes}
           productionCategories={productionCategories}
         />
+
+        <article className="panel panelFull">
+          <h2>App Modules</h2>
+          <p>Keep Requests as optional planning only while Procurement remains the system of record.</p>
+          <form className="requestForm" action={updateAppSettingsAction}>
+            <label className="checkboxLabel">
+              <input name="planningRequestsEnabled" type="checkbox" defaultChecked={appSettings.planningRequestsEnabled} />
+              Enable Planning Requests module
+            </label>
+            <button type="submit" className="buttonLink buttonPrimary">
+              Save Module Settings
+            </button>
+          </form>
+        </article>
 
         <article className="panel panelFull">
           <h2>CSV Import</h2>

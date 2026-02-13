@@ -224,6 +224,10 @@ export type ProductionCategoryAdminRow = {
   active: boolean;
 };
 
+export type AppSettings = {
+  planningRequestsEnabled: boolean;
+};
+
 export type FiscalYearOption = {
   id: string;
   name: string;
@@ -1165,6 +1169,19 @@ export async function getOrganizationOptions(): Promise<OrganizationOption[]> {
       label: `${row.org_code as string} | ${row.name as string}${fiscalYearName ? ` (${fiscalYearName})` : ""}`
     };
   });
+}
+
+export async function getAppSettings(): Promise<AppSettings> {
+  const supabase = await getSupabaseServerClient();
+  const { data, error } = await supabase.from("app_settings").select("planning_requests_enabled").eq("id", 1).maybeSingle();
+
+  if (error) {
+    return { planningRequestsEnabled: true };
+  }
+
+  return {
+    planningRequestsEnabled: (data?.planning_requests_enabled as boolean | null) ?? true
+  };
 }
 
 export async function getOrganizationOverviewRows(): Promise<OrganizationOverviewRow[]> {

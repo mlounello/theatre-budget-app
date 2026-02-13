@@ -1,8 +1,30 @@
+import Link from "next/link";
 import { getRequestsData } from "@/lib/db";
+import { getAppSettings } from "@/lib/db";
 import { CreateRequestForm } from "@/app/requests/create-request-form";
 import { RequestsTable } from "@/app/requests/requests-table";
 
 export default async function RequestsPage() {
+  const appSettings = await getAppSettings();
+  if (!appSettings.planningRequestsEnabled) {
+    return (
+      <section>
+        <header className="sectionHeader">
+          <p className="eyebrow">Planning</p>
+          <h1>Requests Module Disabled</h1>
+          <p className="heroSubtitle">
+            Planning Requests are currently turned off. Use Procurement as the source of truth for budget-impacting entries.
+          </p>
+          <p>
+            <Link className="buttonLink buttonPrimary" href="/procurement">
+              Open Procurement
+            </Link>
+          </p>
+        </header>
+      </section>
+    );
+  }
+
   const { purchases, receipts, budgetLineOptions, projectOptions, accountCodeOptions, productionCategoryOptions, canManageSplits } =
     await getRequestsData();
 

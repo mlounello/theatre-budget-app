@@ -529,6 +529,38 @@ export async function updateProjectAction(formData: FormData): Promise<void> {
   }
 }
 
+export async function updateAppSettingsAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+
+    const planningRequestsEnabled = formData.get("planningRequestsEnabled") === "on";
+
+    const { error } = await supabase.from("app_settings").upsert(
+      {
+        id: 1,
+        planning_requests_enabled: planningRequestsEnabled,
+        updated_at: new Date().toISOString(),
+        updated_by: user.id
+      },
+      { onConflict: "id" }
+    );
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/");
+    revalidatePath("/requests");
+    revalidatePath("/procurement");
+    revalidatePath("/settings");
+    settingsSuccess("App settings updated.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not update app settings."));
+  }
+}
+
 export async function updateBudgetLineAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();
