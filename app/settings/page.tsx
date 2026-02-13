@@ -332,7 +332,15 @@ export default async function SettingsPage({
                                   <td>
                                     <form action={addBudgetLineAction} className="inlineEditForm">
                                       <input type="hidden" name="projectId" value={project.id} />
-                                      <select name="accountCodeId" required>
+                                      <select name="productionCategoryId" required>
+                                        <option value="">Department</option>
+                                        {productionCategories.map((category) => (
+                                          <option key={category.id} value={category.id}>
+                                            {category.name}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      <select name="accountCodeId">
                                         <option value="">Account code</option>
                                         {accountCodes.map((accountCode) => (
                                           <option key={accountCode.id} value={accountCode.id}>
@@ -611,13 +619,18 @@ export default async function SettingsPage({
               </label>
               <label>
                 Account Code
-                <select name="accountCodeId" defaultValue={editingLine.accountCodeId ?? ""} required>
+                <select name="accountCodeId" defaultValue={editingLine.accountCodeId ?? ""}>
+                  <option value="">(none)</option>
                   {accountCodes.map((accountCode) => (
                     <option key={accountCode.id} value={accountCode.id}>
                       {accountCode.code} | {accountCode.category} | {accountCode.name}
                     </option>
                   ))}
                 </select>
+              </label>
+              <label className="checkboxLabel">
+                <input name="clearAccountCode" type="checkbox" />
+                Clear account code link
               </label>
               <label>
                 Department

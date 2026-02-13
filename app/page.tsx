@@ -63,18 +63,14 @@ export default async function DashboardPage() {
                 <dd>{formatCurrency(project.pendingCcTotal)}</dd>
               </div>
               <div>
-                <dt>Remaining (True)</dt>
+                <dt>Obligated</dt>
+                <dd>{formatCurrency(project.obligatedTotal)}</dd>
+              </div>
+              <div>
+                <dt>Remaining</dt>
                 <dd className={project.remainingTrue < 0 ? "negative" : "positive"}>
                   {formatCurrency(project.remainingTrue)}
                 </dd>
-              </div>
-              <div>
-                <dt>Requested (Open)</dt>
-                <dd>{formatCurrency(project.requestedOpenTotal)}</dd>
-              </div>
-              <div>
-                <dt>Income</dt>
-                <dd>{formatCurrency(project.incomeTotal)}</dd>
               </div>
               <div>
                 <dt>Remaining if Requested Approved</dt>

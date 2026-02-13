@@ -313,6 +313,7 @@ export async function getDashboardProjects(): Promise<DashboardProject[]> {
   const { data: projectsData, error: projectsError } = await supabase
     .from("projects")
     .select("id, name, season, sort_order")
+    .not("name", "ilike", "external procurement")
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
 

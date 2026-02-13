@@ -546,7 +546,7 @@ export async function updateBudgetLineAction(formData: FormData): Promise<void> 
       allocated_amount: number;
       sort_order?: number;
       active: boolean;
-      account_code_id?: string;
+      account_code_id?: string | null;
       production_category_id?: string | null;
       budget_code?: string;
       category?: string;
@@ -576,10 +576,12 @@ export async function updateBudgetLineAction(formData: FormData): Promise<void> 
       if (accountCodeError || !accountCode) throw new Error("Invalid account code selection.");
       nextValues = {
         ...nextValues,
-        account_code_id: accountCode.id,
-        budget_code: accountCode.code,
-        category: accountCode.category,
-        line_name: accountCode.name
+        account_code_id: accountCode.id
+      };
+    } else if (String(formData.get("clearAccountCode") ?? "").trim() === "on") {
+      nextValues = {
+        ...nextValues,
+        account_code_id: null
       };
     }
 
@@ -614,23 +616,35 @@ export async function addBudgetLineAction(formData: FormData): Promise<void> {
     const accountCodeId = String(formData.get("accountCodeId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const allocatedAmount = parseMoney(formData.get("allocatedAmount"));
-    if (!projectId || !accountCodeId) throw new Error("Project and account code are required.");
+    if (!projectId || !productionCategoryId) throw new Error("Project and department are required.");
 
-    const { data: accountCode, error: accountCodeError } = await supabase
-      .from("account_codes")
-      .select("id, code, category, name")
-      .eq("id", accountCodeId)
+    const { data: category, error: categoryError } = await supabase
+      .from("production_categories")
+      .select("id, name")
+      .eq("id", productionCategoryId)
       .single();
+    if (categoryError || !category) throw new Error("Invalid department selection.");
 
-    if (accountCodeError || !accountCode) throw new Error("Invalid account code selection.");
+    let accountCode: { id: string; code: string } | null = null;
+    if (accountCodeId) {
+      const { data: accountCodeData, error: accountCodeError } = await supabase
+        .from("account_codes")
+        .select("id, code")
+        .eq("id", accountCodeId)
+        .single();
+
+      if (accountCodeError || !accountCodeData) throw new Error("Invalid account code selection.");
+      accountCode = {
+        id: accountCodeData.id as string,
+        code: accountCodeData.code as string
+      };
+    }
 
     const { data: existingLine, error: existingLineError } = await supabase
       .from("project_budget_lines")
       .select("id")
       .eq("project_id", projectId)
-      .eq("budget_code", accountCode.code)
-      .eq("category", accountCode.category)
-      .eq("line_name", accountCode.name)
+      .eq("production_category_id", productionCategoryId)
       .maybeSingle();
 
     if (existingLineError) throw new Error(existingLineError.message);
@@ -639,8 +653,11 @@ export async function addBudgetLineAction(formData: FormData): Promise<void> {
       const { error: updateError } = await supabase
         .from("project_budget_lines")
         .update({
-          account_code_id: accountCode.id,
-          production_category_id: productionCategoryId || null,
+          account_code_id: accountCode?.id ?? null,
+          budget_code: accountCode?.code ?? "UNASSIGNED",
+          category: category.name as string,
+          line_name: category.name as string,
+          production_category_id: productionCategoryId,
           allocated_amount: allocatedAmount,
           active: true
         })
@@ -659,11 +676,11 @@ export async function addBudgetLineAction(formData: FormData): Promise<void> {
 
       const { error: insertError } = await supabase.from("project_budget_lines").insert({
         project_id: projectId,
-        budget_code: accountCode.code,
-        category: accountCode.category,
-        line_name: accountCode.name,
-        account_code_id: accountCode.id,
-        production_category_id: productionCategoryId || null,
+        budget_code: accountCode?.code ?? "UNASSIGNED",
+        category: category.name as string,
+        line_name: category.name as string,
+        account_code_id: accountCode?.id ?? null,
+        production_category_id: productionCategoryId,
         allocated_amount: allocatedAmount,
         sort_order: nextSort,
         active: true

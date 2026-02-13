@@ -195,8 +195,8 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
           </label>
           <label>
             Department
-            <select name="productionCategoryId">
-              <option value="">(optional)</option>
+            <select name="productionCategoryId" required>
+              <option value="">Select department</option>
               {productionCategories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
@@ -205,9 +205,9 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
             </select>
           </label>
           <label>
-            Account Code
-            <select name="accountCodeId" required>
-              <option value="">Select account code</option>
+            Account Code (optional)
+            <select name="accountCodeId">
+              <option value="">(none)</option>
               {accountCodes.map((accountCode) => (
                 <option key={accountCode.id} value={accountCode.id}>
                   {accountCode.label}
