@@ -1,4 +1,3 @@
-import { createVendorAction } from "@/app/procurement/actions";
 import { CreateOrderForm } from "@/app/procurement/create-order-form";
 import { QuickBatchAddForm } from "@/app/procurement/quick-batch-add-form";
 import { ProcurementTable } from "@/app/procurement/procurement-table";
@@ -45,7 +44,7 @@ export default async function ProcurementPage({
 
       {canManageProcurement ? (
         <div className="panelGrid">
-          <article className="panel">
+          <article className="panel panelFull">
             <h2>Add Order</h2>
             <CreateOrderForm
               projectOptions={projectOptions}
@@ -55,19 +54,6 @@ export default async function ProcurementPage({
               accountCodeOptions={accountCodeOptions}
               productionCategoryOptions={productionCategoryOptions}
             />
-          </article>
-
-          <article className="panel">
-            <h2>Add Vendor</h2>
-            <form action={createVendorAction} className="requestForm">
-              <label>
-                Vendor Name
-                <input name="name" required placeholder="Ex: Home Depot" />
-              </label>
-              <button type="submit" className="buttonLink buttonPrimary">
-                Save Vendor
-              </button>
-            </form>
           </article>
 
           <article className="panel panelFull">

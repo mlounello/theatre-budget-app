@@ -278,7 +278,8 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
     const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
     const requisitionNumber = String(formData.get("requisitionNumber") ?? "").trim();
     const poNumber = String(formData.get("poNumber") ?? "").trim();
-    const vendorId = String(formData.get("vendorId") ?? "").trim();
+    const vendorIdRaw = String(formData.get("vendorId") ?? "").trim();
+    const newVendorName = String(formData.get("newVendorName") ?? "").trim();
     const requestType = parseProcurementRequestType(formData.get("requestType"));
     const isCreditCard = requestType === "expense" ? formData.get("isCreditCard") === "on" : false;
 
@@ -317,6 +318,20 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
       };
     }
 
+    let resolvedVendorId: string | null = null;
+    if (vendorIdRaw === "__new_vendor__") {
+      if (!newVendorName) throw new Error("New vendor name is required.");
+      const { data: vendorRow, error: vendorError } = await supabase
+        .from("vendors")
+        .insert({ name: newVendorName })
+        .select("id")
+        .single();
+      if (vendorError || !vendorRow) throw new Error(vendorError?.message ?? "Could not create vendor.");
+      resolvedVendorId = vendorRow.id as string;
+    } else {
+      resolvedVendorId = vendorIdRaw || null;
+    }
+
     const { data: purchase, error: insertError } = await supabase
       .from("purchases")
       .insert({
@@ -331,7 +346,7 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
         reference_number: requestType === "budget_transfer" ? null : referenceNumber || null,
         requisition_number: requestType === "requisition" ? requisitionNumber || null : null,
         po_number: poNumber || null,
-        vendor_id: vendorId || null,
+        vendor_id: resolvedVendorId,
         estimated_amount: orderValue,
         requested_amount: computed.requestedAmount,
         encumbered_amount: computed.encumberedAmount,

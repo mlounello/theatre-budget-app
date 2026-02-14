@@ -13,6 +13,7 @@ import type {
 
 const NONE_FISCAL_YEAR = "__none_fiscal_year__";
 const NONE_ORGANIZATION = "__none_organization__";
+const NEW_VENDOR_VALUE = "__new_vendor__";
 
 export function CreateOrderForm({
   projectOptions,
@@ -35,6 +36,7 @@ export function CreateOrderForm({
   const [vendorId, setVendorId] = useState("");
   const [productionCategoryId, setProductionCategoryId] = useState("");
   const [bannerAccountCodeId, setBannerAccountCodeId] = useState("");
+  const [newVendorName, setNewVendorName] = useState("");
   const [requestType, setRequestType] = useState<
     "requisition" | "expense" | "contract" | "request" | "budget_transfer" | "contract_payment"
   >("requisition");
@@ -248,6 +250,7 @@ export function CreateOrderForm({
         Vendor
         <select name="vendorId" value={vendorId} onChange={(event) => setVendorId(event.target.value)}>
           <option value="">No vendor</option>
+          <option value={NEW_VENDOR_VALUE}>+ Add new vendor...</option>
           {vendors.map((vendor) => (
             <option key={vendor.id} value={vendor.id}>
               {vendor.name}
@@ -255,6 +258,18 @@ export function CreateOrderForm({
           ))}
         </select>
       </label>
+      {vendorId === NEW_VENDOR_VALUE ? (
+        <label>
+          New Vendor Name
+          <input
+            name="newVendorName"
+            value={newVendorName}
+            onChange={(event) => setNewVendorName(event.target.value)}
+            placeholder="Ex: Home Depot"
+            required
+          />
+        </label>
+      ) : null}
       <button type="submit" className="buttonLink buttonPrimary">
         Create Procurement Order
       </button>
