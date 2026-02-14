@@ -111,18 +111,21 @@ export default async function MyBudgetPage({
                 <th>Org</th>
                 <th>Project</th>
                 <th>Department</th>
+                <th>Allocated</th>
                 <th>Requested</th>
                 <th>Held</th>
                 <th>ENC</th>
                 <th>Pending CC</th>
                 <th>Posted</th>
                 <th>Obligated</th>
+                <th>Remaining</th>
+                <th>Remaining if Requested Approved</th>
               </tr>
             </thead>
             <tbody>
               {cards.length === 0 ? (
                 <tr>
-                  <td colSpan={10}>No scoped department totals yet.</td>
+                  <td colSpan={13}>No scoped department totals yet.</td>
                 </tr>
               ) : null}
               {cards.map((card) => (
@@ -134,12 +137,17 @@ export default async function MyBudgetPage({
                     {card.season ? ` (${card.season})` : ""}
                   </td>
                   <td>{card.productionCategoryName}</td>
+                  <td>{formatCurrency(card.allocatedTotal)}</td>
                   <td>{formatCurrency(card.requestedOpenTotal)}</td>
                   <td>{formatCurrency(card.heldTotal)}</td>
                   <td>{formatCurrency(card.encTotal)}</td>
                   <td>{formatCurrency(card.pendingCcTotal)}</td>
                   <td>{formatCurrency(card.ytdTotal)}</td>
                   <td>{formatCurrency(card.obligatedTotal)}</td>
+                  <td className={card.remainingTrue < 0 ? "negative" : "positive"}>{formatCurrency(card.remainingTrue)}</td>
+                  <td className={card.remainingIfRequestedApproved < 0 ? "negative" : "positive"}>
+                    {formatCurrency(card.remainingIfRequestedApproved)}
+                  </td>
                 </tr>
               ))}
             </tbody>
