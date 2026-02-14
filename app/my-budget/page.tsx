@@ -28,107 +28,177 @@ export default async function MyBudgetPage({
 }) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
-
-  const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const selectedProjectId = (resolvedSearchParams?.projectId ?? "").trim();
+  if (searchParams) await searchParams;
 
   const { cards } = await getMyBudgetData();
-  const projectChoices = Array.from(new Map(cards.map((card) => [card.projectId, card.projectName])).entries()).map(([id, name]) => ({
-    id,
-    name
-  }));
+  const projectGroups = new Map<
+    string,
+    {
+      projectId: string;
+      projectName: string;
+      season: string | null;
+      fiscalYearName: string | null;
+      orgCode: string | null;
+      organizationName: string | null;
+      rows: Array<{
+        id: string;
+        category: string;
+        type: string;
+        title: string;
+        vendorName: string | null;
+        requestNumber: string | null;
+        poNumber: string | null;
+        procurementStatus: string;
+        budgetStatus: string;
+        amount: number;
+      }>;
+    }
+  >();
 
-  const filteredCards = selectedProjectId ? cards.filter((card) => card.projectId === selectedProjectId) : cards;
-  const flattenedRows = filteredCards.flatMap((card) =>
-    card.entries.map((entry) => ({
-      ...entry,
-      projectId: card.projectId,
-      projectName: card.projectName,
-      season: card.season,
-      category: card.productionCategoryName,
-      fiscalYearName: card.fiscalYearName,
-      orgCode: card.orgCode,
-      organizationName: card.organizationName
-    }))
-  );
+  for (const card of cards) {
+    const key = card.projectId;
+    const group =
+      projectGroups.get(key) ??
+      {
+        projectId: card.projectId,
+        projectName: card.projectName,
+        season: card.season,
+        fiscalYearName: card.fiscalYearName,
+        orgCode: card.orgCode,
+        organizationName: card.organizationName,
+        rows: []
+      };
+
+    for (const entry of card.entries) {
+      group.rows.push({
+        id: entry.id,
+        category: card.productionCategoryName,
+        type: labelForType(entry.requestType),
+        title: entry.title,
+        vendorName: entry.vendorName,
+        requestNumber: entry.requisitionNumber ?? entry.referenceNumber ?? null,
+        poNumber: entry.poNumber,
+        procurementStatus: entry.procurementStatus,
+        budgetStatus: entry.status,
+        amount: entry.amount
+      });
+    }
+    projectGroups.set(key, group);
+  }
+
+  const groupedProjects = Array.from(projectGroups.values()).map((group) => ({
+    ...group,
+    rows: group.rows.sort((a, b) => a.title.localeCompare(b.title))
+  }));
 
   return (
     <section>
       <header className="sectionHeader">
         <p className="eyebrow">My Budget</p>
-        <h1>Project Running List</h1>
-        <p className="heroSubtitle">Full scoped running list of requests/orders for reconciliation and budget tracking.</p>
+        <h1>Department Actuals and Running List</h1>
+        <p className="heroSubtitle">
+          Scoped department-level totals first, then full running lists grouped by project.
+        </p>
       </header>
 
-      <article className="panel requestFormPanel">
-        <h2>View Project</h2>
-        <form method="get" className="requestForm">
-          <label>
-            Project
-            <select name="projectId" defaultValue={selectedProjectId}>
-              <option value="">All scoped projects</option>
-              {projectChoices.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
+      <article className="panel">
+        <h2>Actuals by Production Department</h2>
+        <div className="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>FY</th>
+                <th>Org</th>
+                <th>Project</th>
+                <th>Department</th>
+                <th>Requested</th>
+                <th>Held</th>
+                <th>ENC</th>
+                <th>Pending CC</th>
+                <th>Posted</th>
+                <th>Obligated</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cards.length === 0 ? (
+                <tr>
+                  <td colSpan={10}>No scoped department totals yet.</td>
+                </tr>
+              ) : null}
+              {cards.map((card) => (
+                <tr key={`${card.projectId}:${card.productionCategoryId ?? card.productionCategoryName}`}>
+                  <td>{card.fiscalYearName ?? "-"}</td>
+                  <td>{card.orgCode ?? "-"}</td>
+                  <td>
+                    {card.projectName}
+                    {card.season ? ` (${card.season})` : ""}
+                  </td>
+                  <td>{card.productionCategoryName}</td>
+                  <td>{formatCurrency(card.requestedOpenTotal)}</td>
+                  <td>{formatCurrency(card.heldTotal)}</td>
+                  <td>{formatCurrency(card.encTotal)}</td>
+                  <td>{formatCurrency(card.pendingCcTotal)}</td>
+                  <td>{formatCurrency(card.ytdTotal)}</td>
+                  <td>{formatCurrency(card.obligatedTotal)}</td>
+                </tr>
               ))}
-            </select>
-          </label>
-          <button type="submit" className="buttonLink buttonPrimary">
-            Apply
-          </button>
-        </form>
+            </tbody>
+          </table>
+        </div>
       </article>
 
-      <div className="tableWrap">
-        <table>
-          <thead>
-            <tr>
-              <th>Project</th>
-              <th>Department</th>
-              <th>Type</th>
-              <th>Title</th>
-              <th>Vendor</th>
-              <th>Req/Ref #</th>
-              <th>PO #</th>
-              <th>Procurement Status</th>
-              <th>Budget Status</th>
-              <th>Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            {flattenedRows.length === 0 ? (
-              <tr>
-                <td colSpan={10}>No line items in this scope yet.</td>
-              </tr>
-            ) : null}
-            {flattenedRows.map((row) => (
-              <tr key={row.id}>
-                <td>
-                  {row.projectName}
-                  {row.season ? ` (${row.season})` : ""}
-                  <div style={{ opacity: 0.8 }}>
-                    {row.fiscalYearName ?? "No FY"} | {row.orgCode ?? "-"} | {row.organizationName ?? "No Org"}
-                  </div>
-                </td>
-                <td>{row.category}</td>
-                <td>{labelForType(row.requestType)}</td>
-                <td>{row.title}</td>
-                <td>{row.vendorName ?? "-"}</td>
-                <td>{row.requisitionNumber ?? row.referenceNumber ?? "-"}</td>
-                <td>{row.poNumber ?? "-"}</td>
-                <td>
-                  <span className={`statusChip status-${row.procurementStatus}`}>{labelForStatus(row.procurementStatus)}</span>
-                </td>
-                <td>
-                  <span className={`statusChip status-${row.status}`}>{labelForStatus(row.status)}</span>
-                </td>
-                <td>{formatCurrency(row.amount)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {groupedProjects.map((project) => (
+        <article className="panel" key={project.projectId}>
+          <h2>
+            {project.projectName}
+            {project.season ? ` (${project.season})` : ""}
+          </h2>
+          <p className="heroSubtitle">
+            {project.fiscalYearName ?? "No FY"} | {project.orgCode ?? "-"} | {project.organizationName ?? "No Organization"}
+          </p>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Department</th>
+                  <th>Type</th>
+                  <th>Title</th>
+                  <th>Vendor</th>
+                  <th>Req/Ref #</th>
+                  <th>PO #</th>
+                  <th>Procurement Status</th>
+                  <th>Budget Status</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {project.rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={9}>No line items in this project scope yet.</td>
+                  </tr>
+                ) : null}
+                {project.rows.map((row) => (
+                  <tr key={`${project.projectId}:${row.id}`}>
+                    <td>{row.category}</td>
+                    <td>{row.type}</td>
+                    <td>{row.title}</td>
+                    <td>{row.vendorName ?? "-"}</td>
+                    <td>{row.requestNumber ?? "-"}</td>
+                    <td>{row.poNumber ?? "-"}</td>
+                    <td>
+                      <span className={`statusChip status-${row.procurementStatus}`}>{labelForStatus(row.procurementStatus)}</span>
+                    </td>
+                    <td>
+                      <span className={`statusChip status-${row.budgetStatus}`}>{labelForStatus(row.budgetStatus)}</span>
+                    </td>
+                    <td>{formatCurrency(row.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </article>
+      ))}
     </section>
   );
 }
