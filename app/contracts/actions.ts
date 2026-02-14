@@ -144,7 +144,8 @@ export async function createContractAction(formData: FormData): Promise<void> {
       .from("production_categories")
       .select("id")
       .ilike("name", "Miscellaneous")
-      .eq("active", true)
+      .order("active", { ascending: false })
+      .order("sort_order", { ascending: true })
       .limit(1)
       .maybeSingle();
     if (miscCategoryError) throw new Error(miscCategoryError.message);
@@ -262,116 +263,26 @@ export async function createContractsBulkAction(formData: FormData): Promise<voi
     if (rows.length === 0) throw new Error("Add at least one contract row.");
 
     await ensurePmOrAdmin(projectId, user.id);
+    const rpcRows = rows.map((row) => ({
+      contractorName: row.contractorName,
+      contractValue: String(row.contractValue),
+      installmentCount: String(row.installmentCount ?? "1")
+    }));
 
-    const { data: projectRow, error: projectError } = await supabase
-      .from("projects")
-      .select("id, organization_id, fiscal_year_id")
-      .eq("id", projectId)
-      .single();
-    if (projectError || !projectRow) throw new Error("Project not found.");
-
-    const resolvedOrganizationId = organizationId || ((projectRow.organization_id as string | null) ?? null);
-    const resolvedFiscalYearId = fiscalYearId || ((projectRow.fiscal_year_id as string | null) ?? null);
-
-    const { data: miscCategory, error: miscCategoryError } = await supabase
-      .from("production_categories")
-      .select("id")
-      .ilike("name", "Miscellaneous")
-      .eq("active", true)
-      .limit(1)
-      .maybeSingle();
-    if (miscCategoryError) throw new Error(miscCategoryError.message);
-    if (!miscCategory?.id) throw new Error("Production category 'Miscellaneous' is required for contract reporting.");
-    const miscCategoryId = miscCategory.id as string;
-
-    const { data: reportingBudgetLineId, error: lineError } = await supabase.rpc("ensure_project_category_line", {
+    const { data: createdCount, error: createError } = await supabase.rpc("create_contracts_bulk", {
       p_project_id: projectId,
-      p_production_category_id: miscCategoryId
+      p_fiscal_year_id: fiscalYearId || null,
+      p_organization_id: organizationId || null,
+      p_banner_account_code_id: bannerAccountCodeId,
+      p_rows: rpcRows
     });
-    if (lineError || !reportingBudgetLineId) throw new Error(lineError?.message ?? "Could not resolve reporting line.");
-
-    for (const row of rows) {
-      const contractValue = parseMoney(row.contractValue);
-      const installmentCount = parseInstallmentCount(row.installmentCount ?? "1");
-      if (contractValue === 0) throw new Error(`Contract value must be non-zero for ${row.contractorName}.`);
-
-      const { data: contract, error: contractError } = await supabase
-        .from("contracts")
-        .insert({
-          fiscal_year_id: resolvedFiscalYearId,
-          organization_id: resolvedOrganizationId,
-          project_id: projectId,
-          banner_account_code_id: bannerAccountCodeId,
-          production_category_id: miscCategoryId,
-          entered_by_user_id: user.id,
-          contractor_name: row.contractorName,
-          contract_value: contractValue,
-          installment_count: installmentCount,
-          workflow_status: "w9_requested"
-        })
-        .select("id")
-        .single();
-      if (contractError || !contract) throw new Error(contractError?.message ?? "Could not create contract.");
-
-      const installmentAmounts = splitAmounts(contractValue, installmentCount);
-      for (let index = 0; index < installmentAmounts.length; index += 1) {
-        const installmentNumber = index + 1;
-        const installmentAmount = installmentAmounts[index];
-        const installmentTitle = `${row.contractorName} Contract Payment ${installmentNumber}/${installmentCount}`;
-
-        const { data: purchase, error: purchaseError } = await supabase
-          .from("purchases")
-          .insert({
-            project_id: projectId,
-            organization_id: resolvedOrganizationId,
-            budget_line_id: reportingBudgetLineId as string,
-            production_category_id: miscCategoryId,
-            banner_account_code_id: bannerAccountCodeId,
-            budget_tracked: true,
-            entered_by_user_id: user.id,
-            title: installmentTitle,
-            estimated_amount: installmentAmount,
-            requested_amount: 0,
-            encumbered_amount: 0,
-            pending_cc_amount: 0,
-            posted_amount: 0,
-            status: "requested",
-            request_type: "contract_payment",
-            is_credit_card: false,
-            procurement_status: "requested",
-            notes: `Contract installment ${installmentNumber}/${installmentCount}`
-          })
-          .select("id")
-          .single();
-        if (purchaseError || !purchase) throw new Error(purchaseError?.message ?? "Could not create linked payment row.");
-
-        const { error: allocationError } = await supabase.from("purchase_allocations").insert({
-          purchase_id: purchase.id,
-          reporting_budget_line_id: reportingBudgetLineId as string,
-          account_code_id: bannerAccountCodeId,
-          production_category_id: miscCategoryId,
-          amount: installmentAmount,
-          reporting_bucket: "direct",
-          note: "Contract installment allocation"
-        });
-        if (allocationError) throw new Error(allocationError.message);
-
-        const { error: installmentError } = await supabase.from("contract_installments").insert({
-          contract_id: contract.id,
-          purchase_id: purchase.id,
-          installment_number: installmentNumber,
-          installment_amount: installmentAmount,
-          status: "planned"
-        });
-        if (installmentError) throw new Error(installmentError.message);
-      }
-    }
+    if (createError) throw new Error(createError.message);
 
     revalidatePath("/contracts");
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath(`/projects/${projectId}`);
-    redirect(`/contracts?ok=${encodeURIComponent(`Saved ${rows.length} contracts.`)}`);
+    redirect(`/contracts?ok=${encodeURIComponent(`Saved ${Number(createdCount ?? rows.length)} contracts.`)}`);
   } catch (error) {
     rethrowIfRedirect(error);
     redirect(`/contracts?error=${encodeURIComponent(getErrorMessage(error, "Could not save bulk contracts."))}`);
@@ -682,23 +593,10 @@ export async function deleteContractAction(formData: FormData): Promise<void> {
 
     await ensurePmOrAdmin(projectId, user.id);
 
-    const { data: installments, error: installmentsError } = await supabase
-      .from("contract_installments")
-      .select("purchase_id")
-      .eq("contract_id", contractId);
-    if (installmentsError) throw new Error(installmentsError.message);
-
-    const purchaseIds = (installments ?? [])
-      .map((row) => (row.purchase_id as string | null) ?? null)
-      .filter((id): id is string => Boolean(id));
-
-    if (purchaseIds.length > 0) {
-      const { error: purchaseDeleteError } = await supabase.from("purchases").delete().in("id", purchaseIds);
-      if (purchaseDeleteError) throw new Error(purchaseDeleteError.message);
-    }
-
-    const { error: contractDeleteError } = await supabase.from("contracts").delete().eq("id", contractId);
-    if (contractDeleteError) throw new Error(contractDeleteError.message);
+    const { error: deleteError } = await supabase.rpc("delete_contract_with_links", {
+      p_contract_id: contractId
+    });
+    if (deleteError) throw new Error(deleteError.message);
 
     revalidatePath("/contracts");
     revalidatePath("/");

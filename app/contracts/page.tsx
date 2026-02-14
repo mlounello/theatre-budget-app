@@ -90,122 +90,124 @@ export default async function ContractsPage({
 
       <article className="panel tablePanel">
         <h2>Contracts</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Contractor</th>
-              <th>FY</th>
-              <th>Org</th>
-              <th>Project</th>
-              <th>Banner Code</th>
-              <th>Contract Value</th>
-              <th>Installments</th>
-              <th>Workflow</th>
-              <th>Installment Payments</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {contracts.length === 0 ? (
+        <div className="tableWrap">
+          <table>
+            <thead>
               <tr>
-                <td colSpan={10}>No contracts yet.</td>
+                <th>Contractor</th>
+                <th>FY</th>
+                <th>Org</th>
+                <th>Project</th>
+                <th>Banner Code</th>
+                <th>Contract Value</th>
+                <th>Installments</th>
+                <th>Workflow</th>
+                <th>Installment Payments</th>
+                <th>Actions</th>
               </tr>
-            ) : (
-              contracts.map((contract) => {
-                const rows = (installmentByContract.get(contract.id) ?? []).sort(
-                  (a, b) => a.installmentNumber - b.installmentNumber
-                );
-                const paidTotal = rows
-                  .filter((row) => row.status === "check_paid")
-                  .reduce((sum, row) => sum + row.installmentAmount, 0);
-                return (
-                  <tr key={contract.id}>
-                    <td>
-                      <strong>{contract.contractorName}</strong>
-                      <br />
-                      <span>{contract.contractorEmployeeId ?? "-"}</span>
-                    </td>
-                    <td>{contract.fiscalYearName ?? "-"}</td>
-                    <td>{contract.organizationLabel ?? "-"}</td>
-                    <td>
-                      {contract.projectName}
-                      {contract.season ? ` (${contract.season})` : ""}
-                    </td>
-                    <td>{contract.bannerAccountCode ?? "-"}</td>
-                    <td>{formatCurrency(contract.contractValue)}</td>
-                    <td>{contract.installmentCount}</td>
-                    <td>
-                      {canManageContracts ? (
-                        <>
+            </thead>
+            <tbody>
+              {contracts.length === 0 ? (
+                <tr>
+                  <td colSpan={10}>No contracts yet.</td>
+                </tr>
+              ) : (
+                contracts.map((contract) => {
+                  const rows = (installmentByContract.get(contract.id) ?? []).sort(
+                    (a, b) => a.installmentNumber - b.installmentNumber
+                  );
+                  const paidTotal = rows
+                    .filter((row) => row.status === "check_paid")
+                    .reduce((sum, row) => sum + row.installmentAmount, 0);
+                  return (
+                    <tr key={contract.id}>
+                      <td>
+                        <strong>{contract.contractorName}</strong>
+                        <br />
+                        <span>{contract.contractorEmployeeId ?? "-"}</span>
+                      </td>
+                      <td>{contract.fiscalYearName ?? "-"}</td>
+                      <td>{contract.organizationLabel ?? "-"}</td>
+                      <td>
+                        {contract.projectName}
+                        {contract.season ? ` (${contract.season})` : ""}
+                      </td>
+                      <td>{contract.bannerAccountCode ?? "-"}</td>
+                      <td>{formatCurrency(contract.contractValue)}</td>
+                      <td>{contract.installmentCount}</td>
+                      <td>
+                        {canManageContracts ? (
+                          <>
+                            <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>{workflowLabel(contract.workflowStatus)}</span>
+                            <form action={updateContractWorkflowAction} className="inlineEditForm">
+                              <input type="hidden" name="contractId" value={contract.id} />
+                              <select name="workflowStatus" defaultValue={contract.workflowStatus}>
+                                <option value="w9_requested">W9 Requested</option>
+                                <option value="contract_sent">Contract Sent</option>
+                                <option value="contract_signed_returned">Contract Signed + Returned</option>
+                                <option value="siena_signed">Siena Signed</option>
+                              </select>
+                              <button className="tinyButton" type="submit">
+                                Save
+                              </button>
+                            </form>
+                          </>
+                        ) : (
                           <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>{workflowLabel(contract.workflowStatus)}</span>
-                          <form action={updateContractWorkflowAction} className="inlineEditForm">
-                            <input type="hidden" name="contractId" value={contract.id} />
-                            <select name="workflowStatus" defaultValue={contract.workflowStatus}>
-                              <option value="w9_requested">W9 Requested</option>
-                              <option value="contract_sent">Contract Sent</option>
-                              <option value="contract_signed_returned">Contract Signed + Returned</option>
-                              <option value="siena_signed">Siena Signed</option>
-                            </select>
-                            <button className="tinyButton" type="submit">
-                              Save
-                            </button>
-                          </form>
-                        </>
-                      ) : (
-                        <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>{workflowLabel(contract.workflowStatus)}</span>
-                      )}
-                    </td>
-                    <td>
-                      <div className="stackedDetails">
-                        <p>
-                          Paid: <strong>{formatCurrency(paidTotal)}</strong>
-                        </p>
-                        {rows.map((row) => (
-                          <div key={row.id} className="inlineEditForm" style={{ marginBottom: "0.4rem" }}>
-                            <span>
-                              #{row.installmentNumber} {formatCurrency(row.installmentAmount)}
-                            </span>
-                            {canManageContracts ? (
-                              <>
+                        )}
+                      </td>
+                      <td>
+                        <div className="stackedDetails">
+                          <p>
+                            Paid: <strong>{formatCurrency(paidTotal)}</strong>
+                          </p>
+                          {rows.map((row) => (
+                            <div key={row.id} className="inlineEditForm" style={{ marginBottom: "0.4rem" }}>
+                              <span>
+                                #{row.installmentNumber} {formatCurrency(row.installmentAmount)}
+                              </span>
+                              {canManageContracts ? (
+                                <>
+                                  <span className={`statusChip ${installmentClass(row.status)}`}>{installmentLabel(row.status)}</span>
+                                  <form action={updateContractInstallmentStatusAction} className="inlineEditForm">
+                                    <input type="hidden" name="installmentId" value={row.id} />
+                                    <select name="status" defaultValue={row.status}>
+                                      <option value="planned">Not Submitted</option>
+                                      <option value="check_request_submitted">Check Request Submitted</option>
+                                      <option value="check_paid">Check Paid</option>
+                                    </select>
+                                    <button type="submit" className="tinyButton">
+                                      Save
+                                    </button>
+                                  </form>
+                                </>
+                              ) : (
                                 <span className={`statusChip ${installmentClass(row.status)}`}>{installmentLabel(row.status)}</span>
-                                <form action={updateContractInstallmentStatusAction} className="inlineEditForm">
-                                  <input type="hidden" name="installmentId" value={row.id} />
-                                  <select name="status" defaultValue={row.status}>
-                                    <option value="planned">Not Submitted</option>
-                                    <option value="check_request_submitted">Check Request Submitted</option>
-                                    <option value="check_paid">Check Paid</option>
-                                  </select>
-                                  <button type="submit" className="tinyButton">
-                                    Save
-                                  </button>
-                                </form>
-                              </>
-                            ) : (
-                              <span className={`statusChip ${installmentClass(row.status)}`}>{installmentLabel(row.status)}</span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </td>
-                    <td>
-                      {canManageContracts ? (
-                        <ContractRowActions
-                          contract={contract}
-                          fiscalYearOptions={fiscalYearOptions}
-                          organizationOptions={organizationOptions}
-                          projectOptions={projectOptions}
-                          accountCodeOptions={accountCodeOptions}
-                        />
-                      ) : (
-                        "-"
-                      )}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                      <td>
+                        {canManageContracts ? (
+                          <ContractRowActions
+                            contract={contract}
+                            fiscalYearOptions={fiscalYearOptions}
+                            organizationOptions={organizationOptions}
+                            projectOptions={projectOptions}
+                            accountCodeOptions={accountCodeOptions}
+                          />
+                        ) : (
+                          "-"
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </article>
     </section>
   );
