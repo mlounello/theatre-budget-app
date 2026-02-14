@@ -100,7 +100,6 @@ export function RequestRowActions({
                   name="bannerAccountCodeId"
                   value={editBannerAccountCodeId}
                   onChange={(event) => setEditBannerAccountCodeId(event.target.value)}
-                  disabled={editRequestType === "request"}
                 >
                   <option value="">Unassigned</option>
                   {accountCodeOptions.map((accountCode) => (
@@ -138,7 +137,6 @@ export function RequestRowActions({
                     if (value !== "expense") {
                       // CC only applies to expense rows.
                     }
-                    if (value === "request") setEditBannerAccountCodeId("");
                   }}
                 >
                   <option value="requisition">Requisition</option>

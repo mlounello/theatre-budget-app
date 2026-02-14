@@ -250,12 +250,11 @@ export function CreateRequestForm({
       </label>
 
       <label>
-        Banner Account Code {requestType === "request" ? "(not used for Budget Hold)" : "(optional)"}
+        Banner Account Code (optional)
         <select
           name="bannerAccountCodeId"
           value={selectedBannerAccountCodeId}
           onChange={(event) => setSelectedBannerAccountCodeId(event.target.value)}
-          disabled={requestType === "request"}
         >
           <option value="">Unassigned</option>
           {accountCodeOptions.map((option) => (
@@ -279,7 +278,6 @@ export function CreateRequestForm({
               setRequestType("requisition");
             }
             if (value !== "expense") setIsCreditCard(false);
-            if (value === "request") setSelectedBannerAccountCodeId("");
           }}
         >
           <option value="requisition">Requisition (PO)</option>

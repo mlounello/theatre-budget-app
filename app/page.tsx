@@ -147,6 +147,10 @@ export default async function DashboardPage({
                 <dd>{formatCurrency(project.encTotal)}</dd>
               </div>
               <div>
+                <dt>Held</dt>
+                <dd>{formatCurrency(project.heldTotal)}</dd>
+              </div>
+              <div>
                 <dt>Pending CC</dt>
                 <dd>{formatCurrency(project.pendingCcTotal)}</dd>
               </div>

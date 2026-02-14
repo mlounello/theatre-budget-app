@@ -23,18 +23,18 @@ export default async function OverviewPage() {
               <th>Fiscal Year</th>
               <th>Org Code</th>
               <th>Organization</th>
-              <th>Allocated</th>
-              <th>Requested</th>
-              <th>ENC</th>
-              <th>Pending CC</th>
-              <th>YTD</th>
-              <th>Obligated</th>
-              <th>Remaining (True)</th>
-              <th>Remaining if Requested Approved</th>
               <th>Starting Budget</th>
               <th>Additional Income</th>
               <th>Funding Pool</th>
-              <th>Pool Available</th>
+              <th>Allocated</th>
+              <th>Remaining Pool (Not Allocated)</th>
+              <th>Requested</th>
+              <th>Held</th>
+              <th>ENC</th>
+              <th>Pending CC</th>
+              <th>YTD</th>
+              <th>Remaining (True)</th>
+              <th>Remaining if Requested Approved</th>
             </tr>
           </thead>
           <tbody>
@@ -48,21 +48,21 @@ export default async function OverviewPage() {
                 <td>{row.fiscalYearName ?? "-"}</td>
                 <td>{row.orgCode}</td>
                 <td>{row.organizationName}</td>
-                <td>{formatCurrency(row.allocatedTotal)}</td>
-                <td>{formatCurrency(row.requestedOpenTotal)}</td>
-                <td>{formatCurrency(row.encTotal)}</td>
-                <td>{formatCurrency(row.pendingCcTotal)}</td>
-                <td>{formatCurrency(row.ytdTotal)}</td>
-                <td>{formatCurrency(row.obligatedTotal)}</td>
-                <td className={row.remainingTrue < 0 ? "negative" : "positive"}>{formatCurrency(row.remainingTrue)}</td>
-                <td className={row.remainingIfRequestedApproved < 0 ? "negative" : "positive"}>
-                  {formatCurrency(row.remainingIfRequestedApproved)}
-                </td>
                 <td>{formatCurrency(row.startingBudgetTotal)}</td>
                 <td>{formatCurrency(row.additionalIncomeTotal)}</td>
                 <td>{formatCurrency(row.fundingPoolTotal)}</td>
+                <td>{formatCurrency(row.allocatedTotal)}</td>
                 <td className={row.fundingPoolAvailable < 0 ? "negative" : "positive"}>
                   {formatCurrency(row.fundingPoolAvailable)}
+                </td>
+                <td>{formatCurrency(row.requestedOpenTotal)}</td>
+                <td>{formatCurrency(row.heldTotal)}</td>
+                <td>{formatCurrency(row.encTotal)}</td>
+                <td>{formatCurrency(row.pendingCcTotal)}</td>
+                <td>{formatCurrency(row.ytdTotal)}</td>
+                <td className={row.remainingTrue < 0 ? "negative" : "positive"}>{formatCurrency(row.remainingTrue)}</td>
+                <td className={row.remainingIfRequestedApproved < 0 ? "negative" : "positive"}>
+                  {formatCurrency(row.remainingIfRequestedApproved)}
                 </td>
               </tr>
             ))}
@@ -81,6 +81,7 @@ export default async function OverviewPage() {
                 <th>Project</th>
                 <th>Department</th>
                 <th>Requested</th>
+                <th>Held</th>
                 <th>ENC</th>
                 <th>Pending CC</th>
                 <th>Posted</th>
@@ -90,7 +91,7 @@ export default async function OverviewPage() {
             <tbody>
               {categoryActuals.length === 0 ? (
                 <tr>
-                  <td colSpan={9}>No category actuals yet.</td>
+                  <td colSpan={10}>No category actuals yet.</td>
                 </tr>
               ) : null}
               {categoryActuals.map((row, index) => (
@@ -100,6 +101,7 @@ export default async function OverviewPage() {
                   <td>{row.projectName}</td>
                   <td>{row.productionCategory}</td>
                   <td>{formatCurrency(row.requestedTotal)}</td>
+                  <td>{formatCurrency(row.heldTotal)}</td>
                   <td>{formatCurrency(row.encTotal)}</td>
                   <td>{formatCurrency(row.pendingCcTotal)}</td>
                   <td>{formatCurrency(row.postedTotal)}</td>
@@ -123,6 +125,7 @@ export default async function OverviewPage() {
                 <th>Banner Category</th>
                 <th>Banner Name</th>
                 <th>Requested</th>
+                <th>Held</th>
                 <th>ENC</th>
                 <th>Pending CC</th>
                 <th>Posted</th>
@@ -132,7 +135,7 @@ export default async function OverviewPage() {
             <tbody>
               {bannerActuals.length === 0 ? (
                 <tr>
-                  <td colSpan={10}>No Banner-code actuals yet.</td>
+                  <td colSpan={11}>No Banner-code actuals yet.</td>
                 </tr>
               ) : null}
               {bannerActuals.map((row, index) => (
@@ -143,6 +146,7 @@ export default async function OverviewPage() {
                   <td>{row.bannerCategory}</td>
                   <td>{row.bannerName}</td>
                   <td>{formatCurrency(row.requestedTotal)}</td>
+                  <td>{formatCurrency(row.heldTotal)}</td>
                   <td>{formatCurrency(row.encTotal)}</td>
                   <td>{formatCurrency(row.pendingCcTotal)}</td>
                   <td>{formatCurrency(row.postedTotal)}</td>

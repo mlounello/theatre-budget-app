@@ -206,7 +206,7 @@ export async function createRequest(formData: FormData): Promise<void> {
       project_id: budgetLine.project_id,
       budget_line_id: budgetLine.id,
       production_category_id: productionCategoryId,
-      banner_account_code_id: requestType === "request" ? null : bannerAccountCodeId || null,
+      banner_account_code_id: bannerAccountCodeId || null,
       entered_by_user_id: user.id,
       title,
       reference_number: requestType === "requisition" || requestType === "budget_transfer" ? null : referenceNumber || null,
@@ -253,7 +253,7 @@ export async function createRequest(formData: FormData): Promise<void> {
       allocations.map((allocation) => ({
         purchase_id: inserted.id,
         reporting_budget_line_id: allocation.reportingBudgetLineId,
-        account_code_id: requestType === "request" ? null : allocation.accountCodeId,
+        account_code_id: allocation.accountCodeId,
         production_category_id: productionCategoryId,
         amount: allocation.amount,
         reporting_bucket: allocation.reportingBucket
@@ -271,7 +271,7 @@ export async function createRequest(formData: FormData): Promise<void> {
     const { error: allocationError } = await supabase.from("purchase_allocations").insert({
       purchase_id: inserted.id,
       reporting_budget_line_id: budgetLine.id,
-      account_code_id: requestType === "request" ? null : bannerAccountCodeId || lineWithCode.account_code_id,
+      account_code_id: bannerAccountCodeId || lineWithCode.account_code_id,
       production_category_id: productionCategoryId,
       amount: computed.status === "posted" ? computed.postedAmount : requestedTotal,
       reporting_bucket: "direct"
@@ -718,7 +718,7 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
     project_id: projectId,
     budget_line_id: resolvedBudgetLineId,
     production_category_id: productionCategoryId,
-    banner_account_code_id: requestType === "request" ? null : bannerAccountCodeId || null,
+    banner_account_code_id: bannerAccountCodeId || null,
     title,
     reference_number: requestType === "requisition" || requestType === "budget_transfer" ? null : referenceNumber || null,
     requisition_number: requestType === "requisition" ? requisitionNumber || null : null,
@@ -752,7 +752,7 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
   const { error: insertAllocationError } = await supabase.from("purchase_allocations").insert({
     purchase_id: purchaseId,
     reporting_budget_line_id: resolvedBudgetLineId,
-    account_code_id: requestType === "request" ? null : bannerAccountCodeId || (budgetLine.account_code_id as string | null) || null,
+    account_code_id: bannerAccountCodeId || (budgetLine.account_code_id as string | null) || null,
     production_category_id: productionCategoryId,
     amount: allocationAmount,
     reporting_bucket: "direct"
@@ -969,11 +969,9 @@ export async function bulkUpdateRequestsAction(formData: FormData): Promise<void
           ? targetReferenceNumber || null
           : ((purchase.reference_number as string | null) ?? null);
 
-    const bannerAccountCodeId = nextRequestType === "request"
-      ? null
-      : applyBannerCode
-        ? targetBannerAccountCodeId || null
-        : ((purchase.banner_account_code_id as string | null) ?? null);
+    const bannerAccountCodeId = applyBannerCode
+      ? targetBannerAccountCodeId || null
+      : ((purchase.banner_account_code_id as string | null) ?? null);
 
     const allocationAmount =
       computed.status === "encumbered"
@@ -1040,7 +1038,7 @@ export async function bulkUpdateRequestsAction(formData: FormData): Promise<void
     const { error: insertAllocError } = await supabase.from("purchase_allocations").insert({
       purchase_id: plan.purchaseId,
       reporting_budget_line_id: plan.resolvedBudgetLineId,
-      account_code_id: plan.nextRequestType === "request" ? null : plan.bannerAccountCodeId || plan.budgetLineAccountCodeId,
+      account_code_id: plan.bannerAccountCodeId || plan.budgetLineAccountCodeId,
       production_category_id: plan.nextProductionCategoryId,
       amount: plan.allocationAmount,
       reporting_bucket: "direct"

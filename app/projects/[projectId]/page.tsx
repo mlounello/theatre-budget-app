@@ -34,6 +34,7 @@ export default async function ProjectBudgetBoardPage({ params }: Props) {
               <th>Category</th>
               <th>Allocated</th>
               <th>Requested (Open)</th>
+              <th>Held</th>
               <th>Pending CC</th>
               <th>ENC</th>
               <th>YTD</th>
@@ -45,7 +46,7 @@ export default async function ProjectBudgetBoardPage({ params }: Props) {
           <tbody>
             {board.categoryRollups.length === 0 ? (
               <tr>
-                <td colSpan={9}>No category rollups for this project yet.</td>
+                <td colSpan={10}>No category rollups for this project yet.</td>
               </tr>
             ) : null}
             {board.categoryRollups.map((row) => (
@@ -53,6 +54,7 @@ export default async function ProjectBudgetBoardPage({ params }: Props) {
                 <td>{row.category}</td>
                 <td>{formatCurrency(row.allocatedTotal)}</td>
                 <td>{formatCurrency(row.requestedOpenTotal)}</td>
+                <td>{formatCurrency(row.heldTotal)}</td>
                 <td>{formatCurrency(row.pendingCcTotal)}</td>
                 <td>{formatCurrency(row.encTotal)}</td>
                 <td>{formatCurrency(row.ytdTotal)}</td>
@@ -78,6 +80,7 @@ export default async function ProjectBudgetBoardPage({ params }: Props) {
               <th>Banner Category</th>
               <th>Banner Name</th>
               <th>Requested (Open)</th>
+              <th>Held</th>
               <th>Pending CC</th>
               <th>ENC</th>
               <th>YTD</th>
@@ -87,7 +90,7 @@ export default async function ProjectBudgetBoardPage({ params }: Props) {
           <tbody>
             {board.bannerRollups.length === 0 ? (
               <tr>
-                <td colSpan={8}>No Banner-code rollups for this project yet.</td>
+                <td colSpan={9}>No Banner-code rollups for this project yet.</td>
               </tr>
             ) : null}
             {board.bannerRollups.map((row) => (
@@ -96,6 +99,7 @@ export default async function ProjectBudgetBoardPage({ params }: Props) {
                 <td>{row.bannerCategory}</td>
                 <td>{row.bannerName}</td>
                 <td>{formatCurrency(row.requestedTotal)}</td>
+                <td>{formatCurrency(row.heldTotal)}</td>
                 <td>{formatCurrency(row.pendingCcTotal)}</td>
                 <td>{formatCurrency(row.encTotal)}</td>
                 <td>{formatCurrency(row.ytdTotal)}</td>

@@ -14,6 +14,7 @@ export type DashboardProject = {
   season: string | null;
   allocatedTotal: number;
   requestedOpenTotal: number;
+  heldTotal: number;
   encTotal: number;
   pendingCcTotal: number;
   ytdTotal: number;
@@ -43,6 +44,7 @@ export type BudgetLineTotal = {
   lineName: string;
   allocatedAmount: number;
   requestedOpenTotal: number;
+  heldTotal: number;
   encTotal: number;
   pendingCcTotal: number;
   ytdTotal: number;
@@ -55,6 +57,7 @@ export type ProjectCategoryRollup = {
   category: string;
   allocatedTotal: number;
   requestedOpenTotal: number;
+  heldTotal: number;
   encTotal: number;
   pendingCcTotal: number;
   ytdTotal: number;
@@ -68,6 +71,7 @@ export type ProjectBannerRollup = {
   bannerCategory: string;
   bannerName: string;
   requestedTotal: number;
+  heldTotal: number;
   encTotal: number;
   pendingCcTotal: number;
   ytdTotal: number;
@@ -308,6 +312,7 @@ export type OrganizationOverviewRow = {
   fiscalYearName: string | null;
   allocatedTotal: number;
   requestedOpenTotal: number;
+  heldTotal: number;
   encTotal: number;
   pendingCcTotal: number;
   ytdTotal: number;
@@ -328,6 +333,7 @@ export type CategoryActualRow = {
   projectName: string;
   productionCategory: string;
   requestedTotal: number;
+  heldTotal: number;
   encTotal: number;
   pendingCcTotal: number;
   postedTotal: number;
@@ -342,6 +348,7 @@ export type BannerCodeActualRow = {
   bannerCategory: string;
   bannerName: string;
   requestedTotal: number;
+  heldTotal: number;
   encTotal: number;
   pendingCcTotal: number;
   postedTotal: number;
@@ -406,7 +413,7 @@ export async function getDashboardProjects(): Promise<DashboardProject[]> {
 
   const projectIds = (projectsData ?? []).map((row) => row.id as string);
 
-  let totalsByProject = new Map<string, { requested: number; enc: number; pending: number; ytd: number }>();
+  let totalsByProject = new Map<string, { requested: number; held: number; enc: number; pending: number; ytd: number }>();
   let summaryByProject = new Map<
     string,
     { allocated: number; obligated: number; remainingTrue: number; remainingIfRequestedApproved: number; income: number }
@@ -437,7 +444,7 @@ export async function getDashboardProjects(): Promise<DashboardProject[]> {
 
     const { data: totalsData, error: totalsError } = await supabase
       .from("v_project_totals")
-      .select("project_id, requested_open_total, enc_total, pending_cc_total, ytd_total")
+      .select("project_id, requested_open_total, held_total, enc_total, pending_cc_total, ytd_total")
       .in("project_id", projectIds);
 
     if (totalsError) {
@@ -449,6 +456,7 @@ export async function getDashboardProjects(): Promise<DashboardProject[]> {
         row.project_id as string,
         {
           requested: asNumber(row.requested_open_total as string | number | null),
+          held: asNumber(row.held_total as string | number | null),
           enc: asNumber(row.enc_total as string | number | null),
           pending: asNumber(row.pending_cc_total as string | number | null),
           ytd: asNumber(row.ytd_total as string | number | null)
@@ -468,6 +476,7 @@ export async function getDashboardProjects(): Promise<DashboardProject[]> {
       season: (row.season as string | null) ?? null,
       allocatedTotal: summary?.allocated ?? 0,
       requestedOpenTotal: totals?.requested ?? 0,
+      heldTotal: totals?.held ?? 0,
       encTotal: totals?.enc ?? 0,
       pendingCcTotal: totals?.pending ?? 0,
       ytdTotal: totals?.ytd ?? 0,
@@ -540,7 +549,7 @@ export async function getProjectBudgetBoard(projectId: string): Promise<{
   const { data, error } = await supabase
     .from("v_budget_line_totals")
     .select(
-      "project_budget_line_id, budget_code, category, line_name, allocated_amount, requested_open_total, enc_total, pending_cc_total, ytd_total, obligated_total, remaining_true, remaining_if_requested_approved"
+      "project_budget_line_id, budget_code, category, line_name, allocated_amount, requested_open_total, held_total, enc_total, pending_cc_total, ytd_total, obligated_total, remaining_true, remaining_if_requested_approved"
     )
     .eq("project_id", projectId)
     .order("category", { ascending: true })
@@ -557,6 +566,7 @@ export async function getProjectBudgetBoard(projectId: string): Promise<{
     lineName: row.line_name as string,
     allocatedAmount: asNumber(row.allocated_amount as string | number | null),
     requestedOpenTotal: asNumber(row.requested_open_total as string | number | null),
+    heldTotal: asNumber(row.held_total as string | number | null),
     encTotal: asNumber(row.enc_total as string | number | null),
     pendingCcTotal: asNumber(row.pending_cc_total as string | number | null),
     ytdTotal: asNumber(row.ytd_total as string | number | null),
@@ -572,6 +582,7 @@ export async function getProjectBudgetBoard(projectId: string): Promise<{
       category: key,
       allocatedTotal: 0,
       requestedOpenTotal: 0,
+      heldTotal: 0,
       encTotal: 0,
       pendingCcTotal: 0,
       ytdTotal: 0,
@@ -581,6 +592,7 @@ export async function getProjectBudgetBoard(projectId: string): Promise<{
     };
     current.allocatedTotal += line.allocatedAmount;
     current.requestedOpenTotal += line.requestedOpenTotal;
+    current.heldTotal += line.heldTotal;
     current.encTotal += line.encTotal;
     current.pendingCcTotal += line.pendingCcTotal;
     current.ytdTotal += line.ytdTotal;
@@ -592,7 +604,7 @@ export async function getProjectBudgetBoard(projectId: string): Promise<{
 
   const { data: bannerData, error: bannerError } = await supabase
     .from("v_actuals_by_banner_code")
-    .select("banner_account_code, banner_category, banner_name, requested_total, enc_total, pending_cc_total, posted_total, obligated_total")
+    .select("banner_account_code, banner_category, banner_name, requested_total, held_total, enc_total, pending_cc_total, posted_total, obligated_total")
     .eq("project_id", projectId)
     .order("banner_account_code", { ascending: true });
 
@@ -606,6 +618,7 @@ export async function getProjectBudgetBoard(projectId: string): Promise<{
       bannerCategory: (row.banner_category as string) ?? "Unassigned",
       bannerName: (row.banner_name as string) ?? "Unassigned",
       requestedTotal: asNumber(row.requested_total as string | number | null),
+      heldTotal: asNumber(row.held_total as string | number | null),
       encTotal: asNumber(row.enc_total as string | number | null),
       pendingCcTotal: asNumber(row.pending_cc_total as string | number | null),
       ytdTotal: asNumber(row.posted_total as string | number | null),
@@ -1416,7 +1429,7 @@ export async function getOrganizationOverviewRows(): Promise<OrganizationOvervie
   const { data, error } = await supabase
     .from("v_organization_totals")
     .select(
-      "organization_id, organization_name, org_code, fiscal_year_name, allocated_total, requested_open_total, enc_total, pending_cc_total, ytd_total, obligated_total, remaining_true, remaining_if_requested_approved, starting_budget_total, additional_income_total, funding_pool_total, funding_pool_available, income_total"
+      "organization_id, organization_name, org_code, fiscal_year_name, allocated_total, requested_open_total, held_total, enc_total, pending_cc_total, ytd_total, obligated_total, remaining_true, remaining_if_requested_approved, starting_budget_total, additional_income_total, funding_pool_total, funding_pool_available, income_total"
     )
     .order("fiscal_year_name", { ascending: true })
     .order("org_code", { ascending: true });
@@ -1428,6 +1441,7 @@ export async function getOrganizationOverviewRows(): Promise<OrganizationOvervie
     fiscalYearName: (row.fiscal_year_name as string | null) ?? null,
     allocatedTotal: asNumber(row.allocated_total as string | number | null),
     requestedOpenTotal: asNumber(row.requested_open_total as string | number | null),
+    heldTotal: asNumber(row.held_total as string | number | null),
     encTotal: asNumber(row.enc_total as string | number | null),
     pendingCcTotal: asNumber(row.pending_cc_total as string | number | null),
     ytdTotal: asNumber(row.ytd_total as string | number | null),
@@ -1447,7 +1461,7 @@ export async function getCategoryActualRows(): Promise<CategoryActualRow[]> {
   const { data, error } = await supabase
     .from("v_actuals_by_category")
     .select(
-      "project_id, production_category, requested_total, enc_total, pending_cc_total, posted_total, obligated_total, projects(name, organizations(name, org_code, fiscal_years(name)))"
+      "project_id, production_category, requested_total, held_total, enc_total, pending_cc_total, posted_total, obligated_total, projects(name, organizations(name, org_code, fiscal_years(name)))"
     )
     .order("production_category", { ascending: true });
   if (error) throw error;
@@ -1463,6 +1477,7 @@ export async function getCategoryActualRows(): Promise<CategoryActualRow[]> {
       projectName: (project?.name as string | undefined) ?? "Unknown Project",
       productionCategory: row.production_category as string,
       requestedTotal: asNumber(row.requested_total as string | number | null),
+      heldTotal: asNumber(row.held_total as string | number | null),
       encTotal: asNumber(row.enc_total as string | number | null),
       pendingCcTotal: asNumber(row.pending_cc_total as string | number | null),
       postedTotal: asNumber(row.posted_total as string | number | null),
@@ -1476,7 +1491,7 @@ export async function getBannerCodeActualRows(): Promise<BannerCodeActualRow[]> 
   const { data, error } = await supabase
     .from("v_actuals_by_banner_code")
     .select(
-      "project_id, banner_account_code, banner_category, banner_name, requested_total, enc_total, pending_cc_total, posted_total, obligated_total, projects(name, organizations(name, org_code, fiscal_years(name)))"
+      "project_id, banner_account_code, banner_category, banner_name, requested_total, held_total, enc_total, pending_cc_total, posted_total, obligated_total, projects(name, organizations(name, org_code, fiscal_years(name)))"
     )
     .order("banner_account_code", { ascending: true });
   if (error) throw error;
@@ -1506,6 +1521,7 @@ export async function getBannerCodeActualRows(): Promise<BannerCodeActualRow[]> 
         bannerCategory,
         bannerName,
         requestedTotal: asNumber(row.requested_total as string | number | null),
+        heldTotal: asNumber(row.held_total as string | number | null),
         encTotal: asNumber(row.enc_total as string | number | null),
         pendingCcTotal: asNumber(row.pending_cc_total as string | number | null),
         postedTotal: asNumber(row.posted_total as string | number | null),
@@ -1515,6 +1531,7 @@ export async function getBannerCodeActualRows(): Promise<BannerCodeActualRow[]> 
     }
 
     existing.requestedTotal += asNumber(row.requested_total as string | number | null);
+    existing.heldTotal += asNumber(row.held_total as string | number | null);
     existing.encTotal += asNumber(row.enc_total as string | number | null);
     existing.pendingCcTotal += asNumber(row.pending_cc_total as string | number | null);
     existing.postedTotal += asNumber(row.posted_total as string | number | null);

@@ -217,6 +217,153 @@ export async function createContractAction(formData: FormData): Promise<void> {
   }
 }
 
+export async function updateContractDetailsAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+
+    const contractId = String(formData.get("contractId") ?? "").trim();
+    const projectId = String(formData.get("projectId") ?? "").trim();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
+    const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
+    const contractorName = String(formData.get("contractorName") ?? "").trim();
+    const contractorEmployeeId = String(formData.get("contractorEmployeeId") ?? "").trim();
+    const contractorEmail = String(formData.get("contractorEmail") ?? "").trim();
+    const contractorPhone = String(formData.get("contractorPhone") ?? "").trim();
+    const contractValue = parseMoney(formData.get("contractValue"));
+    const notes = String(formData.get("notes") ?? "").trim();
+
+    if (!contractId) throw new Error("Contract id is required.");
+    if (!projectId) throw new Error("Project is required.");
+    if (!bannerAccountCodeId) throw new Error("Banner account code is required.");
+    if (!contractorName) throw new Error("Contracted employee name is required.");
+    if (contractValue === 0) throw new Error("Contract value must be non-zero.");
+
+    const { data: existing, error: existingError } = await supabase
+      .from("contracts")
+      .select("id, project_id, installment_count, production_category_id")
+      .eq("id", contractId)
+      .single();
+    if (existingError || !existing) throw new Error("Contract not found.");
+
+    await ensurePmOrAdmin(existing.project_id as string, user.id);
+    if ((existing.project_id as string) !== projectId) {
+      await ensurePmOrAdmin(projectId, user.id);
+    }
+
+    const { data: projectRow, error: projectError } = await supabase
+      .from("projects")
+      .select("id, organization_id, fiscal_year_id")
+      .eq("id", projectId)
+      .single();
+    if (projectError || !projectRow) throw new Error("Project not found.");
+
+    const resolvedOrganizationId = organizationId || ((projectRow.organization_id as string | null) ?? null);
+    const resolvedFiscalYearId = fiscalYearId || ((projectRow.fiscal_year_id as string | null) ?? null);
+    const productionCategoryId = (existing.production_category_id as string | null) ?? null;
+    if (!productionCategoryId) throw new Error("Contract production category is missing.");
+
+    const { data: reportingBudgetLineId, error: lineError } = await supabase.rpc("ensure_project_category_line", {
+      p_project_id: projectId,
+      p_production_category_id: productionCategoryId
+    });
+    if (lineError || !reportingBudgetLineId) throw new Error(lineError?.message ?? "Could not resolve reporting line.");
+
+    const { error: contractUpdateError } = await supabase
+      .from("contracts")
+      .update({
+        fiscal_year_id: resolvedFiscalYearId,
+        organization_id: resolvedOrganizationId,
+        project_id: projectId,
+        banner_account_code_id: bannerAccountCodeId,
+        contractor_name: contractorName,
+        contractor_employee_id: contractorEmployeeId || null,
+        contractor_email: contractorEmail || null,
+        contractor_phone: contractorPhone || null,
+        contract_value: contractValue,
+        notes: notes || null
+      })
+      .eq("id", contractId);
+    if (contractUpdateError) throw new Error(contractUpdateError.message);
+
+    const { data: installments, error: installmentsError } = await supabase
+      .from("contract_installments")
+      .select("id, purchase_id, installment_number, status")
+      .eq("contract_id", contractId)
+      .order("installment_number", { ascending: true });
+    if (installmentsError) throw new Error(installmentsError.message);
+
+    const count = Number(existing.installment_count ?? 1);
+    const parts = splitAmounts(contractValue, count);
+
+    for (const installment of installments ?? []) {
+      const index = Number(installment.installment_number ?? 1) - 1;
+      const installmentAmount = parts[index] ?? 0;
+      const installmentStatus = ((installment.status as string | null) ?? "planned") as InstallmentStatus;
+
+      const { error: installmentUpdateError } = await supabase
+        .from("contract_installments")
+        .update({ installment_amount: installmentAmount })
+        .eq("id", installment.id as string);
+      if (installmentUpdateError) throw new Error(installmentUpdateError.message);
+
+      if (!installment.purchase_id) continue;
+
+      const purchaseId = installment.purchase_id as string;
+      const nextStatus: PurchaseStatus =
+        installmentStatus === "check_paid" ? "posted" : installmentStatus === "check_request_submitted" ? "encumbered" : "requested";
+      const requestedAmount = 0;
+      const encumberedAmount = nextStatus === "encumbered" ? installmentAmount : 0;
+      const postedAmount = nextStatus === "posted" ? installmentAmount : 0;
+
+      const { error: purchaseUpdateError } = await supabase
+        .from("purchases")
+        .update({
+          project_id: projectId,
+          organization_id: resolvedOrganizationId,
+          budget_line_id: reportingBudgetLineId as string,
+          production_category_id: productionCategoryId,
+          banner_account_code_id: bannerAccountCodeId,
+          title: `${contractorName} Contract Payment ${installment.installment_number as number}/${count}`,
+          estimated_amount: installmentAmount,
+          requested_amount: requestedAmount,
+          encumbered_amount: encumberedAmount,
+          pending_cc_amount: 0,
+          posted_amount: postedAmount,
+          status: nextStatus,
+          procurement_status: nextStatus === "posted" ? "paid" : nextStatus === "encumbered" ? "ordered" : "requested",
+          posted_date: nextStatus === "posted" ? new Date().toISOString().slice(0, 10) : null
+        })
+        .eq("id", purchaseId);
+      if (purchaseUpdateError) throw new Error(purchaseUpdateError.message);
+
+      const { error: allocationUpdateError } = await supabase
+        .from("purchase_allocations")
+        .update({
+          reporting_budget_line_id: reportingBudgetLineId as string,
+          account_code_id: bannerAccountCodeId,
+          production_category_id: productionCategoryId,
+          amount: installmentAmount
+        })
+        .eq("purchase_id", purchaseId);
+      if (allocationUpdateError) throw new Error(allocationUpdateError.message);
+    }
+
+    revalidatePath("/contracts");
+    revalidatePath("/");
+    revalidatePath("/overview");
+    revalidatePath(`/projects/${projectId}`);
+    redirect("/contracts?ok=Contract%20updated.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    redirect(`/contracts?error=${encodeURIComponent(getErrorMessage(error, "Could not update contract."))}`);
+  }
+}
+
 export async function updateContractWorkflowAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();

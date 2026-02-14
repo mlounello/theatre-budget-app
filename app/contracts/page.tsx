@@ -1,5 +1,6 @@
 import {
   createContractAction,
+  updateContractDetailsAction,
   updateContractInstallmentStatusAction,
   updateContractWorkflowAction
 } from "@/app/contracts/actions";
@@ -17,6 +18,19 @@ function installmentLabel(value: string): string {
   if (value === "check_request_submitted") return "Check Request Submitted";
   if (value === "check_paid") return "Check Paid";
   return "Not Submitted";
+}
+
+function workflowClass(value: string): string {
+  if (value === "contract_sent") return "status-ordered";
+  if (value === "contract_signed_returned") return "status-invoice_received";
+  if (value === "siena_signed") return "status-encumbered";
+  return "status-requested";
+}
+
+function installmentClass(value: string): string {
+  if (value === "check_paid") return "status-paid";
+  if (value === "check_request_submitted") return "status-ordered";
+  return "status-requested";
 }
 
 export default async function ContractsPage({
@@ -183,20 +197,97 @@ export default async function ContractsPage({
                     <td>{contract.installmentCount}</td>
                     <td>
                       {canManageContracts ? (
-                        <form action={updateContractWorkflowAction} className="inlineEditForm">
+                        <form action={updateContractDetailsAction} className="requestForm" style={{ marginBottom: "0.6rem" }}>
                           <input type="hidden" name="contractId" value={contract.id} />
-                          <select name="workflowStatus" defaultValue={contract.workflowStatus}>
-                            <option value="w9_requested">W9 Requested</option>
-                            <option value="contract_sent">Contract Sent</option>
-                            <option value="contract_signed_returned">Contract Signed + Returned</option>
-                            <option value="siena_signed">Siena Signed</option>
-                          </select>
+                          <label>
+                            Name
+                            <input name="contractorName" defaultValue={contract.contractorName} />
+                          </label>
+                          <label>
+                            Employee ID
+                            <input name="contractorEmployeeId" defaultValue={contract.contractorEmployeeId ?? ""} />
+                          </label>
+                          <label>
+                            Email
+                            <input name="contractorEmail" type="email" defaultValue={contract.contractorEmail ?? ""} />
+                          </label>
+                          <label>
+                            Phone
+                            <input name="contractorPhone" defaultValue={contract.contractorPhone ?? ""} />
+                          </label>
+                          <label>
+                            Contract Value
+                            <input name="contractValue" type="number" step="0.01" defaultValue={contract.contractValue} />
+                          </label>
+                          <label>
+                            FY
+                            <select name="fiscalYearId" defaultValue={contract.fiscalYearId ?? ""}>
+                              <option value="">From project default</option>
+                              {fiscalYearOptions.map((fiscalYear) => (
+                                <option key={fiscalYear.id} value={fiscalYear.id}>
+                                  {fiscalYear.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Org
+                            <select name="organizationId" defaultValue={contract.organizationId ?? ""}>
+                              <option value="">From project default</option>
+                              {organizationOptions.map((organization) => (
+                                <option key={organization.id} value={organization.id}>
+                                  {organization.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Project
+                            <select name="projectId" defaultValue={contract.projectId}>
+                              {projectOptions.map((project) => (
+                                <option key={project.id} value={project.id}>
+                                  {project.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Banner Account
+                            <select name="bannerAccountCodeId" defaultValue={contract.bannerAccountCodeId}>
+                              {accountCodeOptions.map((accountCode) => (
+                                <option key={accountCode.id} value={accountCode.id}>
+                                  {accountCode.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            Notes
+                            <input name="notes" defaultValue={contract.notes ?? ""} />
+                          </label>
                           <button className="tinyButton" type="submit">
-                            Save
+                            Save Contract
                           </button>
                         </form>
+                      ) : null}
+                      {canManageContracts ? (
+                        <>
+                          <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>{workflowLabel(contract.workflowStatus)}</span>
+                          <form action={updateContractWorkflowAction} className="inlineEditForm">
+                            <input type="hidden" name="contractId" value={contract.id} />
+                            <select name="workflowStatus" defaultValue={contract.workflowStatus}>
+                              <option value="w9_requested">W9 Requested</option>
+                              <option value="contract_sent">Contract Sent</option>
+                              <option value="contract_signed_returned">Contract Signed + Returned</option>
+                              <option value="siena_signed">Siena Signed</option>
+                            </select>
+                            <button className="tinyButton" type="submit">
+                              Save
+                            </button>
+                          </form>
+                        </>
                       ) : (
-                        workflowLabel(contract.workflowStatus)
+                        <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>{workflowLabel(contract.workflowStatus)}</span>
                       )}
                     </td>
                     <td>
@@ -210,19 +301,22 @@ export default async function ContractsPage({
                               #{row.installmentNumber} {formatCurrency(row.installmentAmount)}
                             </span>
                             {canManageContracts ? (
-                              <form action={updateContractInstallmentStatusAction} className="inlineEditForm">
-                                <input type="hidden" name="installmentId" value={row.id} />
-                                <select name="status" defaultValue={row.status}>
-                                  <option value="planned">Not Submitted</option>
-                                  <option value="check_request_submitted">Check Request Submitted</option>
-                                  <option value="check_paid">Check Paid</option>
-                                </select>
-                                <button type="submit" className="tinyButton">
-                                  Save
-                                </button>
-                              </form>
+                              <>
+                                <span className={`statusChip ${installmentClass(row.status)}`}>{installmentLabel(row.status)}</span>
+                                <form action={updateContractInstallmentStatusAction} className="inlineEditForm">
+                                  <input type="hidden" name="installmentId" value={row.id} />
+                                  <select name="status" defaultValue={row.status}>
+                                    <option value="planned">Not Submitted</option>
+                                    <option value="check_request_submitted">Check Request Submitted</option>
+                                    <option value="check_paid">Check Paid</option>
+                                  </select>
+                                  <button type="submit" className="tinyButton">
+                                    Save
+                                  </button>
+                                </form>
+                              </>
                             ) : (
-                              <span>{installmentLabel(row.status)}</span>
+                              <span className={`statusChip ${installmentClass(row.status)}`}>{installmentLabel(row.status)}</span>
                             )}
                           </div>
                         ))}
