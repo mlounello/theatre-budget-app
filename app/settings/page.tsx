@@ -1,6 +1,7 @@
 import {
   addBudgetLineAction,
   createAccountCodeAction,
+  deleteFiscalYearAction,
   deleteProductionCategoryAction,
   deleteAccountCodeAction,
   importHierarchyCsvAction,
@@ -169,6 +170,12 @@ export default async function SettingsPage({
   const editingOrganization = editType === "org" && editId ? organizationLookup.get(editId) : null;
   const editingProject = editType === "project" && editId ? projectLookup.get(editId) : null;
   const settingsProjectById = new Map(projects.map((project) => [project.id, project] as const));
+  const projectCountByFiscalYear = new Map<string, number>();
+  for (const project of projects) {
+    if (!project.fiscalYearId) continue;
+    projectCountByFiscalYear.set(project.fiscalYearId, (projectCountByFiscalYear.get(project.fiscalYearId) ?? 0) + 1);
+  }
+  const editingFiscalYearProjectCount = editingFiscalYear ? projectCountByFiscalYear.get(editingFiscalYear.id) ?? 0 : 0;
   const editingLine = editType === "line" && editId ? budgetLineLookup.get(editId) : null;
   const accountCodeLookup = new Map(allAccountCodes.map((row) => [row.id, row] as const));
   const editingAccountCode = editType === "account" && editId ? accountCodeLookup.get(editId) : null;
@@ -525,6 +532,17 @@ export default async function SettingsPage({
                   Save FY
                 </button>
               </div>
+            </form>
+            <form action={deleteFiscalYearAction} className="requestForm">
+              <input type="hidden" name="id" value={editingFiscalYear.id} />
+              <p className="heroSubtitle">Linked projects: {editingFiscalYearProjectCount}</p>
+              <label className="checkboxLabel">
+                <input name="clearProjectAssignments" type="checkbox" />
+                Clear project fiscal year assignments before delete
+              </label>
+              <button type="submit" className="tinyButton dangerButton">
+                Delete Fiscal Year
+              </button>
             </form>
           </div>
         </div>

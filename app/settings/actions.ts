@@ -492,6 +492,40 @@ export async function updateFiscalYearAction(formData: FormData): Promise<void> 
   }
 }
 
+export async function deleteFiscalYearAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const id = String(formData.get("id") ?? "").trim();
+    const clearProjectAssignments = formData.get("clearProjectAssignments") === "on";
+    if (!id) throw new Error("Fiscal year id is required.");
+
+    const { count: linkedProjects, error: linkedProjectsError } = await supabase
+      .from("projects")
+      .select("id", { head: true, count: "exact" })
+      .eq("fiscal_year_id", id);
+    if (linkedProjectsError) throw new Error(linkedProjectsError.message);
+
+    if ((linkedProjects ?? 0) > 0 && !clearProjectAssignments) {
+      throw new Error(
+        "This fiscal year is assigned to one or more projects. Check 'Clear project fiscal year assignments' to continue."
+      );
+    }
+
+    const { error } = await supabase.from("fiscal_years").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/settings");
+    revalidatePath("/overview");
+    revalidatePath("/requests");
+    revalidatePath("/procurement");
+    revalidatePath("/");
+    settingsSuccess("Fiscal year deleted.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not delete fiscal year."));
+  }
+}
+
 export async function updateOrganizationAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();
