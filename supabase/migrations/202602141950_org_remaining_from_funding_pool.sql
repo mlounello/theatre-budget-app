@@ -1,0 +1,68 @@
+-- Organization remaining should be based on Funding Pool, not allocated-only totals.
+-- Funding Pool = starting_budget_total + additional_income_total
+-- Remaining (True) = Funding Pool - obligated_total
+-- Remaining if Requested Approved = Funding Pool - (enc + pending_cc + ytd + requested_open)
+
+drop view if exists public.v_organization_totals;
+
+create view public.v_organization_totals as
+select
+  o.id as organization_id,
+  o.name as organization_name,
+  o.org_code,
+  o.fiscal_year_id,
+  fy.name as fiscal_year_name,
+  coalesce(pt.allocated_total, 0)::numeric(12, 2) as allocated_total,
+  coalesce(pt.requested_open_total, 0)::numeric(12, 2) as requested_open_total,
+  coalesce(pt.enc_total, 0)::numeric(12, 2) as enc_total,
+  coalesce(pt.pending_cc_total, 0)::numeric(12, 2) as pending_cc_total,
+  coalesce(pt.ytd_total, 0)::numeric(12, 2) as ytd_total,
+  coalesce(pt.obligated_total, 0)::numeric(12, 2) as obligated_total,
+  (
+    (coalesce(it.starting_budget_total, 0) + coalesce(it.additional_income_total, 0))
+    - coalesce(pt.obligated_total, 0)
+  )::numeric(12, 2) as remaining_true,
+  (
+    (coalesce(it.starting_budget_total, 0) + coalesce(it.additional_income_total, 0))
+    - (
+      coalesce(pt.enc_total, 0)
+      + coalesce(pt.pending_cc_total, 0)
+      + coalesce(pt.ytd_total, 0)
+      + coalesce(pt.requested_open_total, 0)
+    )
+  )::numeric(12, 2) as remaining_if_requested_approved,
+  coalesce(it.starting_budget_total, 0)::numeric(12, 2) as starting_budget_total,
+  coalesce(it.additional_income_total, 0)::numeric(12, 2) as additional_income_total,
+  (coalesce(it.starting_budget_total, 0) + coalesce(it.additional_income_total, 0))::numeric(12, 2) as funding_pool_total,
+  ((coalesce(it.starting_budget_total, 0) + coalesce(it.additional_income_total, 0)) - coalesce(pt.allocated_total, 0))::numeric(12, 2) as funding_pool_available,
+  coalesce(it.income_total, 0)::numeric(12, 2) as income_total,
+  coalesce(pt.held_total, 0)::numeric(12, 2) as held_total
+from public.organizations o
+left join public.fiscal_years fy on fy.id = o.fiscal_year_id
+left join (
+  select
+    p.organization_id,
+    coalesce(sum(vpt.allocated_total), 0)::numeric(12, 2) as allocated_total,
+    coalesce(sum(vpt.requested_open_total), 0)::numeric(12, 2) as requested_open_total,
+    coalesce(sum(vpt.enc_total), 0)::numeric(12, 2) as enc_total,
+    coalesce(sum(vpt.pending_cc_total), 0)::numeric(12, 2) as pending_cc_total,
+    coalesce(sum(vpt.ytd_total), 0)::numeric(12, 2) as ytd_total,
+    coalesce(sum(vpt.obligated_total), 0)::numeric(12, 2) as obligated_total,
+    coalesce(sum(vpt.held_total), 0)::numeric(12, 2) as held_total
+  from public.projects p
+  left join public.v_project_totals vpt on vpt.project_id = p.id
+  group by p.organization_id
+) pt on pt.organization_id = o.id
+left join (
+  select
+    coalesce(il.organization_id, p.organization_id) as organization_id,
+    coalesce(sum(il.amount), 0)::numeric(12, 2) as income_total,
+    coalesce(sum(case when il.income_type = 'starting_budget' then il.amount else 0 end), 0)::numeric(12, 2) as starting_budget_total,
+    coalesce(sum(case when il.income_type <> 'starting_budget' then il.amount else 0 end), 0)::numeric(12, 2) as additional_income_total
+  from public.income_lines il
+  left join public.projects p on p.id = il.project_id
+  group by coalesce(il.organization_id, p.organization_id)
+) it on it.organization_id = o.id;
+
+alter view public.v_organization_totals set (security_invoker = true);
+grant select on public.v_organization_totals to authenticated;

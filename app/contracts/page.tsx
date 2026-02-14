@@ -1,9 +1,9 @@
 import {
-  createContractAction,
   updateContractDetailsAction,
   updateContractInstallmentStatusAction,
   updateContractWorkflowAction
 } from "@/app/contracts/actions";
+import { CreateContractForm } from "@/app/contracts/create-contract-form";
 import { formatCurrency } from "@/lib/format";
 import { getContractsData } from "@/lib/db";
 
@@ -65,88 +65,12 @@ export default async function ContractsPage({
       {canManageContracts ? (
         <article className="panel requestFormPanel">
           <h2>Add Contract</h2>
-          <form className="requestForm" action={createContractAction}>
-            <label>
-              Fiscal Year
-              <select name="fiscalYearId" defaultValue="">
-                <option value="">From project default</option>
-                {fiscalYearOptions.map((fiscalYear) => (
-                  <option key={fiscalYear.id} value={fiscalYear.id}>
-                    {fiscalYear.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Organization
-              <select name="organizationId" defaultValue="">
-                <option value="">From project default</option>
-                {organizationOptions.map((organization) => (
-                  <option key={organization.id} value={organization.id}>
-                    {organization.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Project
-              <select name="projectId" required>
-                <option value="">Select project</option>
-                {projectOptions.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Banner Account Code
-              <select name="bannerAccountCodeId" required>
-                <option value="">Select account code</option>
-                {accountCodeOptions.map((accountCode) => (
-                  <option key={accountCode.id} value={accountCode.id}>
-                    {accountCode.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Contracted Employee Name
-              <input name="contractorName" required />
-            </label>
-            <label>
-              Employee ID Number
-              <input name="contractorEmployeeId" />
-            </label>
-            <label>
-              Email
-              <input name="contractorEmail" type="email" />
-            </label>
-            <label>
-              Phone
-              <input name="contractorPhone" />
-            </label>
-            <label>
-              Contract Value
-              <input name="contractValue" type="number" step="0.01" required />
-            </label>
-            <label>
-              Payment Installments
-              <select name="installmentCount" defaultValue="1">
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3">3</option>
-                <option value="4">4</option>
-              </select>
-            </label>
-            <label>
-              Notes
-              <input name="notes" />
-            </label>
-            <button type="submit" className="buttonLink buttonPrimary">
-              Save Contract
-            </button>
-          </form>
+          <CreateContractForm
+            fiscalYearOptions={fiscalYearOptions}
+            organizationOptions={organizationOptions}
+            projectOptions={projectOptions}
+            accountCodeOptions={accountCodeOptions}
+          />
         </article>
       ) : null}
 
