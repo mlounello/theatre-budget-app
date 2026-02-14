@@ -143,6 +143,7 @@ export async function createProjectAction(formData: FormData): Promise<void> {
     const useTemplate = formData.get("useTemplate") === "on";
     const templateName = String(formData.get("templateName") ?? "Play/Musical Default").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const planningRequestsEnabled =
       !isExternalProcurementProjectName(projectName) && formData.get("planningRequestsEnabled") === "on";
 
@@ -166,7 +167,11 @@ export async function createProjectAction(formData: FormData): Promise<void> {
     const nextProjectSort = ((maxProjectSortRows?.[0]?.sort_order as number | null) ?? -1) + 1;
     await supabase
       .from("projects")
-      .update({ sort_order: nextProjectSort, planning_requests_enabled: planningRequestsEnabled })
+      .update({
+        sort_order: nextProjectSort,
+        planning_requests_enabled: planningRequestsEnabled,
+        fiscal_year_id: fiscalYearId || null
+      })
       .eq("id", newProjectId);
 
     revalidatePath("/");
@@ -518,6 +523,7 @@ export async function updateProjectAction(formData: FormData): Promise<void> {
     const name = String(formData.get("name") ?? "").trim();
     const season = String(formData.get("season") ?? "").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const planningRequestsEnabled = !isExternalProcurementProjectName(name) && formData.get("planningRequestsEnabled") === "on";
 
     if (!id || !name) throw new Error("Project id and name are required.");
@@ -528,6 +534,7 @@ export async function updateProjectAction(formData: FormData): Promise<void> {
         name,
         season: season || null,
         organization_id: organizationId || null,
+        fiscal_year_id: fiscalYearId || null,
         planning_requests_enabled: planningRequestsEnabled
       })
       .eq("id", id);
@@ -926,7 +933,6 @@ export async function importHierarchyCsvAction(formData: FormData): Promise<void
       if (organizationName && orgCode) {
         let orgLookup = supabase.from("organizations").select("id, name");
         orgLookup = orgLookup.eq("org_code", orgCode);
-        orgLookup = fiscalYearId ? orgLookup.eq("fiscal_year_id", fiscalYearId) : orgLookup.is("fiscal_year_id", null);
 
         const { data: orgMatches, error: orgLookupError } = await orgLookup;
         if (orgLookupError) throw new Error(orgLookupError.message);
@@ -946,8 +952,7 @@ export async function importHierarchyCsvAction(formData: FormData): Promise<void
             .from("organizations")
             .insert({
               name: organizationName,
-              org_code: orgCode,
-              fiscal_year_id: fiscalYearId
+              org_code: orgCode
             })
             .select("id")
             .single();
@@ -966,9 +971,13 @@ export async function importHierarchyCsvAction(formData: FormData): Promise<void
       let projectId: string;
       if (projectExisting?.id) {
         projectId = projectExisting.id as string;
-        if (organizationId) {
-          await supabase.from("projects").update({ organization_id: organizationId }).eq("id", projectId);
-        }
+        await supabase
+          .from("projects")
+          .update({
+            organization_id: organizationId || null,
+            fiscal_year_id: fiscalYearId
+          })
+          .eq("id", projectId);
       } else {
         projectId = await createProjectViaRpc(supabase, {
           name: projectName,
@@ -977,6 +986,7 @@ export async function importHierarchyCsvAction(formData: FormData): Promise<void
           templateName: "Play/Musical Default",
           organizationId
         });
+        await supabase.from("projects").update({ fiscal_year_id: fiscalYearId }).eq("id", projectId);
       }
 
       if (!budgetCode) continue;

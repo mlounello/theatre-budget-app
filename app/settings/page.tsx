@@ -19,6 +19,7 @@ import { ProjectReorder } from "@/app/settings/project-reorder";
 import {
   getAccountCodeOptions,
   getAccountCodesAdmin,
+  getFiscalYearOptions,
   getHierarchyRows,
   getOrganizationOptions,
   getProductionCategoriesAdmin,
@@ -81,6 +82,7 @@ export default async function SettingsPage({
   const allAccountCodes = await getAccountCodesAdmin();
   const productionCategories = await getProductionCategoryOptions();
   const allProductionCategories = await getProductionCategoriesAdmin();
+  const fiscalYears = await getFiscalYearOptions();
   const organizations = await getOrganizationOptions();
   const hierarchyRows = await getHierarchyRows();
 
@@ -193,6 +195,7 @@ export default async function SettingsPage({
         </article>
 
         <AddEntityPanel
+          fiscalYears={fiscalYears}
           organizations={organizations}
           templates={templates}
           projects={projects}
@@ -567,6 +570,20 @@ export default async function SettingsPage({
               <label>
                 Season
                 <input name="season" defaultValue={editingProject.season ?? ""} />
+              </label>
+              <label>
+                Fiscal Year
+                <select
+                  name="fiscalYearId"
+                  defaultValue={projects.find((project) => project.id === editingProject.id)?.fiscalYearId ?? ""}
+                >
+                  <option value="">No fiscal year</option>
+                  {fiscalYears.map((fy) => (
+                    <option key={fy.id} value={fy.id}>
+                      {fy.name}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 Organization
