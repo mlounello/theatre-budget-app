@@ -23,6 +23,16 @@ export default async function DebugPage() {
     .select("id, name, season")
     .order("name", { ascending: true });
 
+  const { data: users, error: usersError } = await supabase
+    .from("users")
+    .select("id, full_name")
+    .order("full_name", { ascending: true });
+
+  const { data: categories, error: categoriesError } = await supabase
+    .from("production_categories")
+    .select("id, name")
+    .order("name", { ascending: true });
+
   const { data: scopes, error: scopesError } = await supabase
     .from("user_access_scopes")
     .select("id, user_id, scope_role, project_id, production_category_id, active")
@@ -31,6 +41,11 @@ export default async function DebugPage() {
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const supabaseRef = supabaseUrl.replace("https://", "").split(".")[0] || "unknown";
+  const userNameById = new Map((users ?? []).map((row) => [String(row.id), String(row.full_name ?? "")]));
+  const projectNameById = new Map(
+    (projects ?? []).map((row) => [String(row.id), `${String(row.name ?? "")}${row.season ? ` (${row.season})` : ""}`])
+  );
+  const categoryNameById = new Map((categories ?? []).map((row) => [String(row.id), String(row.name ?? "")]));
 
   return (
     <section>
@@ -123,6 +138,8 @@ export default async function DebugPage() {
         <article className="panel panelFull">
           <h2>Visible Access Scopes</h2>
           {scopesError ? <p>{scopesError.message}</p> : null}
+          {usersError ? <p>{usersError.message}</p> : null}
+          {categoriesError ? <p>{categoriesError.message}</p> : null}
           <div className="tableWrap">
             <table>
               <thead>
@@ -139,10 +156,23 @@ export default async function DebugPage() {
                 {(scopes ?? []).map((scope) => (
                   <tr key={scope.id as string}>
                     <td>{scope.id as string}</td>
-                    <td>{scope.user_id as string}</td>
+                    <td>
+                      {userNameById.get(String(scope.user_id)) || String(scope.user_id)}
+                      <br />
+                      <small>{String(scope.user_id)}</small>
+                    </td>
                     <td>{scope.scope_role as string}</td>
-                    <td>{(scope.project_id as string | null) ?? "-"}</td>
-                    <td>{(scope.production_category_id as string | null) ?? "-"}</td>
+                    <td>
+                      {scope.project_id
+                        ? (projectNameById.get(String(scope.project_id)) ?? String(scope.project_id))
+                        : "-"}
+                    </td>
+                    <td>
+                      {scope.production_category_id
+                        ? (categoryNameById.get(String(scope.production_category_id)) ??
+                          String(scope.production_category_id))
+                        : "-"}
+                    </td>
                     <td>{Boolean(scope.active as boolean | null) ? "Yes" : "No"}</td>
                   </tr>
                 ))}
