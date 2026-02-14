@@ -43,7 +43,7 @@ const CC_PROCUREMENT_STATUSES = [
 function procurementLabel(value: string, isCreditCard: boolean, requestType: ProcurementRow["requestType"]): string {
   if (requestType === "request") return "Budget Hold";
   if (requestType === "budget_transfer") return "Budget Transfer";
-  if (requestType === "contract_payment") return "Contract Payment";
+  if (requestType === "contract_payment") return value === "paid" ? "Paid" : "Unpaid";
   const list = isCreditCard ? CC_PROCUREMENT_STATUSES : PROCUREMENT_STATUSES;
   const found = list.find((status) => status.value === value);
   return found?.label ?? value;
@@ -232,6 +232,10 @@ export function ProcurementTable({
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const CONTRACT_PAYMENT_PROCUREMENT_STATUSES = [
+    { value: "requested", label: "Unpaid" },
+    { value: "paid", label: "Paid" }
+  ] as const;
   const filteredPurchases = useMemo(() => {
     const q = queryFilter.trim().toLowerCase();
     return purchases.filter((purchase) => {
@@ -569,9 +573,11 @@ export function ProcurementTable({
               <label>
                 Procurement Status
                 <select name="procurementStatus" defaultValue={editingPurchase.procurementStatus}>
-                  {(editingPurchase.requestType === "expense" && editingPurchase.isCreditCard
-                    ? CC_PROCUREMENT_STATUSES
-                    : PROCUREMENT_STATUSES
+                  {(editingPurchase.requestType === "contract_payment"
+                    ? CONTRACT_PAYMENT_PROCUREMENT_STATUSES
+                    : editingPurchase.requestType === "expense" && editingPurchase.isCreditCard
+                      ? CC_PROCUREMENT_STATUSES
+                      : PROCUREMENT_STATUSES
                   ).map((status) => (
                     <option key={status.value} value={status.value}>
                       {status.label}
