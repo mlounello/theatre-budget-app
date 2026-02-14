@@ -112,15 +112,16 @@ export function CreateRequestForm({
 
   const fiscalYearOptions = useMemo(() => {
     const map = new Map<string, string>();
-    for (const option of projectOptions) {
-      const key = option.fiscalYearId ?? NONE_FISCAL_YEAR;
-      const label = option.fiscalYearId ?? "No Fiscal Year";
-      if (!map.has(key)) map.set(key, label);
-    }
     for (const option of budgetLineOptions) {
       const key = option.fiscalYearId ?? NONE_FISCAL_YEAR;
       const label = option.fiscalYearName ?? "No Fiscal Year";
       if (!map.has(key)) map.set(key, label);
+    }
+    for (const option of projectOptions) {
+      const key = option.fiscalYearId ?? NONE_FISCAL_YEAR;
+      if (!map.has(key)) {
+        map.set(key, key === NONE_FISCAL_YEAR ? "No Fiscal Year" : "Fiscal Year");
+      }
     }
     return Array.from(map.entries()).map(([value, label]) => ({ value, label }));
   }, [projectOptions, budgetLineOptions]);
