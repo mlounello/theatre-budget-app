@@ -149,6 +149,7 @@ export function CreateOrderForm({
             setOrganizationId(event.target.value);
             setProjectId("");
           }}
+          disabled={!isExternalProject}
           required={isExternalProject}
         >
           <option value="">Select organization</option>
@@ -158,6 +159,7 @@ export function CreateOrderForm({
             </option>
           ))}
         </select>
+        {!isExternalProject ? <span className="helperText">For budget-tracked projects, organization comes from the project.</span> : null}
       </label>
       <label>
         Project
@@ -198,7 +200,7 @@ export function CreateOrderForm({
         </select>
       </label>
       {isExternalProject ? <p className="heroSubtitle">External Procurement rows are automatically marked as off-budget.</p> : null}
-      <input type="hidden" name="organizationId" value={organizationId} />
+      <input type="hidden" name="organizationId" value={isExternalProject ? organizationId : ""} />
       <input type="hidden" name="budgetLineId" value="" />
       <label>
         Request Type

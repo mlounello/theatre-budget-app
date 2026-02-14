@@ -528,6 +528,7 @@ export function ProcurementTable({
                   name="organizationId"
                   value={editOrganizationId}
                   onChange={(event) => setEditOrganizationId(event.target.value)}
+                  disabled={!editIsExternalProject}
                   required={editIsExternalProject}
                 >
                   <option value="">Select organization</option>
@@ -537,6 +538,9 @@ export function ProcurementTable({
                     </option>
                   ))}
                 </select>
+                {!editIsExternalProject ? (
+                  <span className="helperText">For budget-tracked projects, organization comes from the project.</span>
+                ) : null}
               </label>
               <input type="hidden" name="budgetLineId" value="" />
               <label>

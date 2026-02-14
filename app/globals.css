@@ -190,6 +190,12 @@ th {
   margin: 0.5rem 0 0;
 }
 
+.helperText {
+  margin-top: 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
 .successNote {
   margin: 0.6rem 0 0;
   color: var(--siena-light-green);
