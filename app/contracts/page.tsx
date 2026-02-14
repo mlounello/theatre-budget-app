@@ -1,9 +1,10 @@
 import {
-  updateContractDetailsAction,
   updateContractInstallmentStatusAction,
   updateContractWorkflowAction
 } from "@/app/contracts/actions";
+import { CreateContractBatchForm } from "@/app/contracts/create-contract-batch-form";
 import { CreateContractForm } from "@/app/contracts/create-contract-form";
+import { ContractRowActions } from "@/app/contracts/contract-row-actions";
 import { formatCurrency } from "@/lib/format";
 import { getContractsData } from "@/lib/db";
 
@@ -74,6 +75,19 @@ export default async function ContractsPage({
         </article>
       ) : null}
 
+      {canManageContracts ? (
+        <article className="panel requestFormPanel">
+          <h2>Bulk Add Contracts</h2>
+          <p className="helperText">Use one shared FY/Org/Project/Account and add multiple names, amounts, and installments.</p>
+          <CreateContractBatchForm
+            fiscalYearOptions={fiscalYearOptions}
+            organizationOptions={organizationOptions}
+            projectOptions={projectOptions}
+            accountCodeOptions={accountCodeOptions}
+          />
+        </article>
+      ) : null}
+
       <article className="panel tablePanel">
         <h2>Contracts</h2>
         <table>
@@ -88,12 +102,13 @@ export default async function ContractsPage({
               <th>Installments</th>
               <th>Workflow</th>
               <th>Installment Payments</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {contracts.length === 0 ? (
               <tr>
-                <td colSpan={9}>No contracts yet.</td>
+                <td colSpan={10}>No contracts yet.</td>
               </tr>
             ) : (
               contracts.map((contract) => {
@@ -120,80 +135,6 @@ export default async function ContractsPage({
                     <td>{formatCurrency(contract.contractValue)}</td>
                     <td>{contract.installmentCount}</td>
                     <td>
-                      {canManageContracts ? (
-                        <form action={updateContractDetailsAction} className="requestForm" style={{ marginBottom: "0.6rem" }}>
-                          <input type="hidden" name="contractId" value={contract.id} />
-                          <label>
-                            Name
-                            <input name="contractorName" defaultValue={contract.contractorName} />
-                          </label>
-                          <label>
-                            Employee ID
-                            <input name="contractorEmployeeId" defaultValue={contract.contractorEmployeeId ?? ""} />
-                          </label>
-                          <label>
-                            Email
-                            <input name="contractorEmail" type="email" defaultValue={contract.contractorEmail ?? ""} />
-                          </label>
-                          <label>
-                            Phone
-                            <input name="contractorPhone" defaultValue={contract.contractorPhone ?? ""} />
-                          </label>
-                          <label>
-                            Contract Value
-                            <input name="contractValue" type="number" step="0.01" defaultValue={contract.contractValue} />
-                          </label>
-                          <label>
-                            FY
-                            <select name="fiscalYearId" defaultValue={contract.fiscalYearId ?? ""}>
-                              <option value="">From project default</option>
-                              {fiscalYearOptions.map((fiscalYear) => (
-                                <option key={fiscalYear.id} value={fiscalYear.id}>
-                                  {fiscalYear.name}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label>
-                            Org
-                            <select name="organizationId" defaultValue={contract.organizationId ?? ""}>
-                              <option value="">From project default</option>
-                              {organizationOptions.map((organization) => (
-                                <option key={organization.id} value={organization.id}>
-                                  {organization.label}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label>
-                            Project
-                            <select name="projectId" defaultValue={contract.projectId}>
-                              {projectOptions.map((project) => (
-                                <option key={project.id} value={project.id}>
-                                  {project.label}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label>
-                            Banner Account
-                            <select name="bannerAccountCodeId" defaultValue={contract.bannerAccountCodeId}>
-                              {accountCodeOptions.map((accountCode) => (
-                                <option key={accountCode.id} value={accountCode.id}>
-                                  {accountCode.label}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <label>
-                            Notes
-                            <input name="notes" defaultValue={contract.notes ?? ""} />
-                          </label>
-                          <button className="tinyButton" type="submit">
-                            Save Contract
-                          </button>
-                        </form>
-                      ) : null}
                       {canManageContracts ? (
                         <>
                           <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>{workflowLabel(contract.workflowStatus)}</span>
@@ -245,6 +186,19 @@ export default async function ContractsPage({
                           </div>
                         ))}
                       </div>
+                    </td>
+                    <td>
+                      {canManageContracts ? (
+                        <ContractRowActions
+                          contract={contract}
+                          fiscalYearOptions={fiscalYearOptions}
+                          organizationOptions={organizationOptions}
+                          projectOptions={projectOptions}
+                          accountCodeOptions={accountCodeOptions}
+                        />
+                      ) : (
+                        "-"
+                      )}
                     </td>
                   </tr>
                 );
