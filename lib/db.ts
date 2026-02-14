@@ -1972,6 +1972,15 @@ export async function getMyBoardData(): Promise<{
   const supabase = await getSupabaseServerClient();
   const profile = await getCurrentAccessProfile();
   const scoped = profile.scopes.filter((scope) => scope.active);
+  const explicitScopePairs = new Set(
+    scoped
+      .filter((scope) => Boolean(scope.projectId) && Boolean(scope.productionCategoryId))
+      .map((scope) => `${String(scope.projectId)}|${String(scope.productionCategoryId)}`)
+  );
+  const projectWideScopes = new Set(
+    scoped.filter((scope) => Boolean(scope.projectId) && !scope.productionCategoryId).map((scope) => String(scope.projectId))
+  );
+  const hasScopedConstraints = !profile.isAdmin && scoped.length > 0;
   const scopedProjectIds = Array.from(new Set(scoped.map((scope) => scope.projectId).filter(Boolean))) as string[];
   const scopedCategoryIds = Array.from(
     new Set(scoped.map((scope) => scope.productionCategoryId).filter(Boolean))
@@ -2027,7 +2036,12 @@ export async function getMyBoardData(): Promise<{
       productionCategoryId: categoryId,
       productionCategoryName: rowCategoryName
     };
-    const allow = profile.isAdmin || scoped.length === 0 || scoped.some((scope) => scopeMatches(scope, rowMeta));
+    const rowPairKey = `${projectId}|${categoryId ?? ""}`;
+    const allow =
+      !hasScopedConstraints ||
+      projectWideScopes.has(projectId) ||
+      explicitScopePairs.has(rowPairKey) ||
+      scoped.some((scope) => scopeMatches(scope, rowMeta));
     if (!allow) continue;
 
     const key = `${projectId}|${categoryId ?? "uncat"}`;
@@ -2121,7 +2135,12 @@ export async function getMyBoardData(): Promise<{
         productionCategoryId: allocCategoryId,
         productionCategoryName: allocCategoryName
       };
-      const allow = profile.isAdmin || scoped.length === 0 || scoped.some((scope) => scopeMatches(scope, rowMeta));
+      const rowPairKey = `${projectId}|${allocCategoryId ?? ""}`;
+      const allow =
+        !hasScopedConstraints ||
+        projectWideScopes.has(projectId) ||
+        explicitScopePairs.has(rowPairKey) ||
+        scoped.some((scope) => scopeMatches(scope, rowMeta));
       if (!allow) continue;
 
       const key = `${projectId}|${allocCategoryId ?? "uncat"}`;
