@@ -1981,13 +1981,13 @@ export async function getMyBoardData(): Promise<{
     supabase
       .from("project_budget_lines")
       .select(
-        "id, project_id, production_category_id, allocated_amount, active, projects(name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name)), production_categories(name)"
+        "id, project_id, production_category_id, category, line_name, allocated_amount, active, projects(name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name)), production_categories(name)"
       )
       .eq("active", true),
     supabase
       .from("purchases")
       .select(
-        "id, project_id, production_category_id, title, po_number, status, request_type, procurement_status, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, projects(name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name)), production_categories(name), vendors(name)"
+        "id, project_id, budget_line_id, production_category_id, title, po_number, status, request_type, procurement_status, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, projects(name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name)), production_categories(name), vendors(name), project_budget_lines!purchases_budget_line_id_fkey(production_category_id, category, line_name)"
       )
       .neq("status", "cancelled")
       .order("created_at", { ascending: false }),
@@ -2013,6 +2013,10 @@ export async function getMyBoardData(): Promise<{
       | { name?: string; season?: string | null; organization_id?: string | null; fiscal_year_id?: string | null; organizations?: { name?: string; org_code?: string } | null; fiscal_years?: { name?: string } | null }
       | null;
     const category = row.production_categories as { name?: string } | null;
+    const rowCategoryName =
+      category?.name ??
+      ((row.category as string | null) ?? null) ??
+      ((row.line_name as string | null) ?? null);
     const org = project?.organizations ?? null;
     const categoryId = (row.production_category_id as string | null) ?? null;
     const projectId = row.project_id as string;
@@ -2021,7 +2025,7 @@ export async function getMyBoardData(): Promise<{
       organizationId: (project?.organization_id as string | null) ?? null,
       projectId,
       productionCategoryId: categoryId,
-      productionCategoryName: category?.name ?? null
+      productionCategoryName: rowCategoryName
     };
     const allow = profile.isAdmin || scoped.length === 0 || scoped.some((scope) => scopeMatches(scope, rowMeta));
     if (!allow) continue;
@@ -2037,7 +2041,7 @@ export async function getMyBoardData(): Promise<{
         organizationLabel: org ? `${org.org_code ?? ""} | ${org.name ?? ""}` : null,
         projectName: (project?.name as string | undefined) ?? "Unknown Project",
         season: (project?.season as string | undefined) ?? null,
-        productionCategoryName: category?.name ?? "Unassigned",
+        productionCategoryName: rowCategoryName ?? "Unassigned",
         startingAllotment: asNumber(row.allocated_amount as string | number | null),
         obligatedTotal: 0,
         openRequestTotal: 0,
@@ -2055,15 +2059,24 @@ export async function getMyBoardData(): Promise<{
       | { name?: string; season?: string | null; organization_id?: string | null; fiscal_year_id?: string | null; organizations?: { name?: string; org_code?: string } | null; fiscal_years?: { name?: string } | null }
       | null;
     const category = row.production_categories as { name?: string } | null;
+    const reportingLine = row.project_budget_lines as
+      | { production_category_id?: string | null; category?: string | null; line_name?: string | null }
+      | null;
     const vendor = row.vendors as { name?: string } | null;
-    const categoryId = (row.production_category_id as string | null) ?? null;
+    const categoryId =
+      (row.production_category_id as string | null) ??
+      ((reportingLine?.production_category_id as string | null) ?? null);
+    const rowCategoryName =
+      category?.name ??
+      ((reportingLine?.category as string | null) ?? null) ??
+      ((reportingLine?.line_name as string | null) ?? null);
     const projectId = row.project_id as string;
     const rowMeta = {
       fiscalYearId: (project?.fiscal_year_id as string | null) ?? null,
       organizationId: (project?.organization_id as string | null) ?? null,
       projectId,
       productionCategoryId: categoryId,
-      productionCategoryName: category?.name ?? null
+      productionCategoryName: rowCategoryName
     };
     const allow = profile.isAdmin || scoped.length === 0 || scoped.some((scope) => scopeMatches(scope, rowMeta));
     if (!allow) continue;
@@ -2081,7 +2094,7 @@ export async function getMyBoardData(): Promise<{
           : null,
         projectName: (project?.name as string | undefined) ?? "Unknown Project",
         season: (project?.season as string | undefined) ?? null,
-        productionCategoryName: category?.name ?? "Unassigned",
+        productionCategoryName: rowCategoryName ?? "Unassigned",
         startingAllotment: 0,
         obligatedTotal: 0,
         openRequestTotal: 0,
