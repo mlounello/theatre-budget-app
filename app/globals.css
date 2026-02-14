@@ -480,6 +480,60 @@ th {
   margin: 0.4rem 0;
 }
 
+.authModeSwitch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  margin: 0.8rem 0 0.7rem;
+}
+
+.authModeButton {
+  border: 1px solid #cbd6ce;
+  background: #f5f8f6;
+  color: var(--text-main);
+  border-radius: 999px;
+  padding: 0.5rem 0.7rem;
+  font-family: "Gudea", "Arial", sans-serif;
+  cursor: pointer;
+}
+
+.authModeButton.active {
+  background: var(--siena-green);
+  border-color: var(--siena-dark-green);
+  color: var(--siena-white);
+}
+
+.authForm {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.authForm label {
+  display: grid;
+  gap: 0.3rem;
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.9rem;
+}
+
+.authForm input {
+  border: 1px solid #cbd6ce;
+  border-radius: 8px;
+  padding: 0.45rem 0.5rem;
+  font-family: "Merriweather", "Georgia", serif;
+}
+
+.authDivider {
+  display: grid;
+  place-items: center;
+  margin-top: 0.5rem;
+}
+
+.authDivider span {
+  color: var(--text-muted);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.85rem;
+}
+
 .authButton {
   width: 100%;
   padding: 0.65rem 0.9rem;
