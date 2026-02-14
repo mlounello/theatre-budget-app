@@ -1336,3 +1336,59 @@ export async function deleteUserAccessScopeAction(formData: FormData): Promise<v
     settingsError(getErrorMessage(error, "Could not remove user scope."));
   }
 }
+
+export async function updateUserAccessScopeAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const access = await getAccessContext();
+    if (!access.userId) throw new Error("You must be signed in.");
+
+    const id = String(formData.get("id") ?? "").trim();
+    const scopeRole = String(formData.get("scopeRole") ?? "").trim() as "admin" | "project_manager" | "buyer" | "viewer";
+    const projectId = String(formData.get("projectId") ?? "").trim();
+    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
+    const active = String(formData.get("active") ?? "true").trim() === "true";
+
+    if (!id || !scopeRole) throw new Error("Scope id and role are required.");
+
+    const { data: existing, error: existingError } = await supabase
+      .from("user_access_scopes")
+      .select("id, scope_role, project_id")
+      .eq("id", id)
+      .single();
+    if (existingError || !existing) throw new Error(existingError?.message ?? "Scope not found.");
+
+    if (access.role !== "admin") {
+      if (scopeRole !== "buyer" && scopeRole !== "viewer") {
+        throw new Error("Project managers can only set Buyer/Viewer scopes.");
+      }
+      const targetProjectId = projectId || (existing.project_id as string | null) || "";
+      if (!targetProjectId) throw new Error("Project is required for PM-managed scopes.");
+      await requireProjectSettingsWrite(supabase, targetProjectId);
+      if ((existing.scope_role as string) !== "buyer" && (existing.scope_role as string) !== "viewer") {
+        throw new Error("Project managers cannot edit Admin/PM scopes.");
+      }
+    }
+
+    const { error } = await supabase
+      .from("user_access_scopes")
+      .update({
+        scope_role: scopeRole,
+        project_id: projectId || null,
+        production_category_id: productionCategoryId || null,
+        fiscal_year_id: fiscalYearId || null,
+        organization_id: organizationId || null,
+        active
+      })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/settings");
+    settingsSuccess("User scope updated.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not update user scope."));
+  }
+}

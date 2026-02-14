@@ -8,6 +8,7 @@ import {
   deleteProductionCategoryAction,
   deleteAccountCodeAction,
   deleteUserAccessScopeAction,
+  updateUserAccessScopeAction,
   removeProjectMembershipAction,
   importHierarchyCsvAction,
   updateProductionCategoryAction,
@@ -75,6 +76,7 @@ export default async function SettingsPage({
     error?: string;
     editType?: "fy" | "org" | "project" | "line" | "account" | "production_category";
     editId?: string;
+    scopeEditId?: string;
   }>;
 }) {
   const access = await getAccessContext();
@@ -89,6 +91,7 @@ export default async function SettingsPage({
   const errorMessage = resolvedSearchParams?.error;
   const editType = resolvedSearchParams?.editType;
   const editId = resolvedSearchParams?.editId;
+  const scopeEditId = resolvedSearchParams?.scopeEditId;
 
   const projectsAll = await getSettingsProjects();
   const templates = await getTemplateNames();
@@ -200,6 +203,7 @@ export default async function SettingsPage({
   const productionCategoryLookup = new Map(allProductionCategories.map((row) => [row.id, row] as const));
   const editingProductionCategory =
     editType === "production_category" && editId ? productionCategoryLookup.get(editId) : null;
+  const editingScope = scopeEditId ? accessScopes.find((scope) => scope.id === scopeEditId) ?? null : null;
 
   return (
     <section>
@@ -741,6 +745,7 @@ export default async function SettingsPage({
                   <th>Project</th>
                   <th>Category</th>
                   <th>Active</th>
+                  <th>Edit</th>
                   <th>Remove</th>
                 </tr>
               </thead>
@@ -753,6 +758,11 @@ export default async function SettingsPage({
                     <td>{productionCategories.find((category) => category.id === scope.productionCategoryId)?.name ?? "-"}</td>
                     <td>{scope.active ? "Yes" : "No"}</td>
                     <td>
+                      <a className="tinyButton" href={`/settings?scopeEditId=${scope.id}`}>
+                        Edit
+                      </a>
+                    </td>
+                    <td>
                       <form action={deleteUserAccessScopeAction}>
                         <input type="hidden" name="id" value={scope.id} />
                         <button type="submit" className="tinyButton dangerButton">
@@ -764,7 +774,7 @@ export default async function SettingsPage({
                 ))}
                 {accessScopes.length === 0 ? (
                   <tr>
-                    <td colSpan={6}>(none)</td>
+                    <td colSpan={7}>(none)</td>
                   </tr>
                 ) : null}
               </tbody>
@@ -1044,6 +1054,86 @@ export default async function SettingsPage({
                 </a>
                 <button type="submit" className="buttonLink buttonPrimary">
                   Save Category
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {editingScope ? (
+        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit user access scope">
+          <div className="modalPanel">
+            <h2>Edit User Access Scope</h2>
+            <form action={updateUserAccessScopeAction} className="requestForm">
+              <input type="hidden" name="id" value={editingScope.id} />
+              <label>
+                Role
+                <select name="scopeRole" defaultValue={editingScope.scopeRole}>
+                  {isAdmin ? <option value="admin">Admin</option> : null}
+                  {isAdmin ? <option value="project_manager">Project Manager</option> : null}
+                  <option value="buyer">Buyer</option>
+                  <option value="viewer">Viewer</option>
+                </select>
+              </label>
+              <label>
+                Project
+                <select name="projectId" defaultValue={editingScope.projectId ?? ""}>
+                  <option value="">(optional)</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                      {project.season ? ` (${project.season})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Department
+                <select name="productionCategoryId" defaultValue={editingScope.productionCategoryId ?? ""}>
+                  <option value="">All categories</option>
+                  {productionCategories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Fiscal Year
+                <select name="fiscalYearId" defaultValue={editingScope.fiscalYearId ?? ""}>
+                  <option value="">(optional)</option>
+                  {fiscalYears.map((fiscalYear) => (
+                    <option key={fiscalYear.id} value={fiscalYear.id}>
+                      {fiscalYear.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Organization
+                <select name="organizationId" defaultValue={editingScope.organizationId ?? ""}>
+                  <option value="">(optional)</option>
+                  {organizations.map((organization) => (
+                    <option key={organization.id} value={organization.id}>
+                      {organization.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Active
+                <select name="active" defaultValue={editingScope.active ? "true" : "false"}>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              </label>
+              <div className="modalActions">
+                <a className="tinyButton" href="/settings">
+                  Cancel
+                </a>
+                <button type="submit" className="buttonLink buttonPrimary">
+                  Save Scope
                 </button>
               </div>
             </form>
