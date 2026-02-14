@@ -23,6 +23,19 @@ export type DashboardProject = {
   incomeTotal: number;
 };
 
+export type DashboardOpenRequisition = {
+  id: string;
+  projectId: string;
+  projectName: string;
+  season: string | null;
+  title: string;
+  requisitionNumber: string | null;
+  poNumber: string | null;
+  vendorName: string | null;
+  procurementStatus: string;
+  orderValue: number;
+};
+
 export type BudgetLineTotal = {
   projectBudgetLineId: string;
   budgetCode: string;
@@ -422,6 +435,47 @@ export async function getDashboardProjects(): Promise<DashboardProject[]> {
       remainingTrue: summary?.remainingTrue ?? 0,
       remainingIfRequestedApproved: summary?.remainingIfRequestedApproved ?? 0,
       incomeTotal: summary?.income ?? 0
+    };
+  });
+}
+
+export async function getDashboardOpenRequisitions(): Promise<DashboardOpenRequisition[]> {
+  const supabase = await getSupabaseServerClient();
+
+  const { data, error } = await supabase
+    .from("purchases")
+    .select(
+      "id, project_id, title, requisition_number, po_number, procurement_status, estimated_amount, requested_amount, encumbered_amount, posted_amount, projects!inner(name, season), vendors(name)"
+    )
+    .eq("request_type", "requisition")
+    .neq("procurement_status", "paid")
+    .neq("procurement_status", "cancelled")
+    .not("projects.name", "ilike", "external procurement")
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (error) throw error;
+
+  return ((data as Array<Record<string, unknown>> | null) ?? []).map((row) => {
+    const project = row.projects as { name?: string; season?: string | null } | null;
+    const vendor = row.vendors as { name?: string } | null;
+    const estimated = asNumber(row.estimated_amount as string | number | null);
+    const requested = asNumber(row.requested_amount as string | number | null);
+    const encumbered = asNumber(row.encumbered_amount as string | number | null);
+    const posted = asNumber(row.posted_amount as string | number | null);
+    const orderValue = estimated !== 0 ? estimated : requested !== 0 ? requested : encumbered !== 0 ? encumbered : posted;
+
+    return {
+      id: row.id as string,
+      projectId: row.project_id as string,
+      projectName: project?.name ?? "Unknown Project",
+      season: project?.season ?? null,
+      title: (row.title as string) ?? "Untitled",
+      requisitionNumber: (row.requisition_number as string | null) ?? null,
+      poNumber: (row.po_number as string | null) ?? null,
+      vendorName: vendor?.name ?? null,
+      procurementStatus: ((row.procurement_status as string | null) ?? "requested").toLowerCase(),
+      orderValue
     };
   });
 }

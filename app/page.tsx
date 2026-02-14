@@ -1,14 +1,39 @@
 import Link from "next/link";
+import { updateDashboardRequisitionStatusAction } from "@/app/dashboard-actions";
 import { formatCurrency } from "@/lib/format";
-import { getDashboardProjects } from "@/lib/db";
-import type { DashboardProject } from "@/lib/db";
+import { getDashboardOpenRequisitions, getDashboardProjects } from "@/lib/db";
+import type { DashboardOpenRequisition, DashboardProject } from "@/lib/db";
 
-export default async function DashboardPage() {
+const REQUISITION_PROCUREMENT_STATUSES = [
+  { value: "requested", label: "Requested" },
+  { value: "ordered", label: "Ordered" },
+  { value: "partial_received", label: "Partially Received" },
+  { value: "fully_received", label: "Fully Received" },
+  { value: "invoice_sent", label: "Invoice Sent" },
+  { value: "invoice_received", label: "Invoice Received" },
+  { value: "paid", label: "Paid" },
+  { value: "cancelled", label: "Cancelled" }
+] as const;
+
+function requisitionProcurementLabel(value: string): string {
+  const found = REQUISITION_PROCUREMENT_STATUSES.find((status) => status.value === value);
+  return found?.label ?? value;
+}
+
+export default async function DashboardPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ ok?: string; error?: string }>;
+}) {
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const okMessage = resolvedSearchParams?.ok;
+  const errorMessage = resolvedSearchParams?.error;
   let projects: DashboardProject[] = [];
+  let openRequisitions: DashboardOpenRequisition[] = [];
   let loadError: string | null = null;
 
   try {
-    projects = await getDashboardProjects();
+    [projects, openRequisitions] = await Promise.all([getDashboardProjects(), getDashboardOpenRequisitions()]);
   } catch {
     loadError = "Unable to load project data. Check Supabase view grants and migration status.";
   }
@@ -22,7 +47,70 @@ export default async function DashboardPage() {
           True remaining excludes unapproved requests. Planning overlay shows what remaining would be if open
           requests were approved.
         </p>
+        {okMessage ? <p className="successNote">{okMessage}</p> : null}
+        {errorMessage ? <p className="errorNote">{errorMessage}</p> : null}
       </div>
+
+      <article className="panel">
+        <h2>Requisition Follow-Up</h2>
+        <p className="heroSubtitle">Open requisitions that are not yet paid. Update status directly from this list.</p>
+        <div className="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Title</th>
+                <th>Req #</th>
+                <th>PO #</th>
+                <th>Vendor</th>
+                <th>Order Value</th>
+                <th>Status</th>
+                <th>Update</th>
+              </tr>
+            </thead>
+            <tbody>
+              {openRequisitions.length === 0 ? (
+                <tr>
+                  <td colSpan={8}>No open requisitions.</td>
+                </tr>
+              ) : null}
+              {openRequisitions.map((row) => (
+                <tr key={row.id}>
+                  <td>
+                    {row.projectName}
+                    {row.season ? <div>{row.season}</div> : null}
+                  </td>
+                  <td>{row.title}</td>
+                  <td>{row.requisitionNumber ?? "-"}</td>
+                  <td>{row.poNumber ?? "-"}</td>
+                  <td>{row.vendorName ?? "-"}</td>
+                  <td>{formatCurrency(row.orderValue)}</td>
+                  <td>
+                    <span className={`statusChip status-${row.procurementStatus}`}>
+                      {requisitionProcurementLabel(row.procurementStatus)}
+                    </span>
+                  </td>
+                  <td>
+                    <form action={updateDashboardRequisitionStatusAction} className="inlineEditForm">
+                      <input type="hidden" name="purchaseId" value={row.id} />
+                      <select name="procurementStatus" defaultValue={row.procurementStatus}>
+                        {REQUISITION_PROCUREMENT_STATUSES.map((status) => (
+                          <option key={status.value} value={status.value}>
+                            {status.label}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="submit" className="tinyButton">
+                        Save
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </article>
 
       <div className="gridCards">
         {loadError ? (
