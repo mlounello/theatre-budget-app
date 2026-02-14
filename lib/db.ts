@@ -2085,16 +2085,21 @@ export async function getMyBoardData(): Promise<{
       || asNumber(row.requested_amount as string | number | null)
       || asNumber(row.estimated_amount as string | number | null);
 
+    const purchaseFallbackRow = {
+      amount: defaultAmount,
+      production_category_id:
+        (row.production_category_id as string | null) ??
+        ((reportingLine?.production_category_id as string | null) ?? null),
+      project_budget_lines: reportingLine
+    };
+
+    const hasAnyNonZeroAllocation = allocations.some(
+      (item) => asNumber((item.amount as string | number | null) ?? null) !== 0
+    );
     const allocationRows =
-      allocations.length > 0
-        ? allocations
-        : [
-            {
-              amount: defaultAmount,
-              production_category_id: (row.production_category_id as string | null) ?? ((reportingLine?.production_category_id as string | null) ?? null),
-              project_budget_lines: reportingLine
-            }
-          ];
+      allocations.length === 0 || (!hasAnyNonZeroAllocation && defaultAmount !== 0)
+        ? [purchaseFallbackRow]
+        : allocations;
 
     for (const alloc of allocationRows) {
       const allocCategoryId =
@@ -2109,8 +2114,6 @@ export async function getMyBoardData(): Promise<{
         ((reportingLine?.category as string | null) ?? null) ??
         ((reportingLine?.line_name as string | null) ?? null);
       const amount = asNumber((alloc.amount as string | number | null) ?? null);
-      if (amount === 0) continue;
-
       const rowMeta = {
         fiscalYearId: (project?.fiscal_year_id as string | null) ?? null,
         organizationId: (project?.organization_id as string | null) ?? null,
