@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { signOut } from "@/app/auth/actions";
-import { getAppSettings } from "@/lib/db";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 const links = [
@@ -17,7 +16,6 @@ const links = [
 export async function TopNav() {
   let userEmail: string | null = null;
   let hasUser = false;
-  let planningRequestsEnabled = true;
 
   try {
     const supabase = await getSupabaseServerClient();
@@ -26,15 +24,10 @@ export async function TopNav() {
     } = await supabase.auth.getUser();
     hasUser = Boolean(user);
     userEmail = user?.email ?? null;
-    const appSettings = await getAppSettings();
-    planningRequestsEnabled = appSettings.planningRequestsEnabled;
   } catch {
     hasUser = false;
     userEmail = null;
-    planningRequestsEnabled = true;
   }
-
-  const visibleLinks = planningRequestsEnabled ? links : links.filter((link) => link.href !== "/requests");
 
   return (
     <header className="topNav">
@@ -47,7 +40,7 @@ export async function TopNav() {
           </div>
         </div>
         <nav className="mainNav" aria-label="Primary">
-          {visibleLinks.map((link) => (
+          {links.map((link) => (
             <Link key={link.href} href={link.href} className="navLink">
               {link.label}
             </Link>

@@ -78,6 +78,10 @@ function parseCsv(text: string): Array<Record<string, string>> {
   });
 }
 
+function isExternalProcurementProjectName(name: string): boolean {
+  return name.trim().toLowerCase() === "external procurement";
+}
+
 function settingsSuccess(message: string, hash?: string): never {
   const target = `/settings?ok=${encodeURIComponent(message)}${hash ? `#${hash}` : ""}`;
   redirect(target);
@@ -139,6 +143,8 @@ export async function createProjectAction(formData: FormData): Promise<void> {
     const useTemplate = formData.get("useTemplate") === "on";
     const templateName = String(formData.get("templateName") ?? "Play/Musical Default").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
+    const planningRequestsEnabled =
+      !isExternalProcurementProjectName(projectName) && formData.get("planningRequestsEnabled") === "on";
 
     if (!projectName) throw new Error("Project name is required.");
 
@@ -158,7 +164,10 @@ export async function createProjectAction(formData: FormData): Promise<void> {
       : maxProjectSortQuery.is("organization_id", null);
     const { data: maxProjectSortRows } = await maxProjectSortQuery;
     const nextProjectSort = ((maxProjectSortRows?.[0]?.sort_order as number | null) ?? -1) + 1;
-    await supabase.from("projects").update({ sort_order: nextProjectSort }).eq("id", newProjectId);
+    await supabase
+      .from("projects")
+      .update({ sort_order: nextProjectSort, planning_requests_enabled: planningRequestsEnabled })
+      .eq("id", newProjectId);
 
     revalidatePath("/");
     revalidatePath("/overview");
@@ -509,12 +518,18 @@ export async function updateProjectAction(formData: FormData): Promise<void> {
     const name = String(formData.get("name") ?? "").trim();
     const season = String(formData.get("season") ?? "").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
+    const planningRequestsEnabled = !isExternalProcurementProjectName(name) && formData.get("planningRequestsEnabled") === "on";
 
     if (!id || !name) throw new Error("Project id and name are required.");
 
     const { error } = await supabase
       .from("projects")
-      .update({ name, season: season || null, organization_id: organizationId || null })
+      .update({
+        name,
+        season: season || null,
+        organization_id: organizationId || null,
+        planning_requests_enabled: planningRequestsEnabled
+      })
       .eq("id", id);
     if (error) throw new Error(error.message);
 
@@ -526,38 +541,6 @@ export async function updateProjectAction(formData: FormData): Promise<void> {
   } catch (error) {
     rethrowIfRedirect(error);
     settingsError(getErrorMessage(error, "Could not update project."));
-  }
-}
-
-export async function updateAppSettingsAction(formData: FormData): Promise<void> {
-  try {
-    const supabase = await getSupabaseServerClient();
-    const {
-      data: { user }
-    } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
-
-    const planningRequestsEnabled = formData.get("planningRequestsEnabled") === "on";
-
-    const { error } = await supabase.from("app_settings").upsert(
-      {
-        id: 1,
-        planning_requests_enabled: planningRequestsEnabled,
-        updated_at: new Date().toISOString(),
-        updated_by: user.id
-      },
-      { onConflict: "id" }
-    );
-    if (error) throw new Error(error.message);
-
-    revalidatePath("/");
-    revalidatePath("/requests");
-    revalidatePath("/procurement");
-    revalidatePath("/settings");
-    settingsSuccess("App settings updated.");
-  } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not update app settings."));
   }
 }
 

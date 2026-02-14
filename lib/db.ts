@@ -198,6 +198,7 @@ export type SettingsProject = {
   name: string;
   season: string | null;
   organizationId: string | null;
+  planningRequestsEnabled: boolean;
   sortOrder: number;
 };
 
@@ -222,10 +223,6 @@ export type ProductionCategoryAdminRow = {
   name: string;
   sortOrder: number;
   active: boolean;
-};
-
-export type AppSettings = {
-  planningRequestsEnabled: boolean;
 };
 
 export type FiscalYearOption = {
@@ -533,7 +530,7 @@ export async function getRequestsData(): Promise<{
   const { data: purchasesData, error: purchasesError } = await supabase
     .from("purchases")
     .select(
-      "id, project_id, budget_line_id, production_category_id, banner_account_code_id, title, reference_number, requisition_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, created_at, projects(name), production_categories(name), account_codes(code), project_budget_lines(budget_code, category)"
+      "id, project_id, budget_line_id, production_category_id, banner_account_code_id, title, reference_number, requisition_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, created_at, projects(name, planning_requests_enabled), production_categories(name), account_codes(code), project_budget_lines(budget_code, category)"
     )
     .order("created_at", { ascending: false })
     .limit(100);
@@ -581,7 +578,8 @@ export async function getRequestsData(): Promise<{
 
   const { data: projectsData, error: projectsError } = await supabase
     .from("projects")
-    .select("id, name, season, organization_id, organizations(name, org_code, fiscal_year_id, fiscal_years(name))");
+    .select("id, name, season, organization_id, planning_requests_enabled, organizations(name, org_code, fiscal_year_id, fiscal_years(name))")
+    .eq("planning_requests_enabled", true);
 
   if (projectsError) {
     throw projectsError;
@@ -620,8 +618,13 @@ export async function getRequestsData(): Promise<{
     canManageSplits = (elevatedRoles ?? []).length > 0;
   }
 
-  const purchases: PurchaseRow[] = (purchasesData ?? []).map((row) => {
-    const project = row.projects as { name?: string } | null;
+  const purchases: PurchaseRow[] = (purchasesData ?? [])
+    .filter((row) => {
+      const project = row.projects as { planning_requests_enabled?: boolean } | null;
+      return (project?.planning_requests_enabled as boolean | null) ?? false;
+    })
+    .map((row) => {
+      const project = row.projects as { name?: string } | null;
     const budgetLine = row.project_budget_lines as { budget_code?: string; category?: string } | null;
     const productionCategory = row.production_categories as { name?: string } | null;
     const accountCode = row.account_codes as { code?: string } | null;
@@ -657,8 +660,8 @@ export async function getRequestsData(): Promise<{
         | null,
       status: row.status as PurchaseStatus,
       createdAt: row.created_at as string
-    };
-  });
+      };
+    });
 
   const projectLookup = new Map(
     (projectsData ?? []).map((row) => {
@@ -683,22 +686,24 @@ export async function getRequestsData(): Promise<{
     })
   );
 
-  const budgetLineOptions: ProjectBudgetLineOption[] = (optionsData ?? []).map((row) => {
-    const projectMeta = projectLookup.get(row.project_id as string);
-    return {
-      id: row.id as string,
-      projectId: row.project_id as string,
-      accountCodeId: (row.account_code_id as string | null) ?? null,
-      projectName: projectMeta?.projectName ?? "Unknown Project",
-      season: projectMeta?.season ?? null,
-      organizationId: projectMeta?.organizationId ?? null,
-      organizationName: projectMeta?.organizationName ?? null,
-      orgCode: projectMeta?.orgCode ?? null,
-      fiscalYearId: projectMeta?.fiscalYearId ?? null,
-      fiscalYearName: projectMeta?.fiscalYearName ?? null,
-      label: `${row.budget_code as string} | ${row.category as string} | ${row.line_name as string}`
-    };
-  });
+  const budgetLineOptions: ProjectBudgetLineOption[] = (optionsData ?? [])
+    .filter((row) => projectLookup.has(row.project_id as string))
+    .map((row) => {
+      const projectMeta = projectLookup.get(row.project_id as string)!;
+      return {
+        id: row.id as string,
+        projectId: row.project_id as string,
+        accountCodeId: (row.account_code_id as string | null) ?? null,
+        projectName: projectMeta.projectName,
+        season: projectMeta.season,
+        organizationId: projectMeta.organizationId,
+        organizationName: projectMeta.organizationName,
+        orgCode: projectMeta.orgCode,
+        fiscalYearId: projectMeta.fiscalYearId,
+        fiscalYearName: projectMeta.fiscalYearName,
+        label: `${row.budget_code as string} | ${row.category as string} | ${row.line_name as string}`
+      };
+    });
 
   const accountCodeOptions: AccountCodeOption[] = (
     (accountCodeData as Array<{ id?: unknown; code?: unknown; category?: unknown; name?: unknown }> | null) ?? []
@@ -1036,7 +1041,7 @@ export async function getSettingsProjects(): Promise<SettingsProject[]> {
 
   const { data, error } = await supabase
     .from("projects")
-    .select("id, name, season, organization_id, sort_order")
+    .select("id, name, season, organization_id, planning_requests_enabled, sort_order")
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
 
@@ -1047,6 +1052,7 @@ export async function getSettingsProjects(): Promise<SettingsProject[]> {
     name: row.name as string,
     season: (row.season as string | null) ?? null,
     organizationId: (row.organization_id as string | null) ?? null,
+    planningRequestsEnabled: (row.planning_requests_enabled as boolean | null) ?? true,
     sortOrder: (row.sort_order as number | null) ?? 0
   }));
 }
@@ -1169,19 +1175,6 @@ export async function getOrganizationOptions(): Promise<OrganizationOption[]> {
       label: `${row.org_code as string} | ${row.name as string}${fiscalYearName ? ` (${fiscalYearName})` : ""}`
     };
   });
-}
-
-export async function getAppSettings(): Promise<AppSettings> {
-  const supabase = await getSupabaseServerClient();
-  const { data, error } = await supabase.from("app_settings").select("planning_requests_enabled").eq("id", 1).maybeSingle();
-
-  if (error) {
-    return { planningRequestsEnabled: true };
-  }
-
-  return {
-    planningRequestsEnabled: (data?.planning_requests_enabled as boolean | null) ?? true
-  };
 }
 
 export async function getOrganizationOverviewRows(): Promise<OrganizationOverviewRow[]> {

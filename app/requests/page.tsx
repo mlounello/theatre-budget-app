@@ -1,45 +1,37 @@
-import Link from "next/link";
 import { getRequestsData } from "@/lib/db";
-import { getAppSettings } from "@/lib/db";
 import { CreateRequestForm } from "@/app/requests/create-request-form";
 import { RequestsTable } from "@/app/requests/requests-table";
 
 export default async function RequestsPage() {
-  const appSettings = await getAppSettings();
-  if (!appSettings.planningRequestsEnabled) {
+  const { purchases, receipts, budgetLineOptions, projectOptions, accountCodeOptions, productionCategoryOptions, canManageSplits } =
+    await getRequestsData();
+
+  if (projectOptions.length === 0) {
     return (
       <section>
         <header className="sectionHeader">
           <p className="eyebrow">Planning</p>
-          <h1>Requests Module Disabled</h1>
+          <h1>Planning Requests</h1>
           <p className="heroSubtitle">
-            Planning Requests are currently turned off. Use Procurement as the source of truth for budget-impacting entries.
-          </p>
-          <p>
-            <Link className="buttonLink buttonPrimary" href="/procurement">
-              Open Procurement
-            </Link>
+            No projects currently have Planning Requests enabled. Turn it on per project in Settings if you want estimate tracking.
           </p>
         </header>
       </section>
     );
   }
 
-  const { purchases, receipts, budgetLineOptions, projectOptions, accountCodeOptions, productionCategoryOptions, canManageSplits } =
-    await getRequestsData();
-
   return (
     <section>
       <header className="sectionHeader">
-        <p className="eyebrow">Buyer Queue</p>
-        <h1>Purchase Requests</h1>
+        <p className="eyebrow">Planning</p>
+        <h1>Planning Requests</h1>
         <p className="heroSubtitle">
-          Buyers submit estimated/requested amounts. PM/Admin move items to Encumbered, Pending CC, or Posted.
+          Optional estimate tracking only. Procurement remains the source of truth for final budget-impacting amounts.
         </p>
       </header>
 
       <article className="panel requestFormPanel">
-        <h2>Create Request</h2>
+        <h2>Create Planning Entry</h2>
         <CreateRequestForm
           budgetLineOptions={budgetLineOptions}
           projectOptions={projectOptions}

@@ -75,6 +75,18 @@ export async function createRequest(formData: FormData): Promise<void> {
     throw new Error("Project, production category, and title are required.");
   }
 
+  const { data: projectRow, error: projectError } = await supabase
+    .from("projects")
+    .select("id, planning_requests_enabled")
+    .eq("id", projectId)
+    .single();
+  if (projectError || !projectRow) {
+    throw new Error("Project not found.");
+  }
+  if (!Boolean(projectRow.planning_requests_enabled as boolean | null)) {
+    throw new Error("Planning Requests are disabled for this project.");
+  }
+
   let resolvedBudgetLineId = budgetLineId;
   if (!resolvedBudgetLineId) {
     const { data: ensuredLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {

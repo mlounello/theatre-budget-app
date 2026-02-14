@@ -410,7 +410,7 @@ export function CreateRequestForm({
         <input name="requestedAmount" type="number" step="0.01" />
       </label>
       <button type="submit" className="buttonLink buttonPrimary">
-        Create Request
+        Save Planning Entry
       </button>
     </form>
   );

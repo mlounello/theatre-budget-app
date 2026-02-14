@@ -117,6 +117,10 @@ export function AddEntityPanel({ organizations, templates, projects, accountCode
             <input name="useTemplate" type="checkbox" defaultChecked />
             Apply selected template lines
           </label>
+          <label className="checkboxLabel">
+            <input name="planningRequestsEnabled" type="checkbox" defaultChecked />
+            Enable Planning Requests for this project
+          </label>
           <button type="submit" className="buttonLink buttonPrimary">
             Add Project
           </button>

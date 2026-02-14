@@ -4,7 +4,6 @@ import {
   deleteProductionCategoryAction,
   deleteAccountCodeAction,
   importHierarchyCsvAction,
-  updateAppSettingsAction,
   updateProductionCategoryAction,
   updateAccountCodeAction,
   updateBudgetLineAction,
@@ -20,7 +19,6 @@ import { ProjectReorder } from "@/app/settings/project-reorder";
 import {
   getAccountCodeOptions,
   getAccountCodesAdmin,
-  getAppSettings,
   getHierarchyRows,
   getOrganizationOptions,
   getProductionCategoriesAdmin,
@@ -84,7 +82,6 @@ export default async function SettingsPage({
   const productionCategories = await getProductionCategoryOptions();
   const allProductionCategories = await getProductionCategoriesAdmin();
   const organizations = await getOrganizationOptions();
-  const appSettings = await getAppSettings();
   const hierarchyRows = await getHierarchyRows();
 
   const groupedByFiscalYear = new Map<string, FiscalYearGroup>();
@@ -169,6 +166,7 @@ export default async function SettingsPage({
   const editingFiscalYear = editType === "fy" && editId ? fiscalYearLookup.get(editId) : null;
   const editingOrganization = editType === "org" && editId ? organizationLookup.get(editId) : null;
   const editingProject = editType === "project" && editId ? projectLookup.get(editId) : null;
+  const settingsProjectById = new Map(projects.map((project) => [project.id, project] as const));
   const editingLine = editType === "line" && editId ? budgetLineLookup.get(editId) : null;
   const accountCodeLookup = new Map(allAccountCodes.map((row) => [row.id, row] as const));
   const editingAccountCode = editType === "account" && editId ? accountCodeLookup.get(editId) : null;
@@ -195,20 +193,6 @@ export default async function SettingsPage({
           accountCodes={accountCodes}
           productionCategories={productionCategories}
         />
-
-        <article className="panel panelFull">
-          <h2>App Modules</h2>
-          <p>Keep Requests as optional planning only while Procurement remains the system of record.</p>
-          <form className="requestForm" action={updateAppSettingsAction}>
-            <label className="checkboxLabel">
-              <input name="planningRequestsEnabled" type="checkbox" defaultChecked={appSettings.planningRequestsEnabled} />
-              Enable Planning Requests module
-            </label>
-            <button type="submit" className="buttonLink buttonPrimary">
-              Save Module Settings
-            </button>
-          </form>
-        </article>
 
         <article className="panel panelFull">
           <h2>CSV Import</h2>
@@ -289,7 +273,14 @@ export default async function SettingsPage({
                       .map((project) => (
                         <details key={project.id} className="treeNode childNode" open id={`project-${project.id}`}>
                           <summary>
-                            <strong>Project:</strong> {project.name} {project.season ? `(${project.season})` : ""}
+                            <strong>Project:</strong> {project.name} {project.season ? `(${project.season})` : ""}{" "}
+                            <em>
+                              [
+                              {settingsProjectById.get(project.id)?.planningRequestsEnabled
+                                ? "Planning Requests: On"
+                                : "Planning Requests: Off"}
+                              ]
+                            </em>
                           </summary>
                           <div className="inlineActionRow">
                             <a className="tinyButton" href={`/settings?editType=project&editId=${project.id}`}>
@@ -584,6 +575,14 @@ export default async function SettingsPage({
                     </option>
                   ))}
                 </select>
+              </label>
+              <label className="checkboxLabel">
+                <input
+                  name="planningRequestsEnabled"
+                  type="checkbox"
+                  defaultChecked={projects.find((project) => project.id === editingProject.id)?.planningRequestsEnabled ?? true}
+                />
+                Enable Planning Requests for this project
               </label>
               <div className="modalActions">
                 <a className="tinyButton" href="/settings">
