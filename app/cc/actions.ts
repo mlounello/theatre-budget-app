@@ -832,6 +832,100 @@ export async function postStatementMonthToBannerAction(formData: FormData): Prom
   }
 }
 
+export async function unpostStatementMonthFromBannerAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+    await requireCcManagerRole(supabase, user.id);
+
+    const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
+    if (!statementMonthId) throw new Error("Statement month is required.");
+
+    const { data: statementMonth, error: statementMonthError } = await supabase
+      .from("cc_statement_months")
+      .select("id, statement_month, posted_at, posted_to_banner_at")
+      .eq("id", statementMonthId)
+      .single();
+    if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
+    if (!statementMonth.posted_at) throw new Error("Statement month is not submitted.");
+    if (!statementMonth.posted_to_banner_at) throw new Error("Statement month is not posted to Banner.");
+
+    const { data: receiptRows, error: receiptError } = await supabase
+      .from("purchase_receipts")
+      .select("purchase_id, amount_received")
+      .eq("cc_statement_month_id", statementMonthId);
+    if (receiptError) throw new Error(receiptError.message);
+    if (!receiptRows || receiptRows.length === 0) throw new Error("No receipts are linked to this statement month.");
+
+    const totalsByPurchaseId = new Map<string, number>();
+    for (const row of receiptRows) {
+      const purchaseId = String(row.purchase_id ?? "").trim();
+      if (!purchaseId) continue;
+      const amount = Number(row.amount_received ?? 0);
+      totalsByPurchaseId.set(purchaseId, (totalsByPurchaseId.get(purchaseId) ?? 0) + (Number.isFinite(amount) ? amount : 0));
+    }
+    const purchaseIds = [...totalsByPurchaseId.keys()];
+
+    const { data: purchases, error: purchasesError } = await supabase
+      .from("purchases")
+      .select("id, status, estimated_amount, requested_amount, request_type, is_credit_card")
+      .in("id", purchaseIds);
+    if (purchasesError) throw new Error(purchasesError.message);
+
+    for (const purchase of purchases ?? []) {
+      const isCc = (purchase.request_type as string) === "expense" && Boolean(purchase.is_credit_card as boolean | null);
+      if (!isCc) continue;
+      const pendingAmount = totalsByPurchaseId.get(purchase.id as string) ?? 0;
+
+      const { error: updateError } = await supabase
+        .from("purchases")
+        .update({
+          status: "pending_cc",
+          requested_amount: 0,
+          encumbered_amount: 0,
+          pending_cc_amount: pendingAmount,
+          posted_amount: 0,
+          posted_date: null,
+          cc_workflow_status: "statement_paid",
+          procurement_status: "statement_paid"
+        })
+        .eq("id", purchase.id as string);
+      if (updateError) throw new Error(updateError.message);
+
+      const { error: eventError } = await supabase.from("purchase_events").insert({
+        purchase_id: purchase.id as string,
+        from_status: "posted",
+        to_status: "pending_cc",
+        estimated_amount_snapshot: Number(purchase.estimated_amount ?? 0),
+        requested_amount_snapshot: Number(purchase.requested_amount ?? 0),
+        encumbered_amount_snapshot: 0,
+        pending_cc_amount_snapshot: pendingAmount,
+        posted_amount_snapshot: 0,
+        changed_by_user_id: user.id,
+        note: `Unposted from Banner for statement ${(statementMonth.statement_month as string).slice(0, 7)}`
+      });
+      if (eventError) throw new Error(eventError.message);
+    }
+
+    const { error: statementUpdateError } = await supabase
+      .from("cc_statement_months")
+      .update({ posted_to_banner_at: null })
+      .eq("id", statementMonthId);
+    if (statementUpdateError) throw new Error(statementUpdateError.message);
+
+    revalidatePath("/cc");
+    revalidatePath("/requests");
+    revalidatePath("/");
+    ccSuccess("Statement month unposted from Banner. Linked purchases moved back to Pending CC.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    ccError(getErrorMessage(error, "Could not unpost statement month from Banner."));
+  }
+}
+
 export async function createReimbursementRequestAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();

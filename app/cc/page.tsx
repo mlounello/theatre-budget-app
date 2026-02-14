@@ -5,6 +5,7 @@ import {
   postStatementMonthToBannerAction,
   reopenStatementMonthAction,
   submitStatementMonthAction,
+  unpostStatementMonthFromBannerAction,
   unassignReceiptFromStatementAction
 } from "@/app/cc/actions";
 import { CcAdminTables } from "@/app/cc/cc-admin-tables";
@@ -442,7 +443,14 @@ export default async function CreditCardPage({
                         Reopen Statement Month
                       </button>
                     </form>
-                  ) : null}
+                  ) : (
+                    <form action={unpostStatementMonthFromBannerAction} className="inlineEditForm" style={{ marginTop: "0.4rem" }}>
+                      <input type="hidden" name="statementMonthId" value={month.id} />
+                      <button type="submit" className="tinyButton dangerButton">
+                        Unpost From Banner
+                      </button>
+                    </form>
+                  )}
                 </>
               )}
             </details>
