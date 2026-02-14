@@ -1189,6 +1189,14 @@ export async function createUserAccessScopeAction(formData: FormData): Promise<v
     const scopeRole = String(formData.get("scopeRole") ?? "").trim() as "admin" | "project_manager" | "buyer" | "viewer";
     const projectId = String(formData.get("projectId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const projectIds = formData
+      .getAll("projectIds")
+      .map((entry) => String(entry).trim())
+      .filter(Boolean);
+    const categoryIds = formData
+      .getAll("productionCategoryIds")
+      .map((entry) => String(entry).trim())
+      .filter(Boolean);
     const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
 
@@ -1198,26 +1206,98 @@ export async function createUserAccessScopeAction(formData: FormData): Promise<v
       if (scopeRole !== "buyer" && scopeRole !== "viewer") {
         throw new Error("Project managers can only assign Buyer/Viewer scopes.");
       }
-      if (!projectId) throw new Error("Project is required for PM-assigned scopes.");
-      await requireProjectSettingsWrite(supabase, projectId);
+      const effectiveProjects = projectIds.length > 0 ? projectIds : projectId ? [projectId] : [];
+      if (effectiveProjects.length === 0) throw new Error("Project is required for PM-assigned scopes.");
+      for (const pid of effectiveProjects) {
+        await requireProjectSettingsWrite(supabase, pid);
+      }
     }
 
-    const { error } = await supabase.from("user_access_scopes").insert({
-      user_id: userId,
-      scope_role: scopeRole,
-      project_id: projectId || null,
-      production_category_id: productionCategoryId || null,
-      fiscal_year_id: fiscalYearId || null,
-      organization_id: organizationId || null,
-      active: true
-    });
-    if (error) throw new Error(error.message);
+    const resolvedProjects = projectIds.length > 0 ? projectIds : projectId ? [projectId] : [""];
+    const resolvedCategories = categoryIds.length > 0 ? categoryIds : productionCategoryId ? [productionCategoryId] : [""];
+
+    for (const pid of resolvedProjects) {
+      if (access.role !== "admin" && pid) {
+        await requireProjectSettingsWrite(supabase, pid);
+      }
+      for (const cid of resolvedCategories) {
+        const { error } = await supabase.from("user_access_scopes").insert({
+          user_id: userId,
+          scope_role: scopeRole,
+          project_id: pid || null,
+          production_category_id: cid || null,
+          fiscal_year_id: fiscalYearId || null,
+          organization_id: organizationId || null,
+          active: true
+        });
+        if (error) throw new Error(error.message);
+      }
+    }
 
     revalidatePath("/settings");
     settingsSuccess("User scope saved.");
   } catch (error) {
     rethrowIfRedirect(error);
     settingsError(getErrorMessage(error, "Could not save user scope."));
+  }
+}
+
+export async function addProjectMembershipAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const access = await getAccessContext();
+    if (!access.userId) throw new Error("You must be signed in.");
+
+    const projectId = String(formData.get("projectId") ?? "").trim();
+    const userId = String(formData.get("userId") ?? "").trim();
+    const role = String(formData.get("role") ?? "").trim() as "admin" | "project_manager" | "buyer" | "viewer";
+
+    if (!projectId || !userId || !role) throw new Error("Project, user, and role are required.");
+    if (access.role !== "admin") {
+      await requireProjectSettingsWrite(supabase, projectId);
+      if (role === "admin") throw new Error("Project managers cannot assign admin role.");
+    }
+
+    const { error } = await supabase.rpc("assign_project_membership", {
+      p_project_id: projectId,
+      p_user_id: userId,
+      p_role: role
+    });
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/settings");
+    settingsSuccess("Project membership saved.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not save project membership."));
+  }
+}
+
+export async function removeProjectMembershipAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const access = await getAccessContext();
+    if (!access.userId) throw new Error("You must be signed in.");
+
+    const projectId = String(formData.get("projectId") ?? "").trim();
+    const userId = String(formData.get("userId") ?? "").trim();
+    if (!projectId || !userId) throw new Error("Project and user are required.");
+
+    if (access.role !== "admin") {
+      await requireProjectSettingsWrite(supabase, projectId);
+    }
+
+    const { error } = await supabase.rpc("remove_project_membership", {
+      p_project_id: projectId,
+      p_user_id: userId
+    });
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/settings");
+    settingsSuccess("Project membership removed.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not remove project membership."));
   }
 }
 

@@ -23,6 +23,12 @@ export default async function DebugPage() {
     .select("id, name, season")
     .order("name", { ascending: true });
 
+  const { data: scopes, error: scopesError } = await supabase
+    .from("user_access_scopes")
+    .select("id, user_id, scope_role, project_id, production_category_id, active")
+    .order("created_at", { ascending: false })
+    .limit(200);
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const supabaseRef = supabaseUrl.replace("https://", "").split(".")[0] || "unknown";
 
@@ -74,6 +80,80 @@ export default async function DebugPage() {
             })}
             {(memberships ?? []).length === 0 ? <li>(none)</li> : null}
           </ul>
+        </article>
+
+        <article className="panel panelFull">
+          <h2>Role Test Checklist</h2>
+          <p className="heroSubtitle">Use this to validate role routing after each deploy.</p>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Role</th>
+                  <th>Expected Nav</th>
+                  <th>Expected Access</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Admin</td>
+                  <td>Dashboard, Overview, Requests, Procurement, Contracts, Income, CC, Settings, Debug</td>
+                  <td>Global settings + all projects</td>
+                </tr>
+                <tr>
+                  <td>Project Manager</td>
+                  <td>Dashboard, Overview, Requests, Procurement, Contracts, Income, CC, Settings</td>
+                  <td>Managed projects only; no global admin panels</td>
+                </tr>
+                <tr>
+                  <td>Buyer</td>
+                  <td>Dashboard, My Budget, Requests</td>
+                  <td>Create planning/request entries; no edit/trash</td>
+                </tr>
+                <tr>
+                  <td>Viewer</td>
+                  <td>Dashboard, My Budget</td>
+                  <td>Read-only scoped budget visibility</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article className="panel panelFull">
+          <h2>Visible Access Scopes</h2>
+          {scopesError ? <p>{scopesError.message}</p> : null}
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>User</th>
+                  <th>Role</th>
+                  <th>Project</th>
+                  <th>Category</th>
+                  <th>Active</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(scopes ?? []).map((scope) => (
+                  <tr key={scope.id as string}>
+                    <td>{scope.id as string}</td>
+                    <td>{scope.user_id as string}</td>
+                    <td>{scope.scope_role as string}</td>
+                    <td>{(scope.project_id as string | null) ?? "-"}</td>
+                    <td>{(scope.production_category_id as string | null) ?? "-"}</td>
+                    <td>{Boolean(scope.active as boolean | null) ? "Yes" : "No"}</td>
+                  </tr>
+                ))}
+                {(scopes ?? []).length === 0 ? (
+                  <tr>
+                    <td colSpan={6}>(none)</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
         </article>
       </div>
     </section>

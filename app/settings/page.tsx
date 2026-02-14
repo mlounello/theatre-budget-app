@@ -1,4 +1,5 @@
 import {
+  addProjectMembershipAction,
   addBudgetLineAction,
   createAccountCodeAction,
   createUserAccessScopeAction,
@@ -7,6 +8,7 @@ import {
   deleteProductionCategoryAction,
   deleteAccountCodeAction,
   deleteUserAccessScopeAction,
+  removeProjectMembershipAction,
   importHierarchyCsvAction,
   updateProductionCategoryAction,
   updateAccountCodeAction,
@@ -28,6 +30,7 @@ import {
   getProductionCategoriesAdmin,
   getProductionCategoryOptions,
   getSettingsAccessScopes,
+  getSettingsProjectMemberships,
   getSettingsProjects,
   getTemplateNames,
   type HierarchyRow
@@ -96,6 +99,7 @@ export default async function SettingsPage({
   const organizations = await getOrganizationOptions();
   const hierarchyRowsAll = await getHierarchyRows();
   const { users: accessUsers, scopes: accessScopes } = await getSettingsAccessScopes();
+  const { users: membershipUsers, memberships: projectMemberships } = await getSettingsProjectMemberships();
 
   const manageableProjectIds = access.manageableProjectIds;
   const projects = isAdmin ? projectsAll : projectsAll.filter((project) => manageableProjectIds.has(project.id));
@@ -567,11 +571,95 @@ export default async function SettingsPage({
         ) : null}
 
         <article className="panel panelFull">
+          <h2>Project Team Access</h2>
+          <p className="heroSubtitle">
+            {isAdmin
+              ? "Assign Admin/PM/Buyer/Viewer roles by project."
+              : "Assign PM/Buyer/Viewer roles for projects you manage."}
+          </p>
+          <form action={addProjectMembershipAction} className="requestForm">
+            <label>
+              Project
+              <select name="projectId" required>
+                <option value="">Select project</option>
+                {projects
+                  .slice()
+                  .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
+                  .map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                      {project.season ? ` (${project.season})` : ""}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label>
+              User
+              <select name="userId" required>
+                <option value="">Select user</option>
+                {membershipUsers.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.fullName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Role
+              <select name="role" defaultValue={isAdmin ? "project_manager" : "buyer"}>
+                {isAdmin ? <option value="admin">Admin</option> : null}
+                <option value="project_manager">Project Manager</option>
+                <option value="buyer">Buyer</option>
+                <option value="viewer">Viewer</option>
+              </select>
+            </label>
+            <button type="submit" className="buttonLink buttonPrimary">
+              Save Team Role
+            </button>
+          </form>
+          <div className="tableWrap" style={{ marginTop: "0.8rem" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>User</th>
+                  <th>Role</th>
+                  <th>Remove</th>
+                </tr>
+              </thead>
+              <tbody>
+                {projectMemberships.map((membership) => (
+                  <tr key={`${membership.projectId}-${membership.userId}`}>
+                    <td>{membership.projectLabel}</td>
+                    <td>{membership.userName}</td>
+                    <td>{membership.role}</td>
+                    <td>
+                      <form action={removeProjectMembershipAction}>
+                        <input type="hidden" name="projectId" value={membership.projectId} />
+                        <input type="hidden" name="userId" value={membership.userId} />
+                        <button type="submit" className="tinyButton dangerButton">
+                          Remove
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+                {projectMemberships.length === 0 ? (
+                  <tr>
+                    <td colSpan={4}>(none)</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article className="panel panelFull">
           <h2>User Access Scopes</h2>
           <p className="heroSubtitle">
             {isAdmin
-              ? "Assign scopes for all users."
-              : "Assign Buyer/Viewer scopes for users in your managed projects."}
+              ? "Assign optional FY/Org/Project/Department scope rows."
+              : "Assign Buyer/Viewer scope rows for projects you manage."}
           </p>
           <form action={createUserAccessScopeAction} className="requestForm">
             <label>
@@ -587,7 +675,7 @@ export default async function SettingsPage({
             </label>
             <label>
               Role
-              <select name="scopeRole" defaultValue={isAdmin ? "viewer" : "buyer"}>
+              <select name="scopeRole" defaultValue="buyer">
                 {isAdmin ? <option value="admin">Admin</option> : null}
                 {isAdmin ? <option value="project_manager">Project Manager</option> : null}
                 <option value="buyer">Buyer</option>
@@ -595,23 +683,22 @@ export default async function SettingsPage({
               </select>
             </label>
             <label>
-              Project
-              <select name="projectId">
-                <option value="">(optional for admin)</option>
+              Projects (multi)
+              <select name="projectIds" multiple size={6}>
                 {projects
+                  .slice()
                   .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
                   .map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                    {project.season ? ` (${project.season})` : ""}
-                  </option>
-                ))}
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                      {project.season ? ` (${project.season})` : ""}
+                    </option>
+                  ))}
               </select>
             </label>
             <label>
-              Department
-              <select name="productionCategoryId">
-                <option value="">All categories</option>
+              Departments (multi)
+              <select name="productionCategoryIds" multiple size={6}>
                 {productionCategories.map((category) => (
                   <option key={category.id} value={category.id}>
                     {category.name}

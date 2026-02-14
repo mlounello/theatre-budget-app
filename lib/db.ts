@@ -450,6 +450,14 @@ export type SettingsAccessScopeRow = {
   active: boolean;
 };
 
+export type SettingsProjectMembershipRow = {
+  projectId: string;
+  projectLabel: string;
+  userId: string;
+  userName: string;
+  role: "admin" | "project_manager" | "buyer" | "viewer";
+};
+
 export async function getDashboardProjects(): Promise<DashboardProject[]> {
   const supabase = await getSupabaseServerClient();
 
@@ -1436,6 +1444,60 @@ export async function getSettingsAccessScopes(): Promise<{
     });
 
   return { users: filteredUsers, scopes };
+}
+
+export async function getSettingsProjectMemberships(): Promise<{
+  users: SettingsUserRow[];
+  memberships: SettingsProjectMembershipRow[];
+}> {
+  const supabase = await getSupabaseServerClient();
+  const access = await getAccessContext();
+
+  const [membershipsResponse, usersResponse, projectsResponse] = await Promise.all([
+    supabase
+      .from("project_memberships")
+      .select("project_id, user_id, role")
+      .order("project_id", { ascending: true }),
+    supabase.from("users").select("id, full_name").order("full_name", { ascending: true }),
+    supabase.from("projects").select("id, name, season")
+  ]);
+
+  if (membershipsResponse.error) throw membershipsResponse.error;
+  if (usersResponse.error) throw usersResponse.error;
+  if (projectsResponse.error) throw projectsResponse.error;
+
+  const isAdmin = access.role === "admin";
+  const manageableProjects = access.manageableProjectIds;
+  const users = (usersResponse.data ?? []).map((row) => ({
+    id: row.id as string,
+    fullName: ((row.full_name as string | null) ?? "").trim() || (row.id as string)
+  }));
+  const userNameById = new Map(users.map((user) => [user.id, user.fullName]));
+  const projectLabelById = new Map(
+    (projectsResponse.data ?? []).map((row) => [
+      row.id as string,
+      `${row.name as string}${(row.season as string | null) ? ` (${row.season as string})` : ""}`
+    ])
+  );
+
+  const memberships = (membershipsResponse.data ?? [])
+    .filter((row) => {
+      if (isAdmin) return true;
+      return manageableProjects.has(row.project_id as string);
+    })
+    .map((row) => ({
+      projectId: row.project_id as string,
+      projectLabel: projectLabelById.get(row.project_id as string) ?? (row.project_id as string),
+      userId: row.user_id as string,
+      userName: userNameById.get(row.user_id as string) ?? (row.user_id as string),
+      role: (row.role as "admin" | "project_manager" | "buyer" | "viewer") ?? "viewer"
+    }))
+    .sort((a, b) => a.projectLabel.localeCompare(b.projectLabel) || a.role.localeCompare(b.role) || a.userName.localeCompare(b.userName));
+
+  const membershipUserIds = new Set(memberships.map((row) => row.userId));
+  const filteredUsers = isAdmin ? users : users.filter((user) => membershipUserIds.has(user.id));
+
+  return { users: filteredUsers, memberships };
 }
 
 export async function getTemplateNames(): Promise<string[]> {
