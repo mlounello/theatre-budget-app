@@ -33,34 +33,37 @@ export function BudgetLineReorder({ projectId, lines }: Props) {
   if (lines.length < 2) return null;
 
   return (
-    <form action={reorderBudgetLinesAction} className="reorderBlock">
-      <input type="hidden" name="projectId" value={projectId} />
-      <input type="hidden" name="orderedLineIds" value={JSON.stringify(ordered.map((line) => line.id))} />
-      <p className="reorderHint">Drag lines to reorder, then click Save Order.</p>
-      <ul className="reorderList">
-        {ordered.map((line) => (
-          <li
-            key={line.id}
-            className="reorderItem"
-            draggable
-            onDragStart={() => setDraggedId(line.id)}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={() => {
-              if (draggedId) moveLine(draggedId, line.id);
-              setDraggedId(null);
-            }}
-            onDragEnd={() => setDraggedId(null)}
-          >
-            <span className="dragHandle" aria-hidden="true">
-              ::
-            </span>
-            {line.label}
-          </li>
-        ))}
-      </ul>
-      <button type="submit" className="tinyButton">
-        Save Order
-      </button>
-    </form>
+    <details className="reorderDetails">
+      <summary>Reorder Budget Lines</summary>
+      <form action={reorderBudgetLinesAction} className="reorderBlock">
+        <input type="hidden" name="projectId" value={projectId} />
+        <input type="hidden" name="orderedLineIds" value={JSON.stringify(ordered.map((line) => line.id))} />
+        <p className="reorderHint">Drag to reorder, then save.</p>
+        <ul className="reorderList">
+          {ordered.map((line) => (
+            <li
+              key={line.id}
+              className="reorderItem"
+              draggable
+              onDragStart={() => setDraggedId(line.id)}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={() => {
+                if (draggedId) moveLine(draggedId, line.id);
+                setDraggedId(null);
+              }}
+              onDragEnd={() => setDraggedId(null)}
+            >
+              <span className="dragHandle" aria-hidden="true">
+                ::
+              </span>
+              {line.label}
+            </li>
+          ))}
+        </ul>
+        <button type="submit" className="tinyButton">
+          Save Order
+        </button>
+      </form>
+    </details>
   );
 }

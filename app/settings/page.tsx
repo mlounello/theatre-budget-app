@@ -178,7 +178,7 @@ export default async function SettingsPage({
     <section>
       <header className="sectionHeader">
         <p className="eyebrow">Admin</p>
-        <h1>Project and Access Settings</h1>
+        <h1>Settings</h1>
         {okMessage ? <p className="successNote">{okMessage}</p> : null}
         {errorMessage ? <p className="errorNote">{errorMessage}</p> : null}
         {importStatus === "ok" ? <p className="successNote">CSV import completed.</p> : null}
@@ -186,6 +186,12 @@ export default async function SettingsPage({
       </header>
 
       <div className="panelGrid">
+        <article className="panel panelFull">
+          <h2>How To Use This Page</h2>
+          <p>Step 1: Add or import structure. Step 2: Expand the hierarchy and edit inline. Step 3: Open each Reorder panel only when you need to change display order.</p>
+          <p className="heroSubtitle">Hierarchy: Fiscal Year - Organization - Project - Budget Line. Reorder controls are collapsed to reduce clutter.</p>
+        </article>
+
         <AddEntityPanel
           organizations={organizations}
           templates={templates}
@@ -214,8 +220,8 @@ export default async function SettingsPage({
         </article>
 
         <article className="panel panelFull">
-          <h2>Hierarchy Reference</h2>
-          <p>Fiscal Year {"->"} Organization {"->"} Project {"->"} Budget Line (expand with arrows, edit inline).</p>
+          <h2>Hierarchy Manager</h2>
+          <p>Expand each level to edit records. Use Reorder sections only when you want to change card/table order.</p>
           <FiscalYearReorder
             items={fiscalYearGroups.filter((fy) => fy.id !== noFiscalYearKey).map((fy) => ({ id: fy.id, label: fy.name }))}
           />
@@ -307,7 +313,7 @@ export default async function SettingsPage({
                                   <th>Category</th>
                                   <th>Line</th>
                                   <th>Allocated</th>
-                                  <th>Sort</th>
+                                  <th>Display Order</th>
                                   <th>Active</th>
                                   <th>Edit</th>
                                 </tr>
@@ -321,7 +327,7 @@ export default async function SettingsPage({
                                     <td>{line.budgetCategory ?? "-"}</td>
                                     <td>{line.budgetLineName ?? "-"}</td>
                                     <td>{line.allocatedAmount === null ? "-" : formatCurrency(line.allocatedAmount)}</td>
-                                    <td>{line.sortOrder ?? "-"}</td>
+                                    <td>{line.budgetLineId ? idx + 1 : "-"}</td>
                                     <td>{line.budgetLineId ? (line.budgetLineActive ? "Yes" : "No") : "-"}</td>
                                     <td>
                                       {line.budgetLineId ? (

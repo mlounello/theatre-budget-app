@@ -686,6 +686,20 @@ th {
   margin: 0.55rem 0 0.7rem;
 }
 
+.reorderDetails {
+  margin: 0.5rem 0 0.7rem;
+  border: 1px dashed #c9d6ce;
+  border-radius: 10px;
+  background: #f9fbfa;
+  padding: 0.35rem 0.5rem;
+}
+
+.reorderDetails > summary {
+  cursor: pointer;
+  font-family: "Gudea", "Arial", sans-serif;
+  color: var(--siena-dark-green);
+}
+
 .reorderHint {
   margin: 0 0 0.4rem;
   font-size: 0.85rem;
