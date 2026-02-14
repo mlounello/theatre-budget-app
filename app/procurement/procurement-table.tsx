@@ -11,7 +11,14 @@ import {
   updateProcurementAction
 } from "@/app/procurement/actions";
 import { formatCurrency } from "@/lib/format";
-import type { AccountCodeOption, ProcurementReceiptRow, ProcurementRow, ProductionCategoryOption, VendorOption } from "@/lib/db";
+import type {
+  AccountCodeOption,
+  OrganizationOption,
+  ProcurementReceiptRow,
+  ProcurementRow,
+  ProductionCategoryOption,
+  VendorOption
+} from "@/lib/db";
 
 const PROCUREMENT_STATUSES = [
   { value: "requested", label: "Requested" },
@@ -40,6 +47,7 @@ function procurementLabel(value: string, isCreditCard: boolean): string {
 
 type SortKey =
   | "projectName"
+  | "organizationName"
   | "productionCategoryName"
   | "bannerAccountCode"
   | "title"
@@ -54,6 +62,7 @@ type SortKey =
 type SortDirection = "asc" | "desc";
 const SORT_KEYS: SortKey[] = [
   "projectName",
+  "organizationName",
   "productionCategoryName",
   "bannerAccountCode",
   "title",
@@ -106,6 +115,8 @@ function sortRows(rows: ProcurementRow[], receipts: ProcurementReceiptRow[], key
           ? (receiptMap.get(a.id) ?? 0)
             : key === "projectName"
               ? asString(a.projectName)
+              : key === "organizationName"
+                ? asString(a.organizationName)
             : key === "productionCategoryName"
               ? asString(a.productionCategoryName)
               : key === "bannerAccountCode"
@@ -128,8 +139,10 @@ function sortRows(rows: ProcurementRow[], receipts: ProcurementReceiptRow[], key
           ? (receiptMap.get(b.id) ?? 0)
             : key === "projectName"
               ? asString(b.projectName)
-            : key === "productionCategoryName"
-              ? asString(b.productionCategoryName)
+              : key === "organizationName"
+                ? asString(b.organizationName)
+              : key === "productionCategoryName"
+                ? asString(b.productionCategoryName)
               : key === "bannerAccountCode"
                 ? asString(b.bannerAccountCode)
               : key === "title"
@@ -177,6 +190,7 @@ export function ProcurementTable({
   receipts,
   vendors,
   projectOptions,
+  organizationOptions,
   accountCodeOptions,
   productionCategoryOptions,
   canManageProcurement
@@ -185,6 +199,7 @@ export function ProcurementTable({
   receipts: ProcurementReceiptRow[];
   vendors: VendorOption[];
   projectOptions: Array<{ id: string; label: string }>;
+  organizationOptions: OrganizationOption[];
   accountCodeOptions: AccountCodeOption[];
   productionCategoryOptions: ProductionCategoryOption[];
   canManageProcurement: boolean;
@@ -206,6 +221,7 @@ export function ProcurementTable({
   const [queryFilter, setQueryFilter] = useState(searchParams.get("pr_f_q") ?? "");
   const editingPurchase = useMemo(() => purchases.find((purchase) => purchase.id === editingId) ?? null, [purchases, editingId]);
   const [editProjectId, setEditProjectId] = useState("");
+  const [editOrganizationId, setEditOrganizationId] = useState("");
   const [editProductionCategoryId, setEditProductionCategoryId] = useState("");
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -219,7 +235,7 @@ export function ProcurementTable({
       if (typeFilter && purchase.requestType !== typeFilter) return false;
       if (!q) return true;
       const haystack =
-        `${purchase.projectName} ${purchase.productionCategoryName ?? ""} ${purchase.bannerAccountCode ?? ""} ${purchase.title} ${purchase.requisitionNumber ?? ""} ${purchase.poNumber ?? ""} ${purchase.vendorName ?? ""}`.toLowerCase();
+        `${purchase.projectName} ${purchase.organizationName ?? ""} ${purchase.orgCode ?? ""} ${purchase.productionCategoryName ?? ""} ${purchase.bannerAccountCode ?? ""} ${purchase.title} ${purchase.requisitionNumber ?? ""} ${purchase.poNumber ?? ""} ${purchase.vendorName ?? ""}`.toLowerCase();
       return haystack.includes(q);
     });
   }, [budgetStatusFilter, procurementStatusFilter, projectFilter, purchases, queryFilter, typeFilter]);
@@ -238,6 +254,7 @@ export function ProcurementTable({
   useEffect(() => {
     if (!editingPurchase) return;
     setEditProjectId(editingPurchase.projectId);
+    setEditOrganizationId(editingPurchase.organizationId ?? "");
     setEditProductionCategoryId(editingPurchase.productionCategoryId ?? "");
     setEditBannerAccountCodeId(editingPurchase.bannerAccountCodeId ?? "");
   }, [editingPurchase]);
@@ -355,6 +372,7 @@ export function ProcurementTable({
                 <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} />
               </th>
               <SortTh label="Project" sortKey="projectName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <SortTh label="Org" sortKey="organizationName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <SortTh
                 label="Department"
                 sortKey="productionCategoryName"
@@ -389,7 +407,7 @@ export function ProcurementTable({
           <tbody>
             {sortedPurchases.length === 0 ? (
               <tr>
-                <td colSpan={13}>No procurement records yet.</td>
+                <td colSpan={14}>No procurement records yet.</td>
               </tr>
             ) : null}
             {sortedPurchases.map((purchase) => {
@@ -414,6 +432,7 @@ export function ProcurementTable({
                     {purchase.projectName}
                     {purchase.season ? <div>{purchase.season}</div> : null}
                   </td>
+                  <td>{purchase.orgCode ? `${purchase.orgCode} | ${purchase.organizationName ?? ""}` : purchase.organizationName ?? "-"}</td>
                   <td>{purchase.productionCategoryName ?? purchase.category ?? "-"}</td>
                   <td>{purchase.bannerAccountCode ?? purchase.budgetCode ?? "-"}</td>
                   <td>{purchase.title}</td>
@@ -482,6 +501,17 @@ export function ProcurementTable({
                   {projectOptions.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Organization (External Procurement only)
+                <select name="organizationId" value={editOrganizationId} onChange={(event) => setEditOrganizationId(event.target.value)}>
+                  <option value="">Select organization</option>
+                  {organizationOptions.map((organization) => (
+                    <option key={organization.id} value={organization.id}>
+                      {organization.label}
                     </option>
                   ))}
                 </select>
@@ -669,6 +699,21 @@ export function ProcurementTable({
                   {projectOptions.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="checkboxLabel">
+                <input name="applyOrganization" type="checkbox" />
+                Apply Organization
+              </label>
+              <label>
+                Organization
+                <select name="organizationId">
+                  <option value="">Select organization</option>
+                  {organizationOptions.map((organization) => (
+                    <option key={organization.id} value={organization.id}>
+                      {organization.label}
                     </option>
                   ))}
                 </select>

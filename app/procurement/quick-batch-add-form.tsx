@@ -164,6 +164,7 @@ export function QuickBatchAddForm({
             setOrganizationId(event.target.value);
             setProjectId("");
           }}
+          required={isExternalProject}
         >
           <option value="">Select organization</option>
           {filteredOrganizationOptions.map((option) => (
@@ -213,6 +214,7 @@ export function QuickBatchAddForm({
       </label>
       {isExternalProject ? <p className="heroSubtitle">External Procurement rows are automatically marked as off-budget.</p> : null}
 
+      <input type="hidden" name="organizationId" value={organizationId} />
       <div className="batchLinesBlock">
         <div className="batchLinesHeader">
           <strong>Batch Lines</strong>

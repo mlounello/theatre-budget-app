@@ -195,6 +195,7 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
     if (!user) throw new Error("You must be signed in.");
 
     const projectId = String(formData.get("projectId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
     const budgetLineId = String(formData.get("budgetLineId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
@@ -211,6 +212,8 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
     await ensureProjectCreateAccess(supabase, user.id, projectId);
     const projectMeta = await getProjectMeta(supabase, projectId);
     const budgetTracked = !projectMeta.isExternal;
+    const explicitOrganizationId = projectMeta.isExternal ? organizationId || null : null;
+    if (projectMeta.isExternal && !explicitOrganizationId) throw new Error("Organization is required for External Procurement.");
     if (budgetTracked && !productionCategoryId) throw new Error("Department is required.");
 
     let line: { id: string; project_id: string; account_code_id: string | null } | null = null;
@@ -242,6 +245,7 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
       .from("purchases")
       .insert({
         project_id: projectId,
+        organization_id: explicitOrganizationId,
         budget_line_id: line?.id ?? null,
         production_category_id: productionCategoryId || null,
         banner_account_code_id: bannerAccountCodeId || null,
@@ -339,6 +343,7 @@ export async function createProcurementBatchAction(formData: FormData): Promise<
     if (!user) throw new Error("You must be signed in.");
 
     const projectId = String(formData.get("projectId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
     const lines = parseBatchLinesJson(formData.get("linesJson"));
@@ -349,6 +354,8 @@ export async function createProcurementBatchAction(formData: FormData): Promise<
     await ensureProjectCreateAccess(supabase, user.id, projectId);
     const projectMeta = await getProjectMeta(supabase, projectId);
     const budgetTracked = !projectMeta.isExternal;
+    const explicitOrganizationId = projectMeta.isExternal ? organizationId || null : null;
+    if (projectMeta.isExternal && !explicitOrganizationId) throw new Error("Organization is required for External Procurement.");
     if (budgetTracked && !productionCategoryId) throw new Error("Department is required.");
 
     let line: { id: string; account_code_id: string | null } | null = null;
@@ -390,6 +397,7 @@ export async function createProcurementBatchAction(formData: FormData): Promise<
         .from("purchases")
         .insert({
           project_id: projectId,
+          organization_id: explicitOrganizationId,
           budget_line_id: line?.id ?? null,
           production_category_id: productionCategoryId || null,
           banner_account_code_id: bannerAccountCodeId || null,
@@ -461,6 +469,7 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
     const supabase = await getSupabaseServerClient();
     const id = String(formData.get("id") ?? "").trim();
     const projectId = String(formData.get("projectId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
     const requestedBudgetTracked = formData.get("budgetTracked") === "on";
@@ -490,6 +499,8 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
     const nextProjectId = projectId || (existing.project_id as string);
     const nextProjectMeta = await getProjectMeta(supabase, nextProjectId);
     const budgetTracked = nextProjectMeta.isExternal ? false : requestedBudgetTracked;
+    const explicitOrganizationId = nextProjectMeta.isExternal ? organizationId || null : null;
+    if (nextProjectMeta.isExternal && !explicitOrganizationId) throw new Error("Organization is required for External Procurement.");
 
     const isCreditCardPurchase =
       (existing.request_type as string | null) === "expense" && Boolean(existing.is_credit_card as boolean | null);
@@ -546,6 +557,7 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
       .from("purchases")
       .update({
         project_id: nextProjectId,
+        organization_id: explicitOrganizationId,
         budget_tracked: budgetTracked,
         budget_line_id: budgetTracked ? verifiedBudgetLine?.id ?? budgetLineId : null,
         production_category_id: productionCategoryId || null,
@@ -739,6 +751,7 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
     if (ids.length === 0) throw new Error("Select at least one procurement row.");
 
     const applyProject = formData.get("applyProject") === "on";
+    const applyOrganization = formData.get("applyOrganization") === "on";
     const applyCategory = formData.get("applyProductionCategory") === "on";
     const applyBanner = formData.get("applyBannerAccountCode") === "on";
     const applyProcurementStatus = formData.get("applyProcurementStatus") === "on";
@@ -755,6 +768,7 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
 
     if (
       !applyProject &&
+      !applyOrganization &&
       !applyCategory &&
       !applyBanner &&
       !applyProcurementStatus &&
@@ -773,6 +787,7 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
     }
 
     const targetProjectId = String(formData.get("projectId") ?? "").trim();
+    const targetOrganizationId = String(formData.get("organizationId") ?? "").trim();
     const targetProductionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const targetBannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
     const targetProcurementStatusRaw = String(formData.get("procurementStatus") ?? "").trim();
@@ -791,7 +806,7 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
     const { data: rows, error: rowsError } = await supabase
       .from("purchases")
       .select(
-        "id, project_id, budget_tracked, budget_line_id, production_category_id, banner_account_code_id, status, procurement_status, request_type, is_credit_card, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, reference_number, requisition_number, po_number, invoice_number, vendor_id, notes, ordered_on, received_on, paid_on"
+        "id, project_id, organization_id, budget_tracked, budget_line_id, production_category_id, banner_account_code_id, status, procurement_status, request_type, is_credit_card, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, reference_number, requisition_number, po_number, invoice_number, vendor_id, notes, ordered_on, received_on, paid_on"
       )
       .in("id", ids);
     if (rowsError) throw new Error(rowsError.message);
@@ -823,12 +838,16 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
     // First pass: validate all target values before mutating any rows.
     for (const existing of rows) {
       const nextProjectId = applyProject ? targetProjectId : (existing.project_id as string);
+      const nextOrganizationId = applyOrganization
+        ? targetOrganizationId
+        : ((existing.organization_id as string | null) ?? "");
       const nextProductionCategoryId = applyCategory
         ? targetProductionCategoryId
         : ((existing.production_category_id as string | null) ?? "");
       if (!nextProjectId) throw new Error("Project is required when applying project.");
       const nextProjectIsExternal = externalByProjectId.get(nextProjectId) ?? false;
       const budgetTracked = nextProjectIsExternal ? false : Boolean(existing.budget_tracked);
+      if (nextProjectIsExternal && !nextOrganizationId) throw new Error("Organization is required for External Procurement.");
       if (budgetTracked && !nextProductionCategoryId) throw new Error("Department is required.");
 
       const isCreditCardPurchase =
@@ -859,12 +878,16 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
     for (const existing of rows) {
       const rowId = existing.id as string;
       const nextProjectId = applyProject ? targetProjectId : (existing.project_id as string);
+      const nextOrganizationId = applyOrganization
+        ? targetOrganizationId
+        : ((existing.organization_id as string | null) ?? "");
       const nextProductionCategoryId = applyCategory
         ? targetProductionCategoryId
         : ((existing.production_category_id as string | null) ?? "");
       if (!nextProjectId) throw new Error("Project is required when applying project.");
       const nextProjectIsExternal = externalByProjectId.get(nextProjectId) ?? false;
       const budgetTracked = nextProjectIsExternal ? false : Boolean(existing.budget_tracked);
+      if (nextProjectIsExternal && !nextOrganizationId) throw new Error("Organization is required for External Procurement.");
       if (budgetTracked && !nextProductionCategoryId) throw new Error("Department is required.");
 
       const isCreditCardPurchase =
@@ -927,6 +950,7 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
         .from("purchases")
         .update({
           project_id: nextProjectId,
+          organization_id: nextProjectIsExternal ? nextOrganizationId || null : null,
           budget_tracked: budgetTracked,
           budget_line_id: budgetTracked ? verifiedBudgetLine?.id ?? null : null,
           production_category_id: nextProductionCategoryId || null,

@@ -103,6 +103,9 @@ export type ProcurementRow = {
   projectId: string;
   projectName: string;
   season: string | null;
+  organizationId: string | null;
+  organizationName: string | null;
+  orgCode: string | null;
   budgetLineId: string | null;
   productionCategoryId: string | null;
   productionCategoryName: string | null;
@@ -771,7 +774,7 @@ export async function getProcurementData(): Promise<{
     supabase
       .from("purchases")
       .select(
-        "id, project_id, budget_line_id, production_category_id, banner_account_code_id, budget_tracked, title, reference_number, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, procurement_status, ordered_on, received_on, paid_on, vendor_id, notes, created_at, projects(name, season), production_categories(name), account_codes(code), project_budget_lines(budget_code, category, line_name), vendors(id, name)"
+        "id, project_id, organization_id, budget_line_id, production_category_id, banner_account_code_id, budget_tracked, title, reference_number, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, procurement_status, ordered_on, received_on, paid_on, vendor_id, notes, created_at, organizations(name, org_code), projects(name, season, organization_id, organizations(name, org_code)), production_categories(name), account_codes(code), project_budget_lines(budget_code, category, line_name), vendors(id, name)"
       )
       .order("created_at", { ascending: false })
       .limit(200),
@@ -830,7 +833,18 @@ export async function getProcurementData(): Promise<{
   }
 
   const purchases: ProcurementRow[] = (purchasesResponse.data ?? []).map((row) => {
-    const project = row.projects as { name?: string; season?: string | null } | null;
+    const project = row.projects as
+      | {
+          name?: string;
+          season?: string | null;
+          organization_id?: string | null;
+          organizations?: { name?: string; org_code?: string } | Array<{ name?: string; org_code?: string }> | null;
+        }
+      | null;
+    const projectOrganization = Array.isArray(project?.organizations) ? project?.organizations[0] : project?.organizations;
+    const explicitOrganization = row.organizations as { name?: string; org_code?: string } | null;
+    const organizationName = explicitOrganization?.name ?? projectOrganization?.name ?? null;
+    const orgCode = explicitOrganization?.org_code ?? projectOrganization?.org_code ?? null;
     const budgetLine = row.project_budget_lines as { budget_code?: string; category?: string; line_name?: string } | null;
     const vendor = row.vendors as { id?: string; name?: string } | null;
     const productionCategory = row.production_categories as { name?: string } | null;
@@ -840,6 +854,9 @@ export async function getProcurementData(): Promise<{
       projectId: row.project_id as string,
       projectName: project?.name ?? "Unknown Project",
       season: project?.season ?? null,
+      organizationId: (row.organization_id as string | null) ?? ((project?.organization_id as string | null) ?? null),
+      organizationName,
+      orgCode,
       budgetLineId: (row.budget_line_id as string | null) ?? null,
       productionCategoryId: (row.production_category_id as string | null) ?? null,
       productionCategoryName: productionCategory?.name ?? null,
@@ -960,12 +977,7 @@ export async function getProcurementData(): Promise<{
       label: `${row.org_code as string} | ${row.name as string}${fiscalYearName ? ` (${fiscalYearName})` : ""}`
     };
   });
-  const organizationIdsInProjects = new Set(
-    normalizedProjectOptions.map((project) => project.organizationId).filter((value): value is string => Boolean(value))
-  );
-  const organizationOptions = canManageProcurement
-    ? organizationOptionsRaw.filter((organization) => organizationIdsInProjects.has(organization.id))
-    : organizationOptionsRaw;
+  const organizationOptions = organizationOptionsRaw;
 
   const vendors: VendorOption[] = (vendorsResponse.data ?? []).map((row) => ({
     id: row.id as string,
