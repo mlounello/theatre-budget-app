@@ -301,6 +301,13 @@ th {
   background: #f3f7f4;
 }
 
+.compactHeaderCell {
+  max-width: 150px;
+  width: 150px;
+  white-space: normal;
+  line-height: 1.15;
+}
+
 .sortHeaderButton {
   border: 0;
   background: transparent;

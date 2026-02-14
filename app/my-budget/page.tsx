@@ -119,7 +119,7 @@ export default async function MyBudgetPage({
                 <th>Posted</th>
                 <th>Obligated</th>
                 <th>Remaining</th>
-                <th>Remaining if Requested Approved</th>
+                <th className="compactHeaderCell">Remaining if Requested Approved</th>
               </tr>
             </thead>
             <tbody>
