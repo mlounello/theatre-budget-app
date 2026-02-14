@@ -14,6 +14,7 @@ import { formatCurrency } from "@/lib/format";
 import type {
   AccountCodeOption,
   OrganizationOption,
+  ProcurementProjectOption,
   ProcurementReceiptRow,
   ProcurementRow,
   ProductionCategoryOption,
@@ -198,7 +199,7 @@ export function ProcurementTable({
   purchases: ProcurementRow[];
   receipts: ProcurementReceiptRow[];
   vendors: VendorOption[];
-  projectOptions: Array<{ id: string; label: string }>;
+  projectOptions: ProcurementProjectOption[];
   organizationOptions: OrganizationOption[];
   accountCodeOptions: AccountCodeOption[];
   productionCategoryOptions: ProductionCategoryOption[];
@@ -221,6 +222,8 @@ export function ProcurementTable({
   const [queryFilter, setQueryFilter] = useState(searchParams.get("pr_f_q") ?? "");
   const editingPurchase = useMemo(() => purchases.find((purchase) => purchase.id === editingId) ?? null, [purchases, editingId]);
   const [editProjectId, setEditProjectId] = useState("");
+  const editingProject = useMemo(() => projectOptions.find((project) => project.id === editProjectId) ?? null, [projectOptions, editProjectId]);
+  const editIsExternalProject = Boolean(editingProject?.isExternal);
   const [editOrganizationId, setEditOrganizationId] = useState("");
   const [editProductionCategoryId, setEditProductionCategoryId] = useState("");
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState("");
@@ -507,7 +510,12 @@ export function ProcurementTable({
               </label>
               <label>
                 Organization (External Procurement only)
-                <select name="organizationId" value={editOrganizationId} onChange={(event) => setEditOrganizationId(event.target.value)}>
+                <select
+                  name="organizationId"
+                  value={editOrganizationId}
+                  onChange={(event) => setEditOrganizationId(event.target.value)}
+                  required={editIsExternalProject}
+                >
                   <option value="">Select organization</option>
                   {organizationOptions.map((organization) => (
                     <option key={organization.id} value={organization.id}>
@@ -523,7 +531,7 @@ export function ProcurementTable({
                   name="productionCategoryId"
                   value={editProductionCategoryId}
                   onChange={(event) => setEditProductionCategoryId(event.target.value)}
-                  required
+                  required={!editIsExternalProject}
                 >
                   <option value="">Select department</option>
                   {productionCategoryOptions.map((category) => (
