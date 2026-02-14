@@ -22,6 +22,7 @@ export default async function ProcurementPage({
   const {
     purchases,
     receipts,
+    receivingDocs,
     budgetLineOptions,
     projectOptions,
     organizationOptions,
@@ -86,6 +87,7 @@ export default async function ProcurementPage({
       <ProcurementTable
         purchases={purchases}
         receipts={receipts}
+        receivingDocs={receivingDocs}
         vendors={vendors}
         projectOptions={projectOptions}
         organizationOptions={organizationOptions}

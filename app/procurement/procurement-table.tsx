@@ -3,9 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  addProcurementReceivingDocAction,
   addProcurementReceiptAction,
   bulkDeleteProcurementAction,
   bulkUpdateProcurementAction,
+  deleteProcurementReceivingDocAction,
   deleteProcurementAction,
   deleteProcurementReceiptAction,
   updateProcurementAction
@@ -15,6 +17,7 @@ import type {
   AccountCodeOption,
   OrganizationOption,
   ProcurementProjectOption,
+  ProcurementReceivingDocRow,
   ProcurementReceiptRow,
   ProcurementRow,
   ProductionCategoryOption,
@@ -192,6 +195,7 @@ function SortTh({
 export function ProcurementTable({
   purchases,
   receipts,
+  receivingDocs,
   vendors,
   projectOptions,
   organizationOptions,
@@ -201,6 +205,7 @@ export function ProcurementTable({
 }: {
   purchases: ProcurementRow[];
   receipts: ProcurementReceiptRow[];
+  receivingDocs: ProcurementReceivingDocRow[];
   vendors: VendorOption[];
   projectOptions: ProcurementProjectOption[];
   organizationOptions: OrganizationOption[];
@@ -403,6 +408,7 @@ export function ProcurementTable({
               <SortTh label="Title" sortKey="title" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <SortTh label="Req #" sortKey="requisitionNumber" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <SortTh label="PO #" sortKey="poNumber" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <th>Receiving Doc #</th>
               <SortTh label="Vendor" sortKey="vendorName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <SortTh label="Order Value" sortKey="orderValue" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <SortTh
@@ -451,6 +457,12 @@ export function ProcurementTable({
                   <td>{purchase.title}</td>
                   <td>{purchase.requisitionNumber ?? "-"}</td>
                   <td>{purchase.poNumber ?? "-"}</td>
+                  <td>
+                    {receivingDocs
+                      .filter((doc) => doc.purchaseId === purchase.id)
+                      .map((doc) => doc.docCode)
+                      .join(", ") || "-"}
+                  </td>
                   <td>{purchase.vendorName ?? "-"}</td>
                   <td>{formatCurrency(orderValueDisplay)}</td>
                   <td>
@@ -660,6 +672,47 @@ export function ProcurementTable({
                 </button>
               </div>
             </form>
+
+            <article className="panel">
+              <h2>Receiving Docs</h2>
+              <form action={addProcurementReceivingDocAction} className="requestForm">
+                <input type="hidden" name="purchaseId" value={editingPurchase.id} />
+                <label>
+                  Receiving Doc #
+                  <input name="docCode" placeholder="e.g. RCV123456" required />
+                </label>
+                <label>
+                  Received On
+                  <input name="receivedOn" type="date" />
+                </label>
+                <label>
+                  Note
+                  <input name="note" placeholder="Optional note" />
+                </label>
+                <button type="submit" className="tinyButton">
+                  Add Receiving Doc
+                </button>
+              </form>
+
+              <ul>
+                {receivingDocs
+                  .filter((doc) => doc.purchaseId === editingPurchase.id)
+                  .map((doc) => (
+                    <li key={doc.id}>
+                      {doc.docCode}
+                      {doc.receivedOn ? ` | ${doc.receivedOn}` : ""}
+                      {doc.note ? ` | ${doc.note}` : ""}
+                      <form action={deleteProcurementReceivingDocAction} className="inlineEditForm">
+                        <input type="hidden" name="id" value={doc.id} />
+                        <button type="submit" className="tinyButton dangerButton">
+                          Trash
+                        </button>
+                      </form>
+                    </li>
+                  ))}
+                {receivingDocs.filter((doc) => doc.purchaseId === editingPurchase.id).length === 0 ? <li>(none)</li> : null}
+              </ul>
+            </article>
 
             <article className="panel">
               <h2>Receipts</h2>

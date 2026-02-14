@@ -202,6 +202,15 @@ export type ProcurementReceiptRow = {
   createdAt: string;
 };
 
+export type ProcurementReceivingDocRow = {
+  id: string;
+  purchaseId: string;
+  docCode: string;
+  receivedOn: string | null;
+  note: string | null;
+  createdAt: string;
+};
+
 export type ContractWorkflowStatus =
   | "w9_requested"
   | "contract_sent"
@@ -924,6 +933,7 @@ export async function getRequestsData(): Promise<{
 export async function getProcurementData(): Promise<{
   purchases: ProcurementRow[];
   receipts: ProcurementReceiptRow[];
+  receivingDocs: ProcurementReceivingDocRow[];
   budgetLineOptions: ProcurementBudgetLineOption[];
   projectOptions: ProcurementProjectOption[];
   organizationOptions: OrganizationOption[];
@@ -939,6 +949,7 @@ export async function getProcurementData(): Promise<{
     linesResponse,
     vendorsResponse,
     receiptsResponse,
+    receivingDocsResponse,
     projectsResponse,
     organizationsResponse,
     accountCodeResponse,
@@ -963,6 +974,10 @@ export async function getProcurementData(): Promise<{
       .from("purchase_receipts")
       .select("id, purchase_id, note, amount_received, fully_received, attachment_url, created_at")
       .order("created_at", { ascending: false }),
+    supabase
+      .from("purchase_receiving_docs")
+      .select("id, purchase_id, doc_code, received_on, note, created_at")
+      .order("created_at", { ascending: false }),
     supabase.from("projects").select("id, name, season, organization_id, fiscal_year_id").order("name", { ascending: true }),
     supabase
       .from("organizations")
@@ -982,6 +997,7 @@ export async function getProcurementData(): Promise<{
   if (linesResponse.error) throw linesResponse.error;
   if (vendorsResponse.error) throw vendorsResponse.error;
   if (receiptsResponse.error) throw receiptsResponse.error;
+  if (receivingDocsResponse.error) throw receivingDocsResponse.error;
   if (projectsResponse.error) throw projectsResponse.error;
   if (organizationsResponse.error) throw organizationsResponse.error;
   if (accountCodeResponse.error) throw accountCodeResponse.error;
@@ -1191,9 +1207,19 @@ export async function getProcurementData(): Promise<{
     createdAt: row.created_at as string
   }));
 
+  const receivingDocs: ProcurementReceivingDocRow[] = (receivingDocsResponse.data ?? []).map((row) => ({
+    id: row.id as string,
+    purchaseId: row.purchase_id as string,
+    docCode: (row.doc_code as string) ?? "",
+    receivedOn: (row.received_on as string | null) ?? null,
+    note: (row.note as string | null) ?? null,
+    createdAt: row.created_at as string
+  }));
+
   return {
     purchases,
     receipts,
+    receivingDocs,
     budgetLineOptions,
     projectOptions: normalizedProjectOptions,
     organizationOptions,

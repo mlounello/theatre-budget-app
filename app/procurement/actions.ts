@@ -740,6 +740,56 @@ export async function addProcurementReceiptAction(formData: FormData): Promise<v
   }
 }
 
+export async function addProcurementReceivingDocAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+
+    const purchaseId = String(formData.get("purchaseId") ?? "").trim();
+    const docCode = String(formData.get("docCode") ?? "").trim();
+    const receivedOn = String(formData.get("receivedOn") ?? "").trim();
+    const note = String(formData.get("note") ?? "").trim();
+
+    if (!purchaseId) throw new Error("Purchase is required.");
+    if (!docCode) throw new Error("Receiving document code is required.");
+
+    const { error } = await supabase.from("purchase_receiving_docs").insert({
+      purchase_id: purchaseId,
+      doc_code: docCode,
+      received_on: receivedOn || null,
+      note: note || null,
+      created_by_user_id: user.id
+    });
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/procurement");
+    ok("Receiving doc added.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    fail(getErrorMessage(error, "Could not add receiving doc."));
+  }
+}
+
+export async function deleteProcurementReceivingDocAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const id = String(formData.get("id") ?? "").trim();
+    if (!id) throw new Error("Receiving doc id is required.");
+
+    const { error } = await supabase.from("purchase_receiving_docs").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/procurement");
+    ok("Receiving doc deleted.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    fail(getErrorMessage(error, "Could not delete receiving doc."));
+  }
+}
+
 export async function deleteProcurementReceiptAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();
