@@ -1,6 +1,8 @@
 import {
   addBudgetLineAction,
+  createAccessScopeAction,
   createAccountCodeAction,
+  deleteAccessScopeAction,
   deleteFiscalYearAction,
   deleteOrganizationAction,
   deleteProductionCategoryAction,
@@ -19,7 +21,9 @@ import { FiscalYearReorder } from "@/app/settings/fiscal-year-reorder";
 import { OrganizationReorder } from "@/app/settings/organization-reorder";
 import { ProjectReorder } from "@/app/settings/project-reorder";
 import {
+  getAccessScopeAdminData,
   getAccountCodesAdmin,
+  getCurrentAccessProfile,
   getFiscalYearOptions,
   getHierarchyRows,
   getOrganizationOptions,
@@ -30,6 +34,7 @@ import {
   type HierarchyRow
 } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
+import { redirect } from "next/navigation";
 
 type ProjectGroup = {
   id: string;
@@ -70,6 +75,10 @@ export default async function SettingsPage({
   }>;
 }) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const profile = await getCurrentAccessProfile();
+  if (!profile.isAdmin) {
+    redirect("/my-budget");
+  }
   const importStatus = resolvedSearchParams?.import;
   const importMessage = resolvedSearchParams?.msg;
   const okMessage = resolvedSearchParams?.ok;
@@ -78,6 +87,7 @@ export default async function SettingsPage({
   const editId = resolvedSearchParams?.editId;
 
   const projects = await getSettingsProjects();
+  const accessScopeAdminData = await getAccessScopeAdminData();
   const templates = await getTemplateNames();
   const allAccountCodes = await getAccountCodesAdmin();
   const productionCategories = await getProductionCategoryOptions();
@@ -199,6 +209,128 @@ export default async function SettingsPage({
           <p>Step 1: Add or import structure. Step 2: Expand the hierarchy and edit inline. Step 3: Open each Reorder panel only when you need to change display order.</p>
           <p className="heroSubtitle">Hierarchy: Fiscal Year - Organization - Project - Budget Line. Reorder controls are collapsed to reduce clutter.</p>
         </article>
+
+        {accessScopeAdminData.canManage ? (
+          <article className="panel panelFull">
+            <h2>Access Scopes</h2>
+            <p>Assign Viewer/Buyer/Project Manager/Admin access by Fiscal Year, Organization, Project, and Production Category.</p>
+            <form action={createAccessScopeAction} className="requestForm">
+              <label>
+                User
+                <select name="userId" required defaultValue="">
+                  <option value="">Select user</option>
+                  {accessScopeAdminData.users.map((user) => (
+                    <option key={user.id} value={user.id}>
+                      {user.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Scope Role
+                <select name="scopeRole" required defaultValue="viewer">
+                  <option value="viewer">Viewer</option>
+                  <option value="buyer">Buyer</option>
+                  <option value="project_manager">Project Manager</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </label>
+              <label>
+                Fiscal Year (Optional)
+                <select name="fiscalYearId" defaultValue="">
+                  <option value="">Any fiscal year</option>
+                  {accessScopeAdminData.fiscalYears.map((fy) => (
+                    <option key={fy.id} value={fy.id}>
+                      {fy.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Organization (Optional)
+                <select name="organizationId" defaultValue="">
+                  <option value="">Any organization</option>
+                  {accessScopeAdminData.organizations.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Project (Optional)
+                <select name="projectId" defaultValue="">
+                  <option value="">Any project</option>
+                  {accessScopeAdminData.projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Production Category (Optional)
+                <select name="productionCategoryId" defaultValue="">
+                  <option value="">Any department</option>
+                  {accessScopeAdminData.categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="checkboxLabel">
+                <input name="active" type="checkbox" defaultChecked />
+                Active
+              </label>
+              <button type="submit" className="buttonLink buttonPrimary">
+                Save Scope
+              </button>
+            </form>
+            <div className="tableWrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Role</th>
+                    <th>Fiscal Year</th>
+                    <th>Organization</th>
+                    <th>Project</th>
+                    <th>Department</th>
+                    <th>Active</th>
+                    <th>Trash</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {accessScopeAdminData.scopes.map((scope) => (
+                    <tr key={scope.id}>
+                      <td>{scope.userName}</td>
+                      <td>{scope.scopeRole}</td>
+                      <td>{scope.fiscalYearName ?? "Any"}</td>
+                      <td>{scope.organizationLabel ?? "Any"}</td>
+                      <td>{scope.projectLabel ?? "Any"}</td>
+                      <td>{scope.productionCategoryName ?? "Any"}</td>
+                      <td>{scope.active ? "Yes" : "No"}</td>
+                      <td>
+                        <form action={deleteAccessScopeAction}>
+                          <input type="hidden" name="id" value={scope.id} />
+                          <button type="submit" className="tinyButton dangerButton">
+                            Trash
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                  ))}
+                  {accessScopeAdminData.scopes.length === 0 ? (
+                    <tr>
+                      <td colSpan={8}>(none)</td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </article>
+        ) : null}
 
         <AddEntityPanel
           fiscalYears={fiscalYears}

@@ -1,5 +1,5 @@
 import { getSupabaseServerClient } from "@/lib/supabase-server";
-import type { PurchaseStatus } from "@/lib/types";
+import type { AppRole, PurchaseStatus } from "@/lib/types";
 
 function asNumber(value: string | number | null): number {
   if (value === null) return 0;
@@ -1734,4 +1734,365 @@ export async function getIncomeRows(): Promise<IncomeRow[]> {
       createdAt: row.created_at as string
     };
   });
+}
+
+export type AccessScopeRow = {
+  id: string;
+  userId: string;
+  userName: string;
+  scopeRole: AppRole;
+  fiscalYearId: string | null;
+  fiscalYearName: string | null;
+  organizationId: string | null;
+  organizationLabel: string | null;
+  projectId: string | null;
+  projectLabel: string | null;
+  productionCategoryId: string | null;
+  productionCategoryName: string | null;
+  active: boolean;
+};
+
+export type AccessUserOption = {
+  id: string;
+  label: string;
+};
+
+export type AccessProfile = {
+  role: AppRole;
+  isAdmin: boolean;
+  canAddRequests: boolean;
+  scopes: Array<{
+    role: AppRole;
+    fiscalYearId: string | null;
+    organizationId: string | null;
+    projectId: string | null;
+    productionCategoryId: string | null;
+    active: boolean;
+  }>;
+};
+
+export type MyBoardLine = {
+  id: string;
+  fiscalYearName: string | null;
+  organizationLabel: string | null;
+  projectName: string;
+  season: string | null;
+  productionCategoryName: string;
+  title: string;
+  vendorName: string | null;
+  poNumber: string | null;
+  procurementStatus: string | null;
+  budgetStatus: string;
+  lineType: "budget_line" | "planning_request";
+  amount: number;
+};
+
+export type MyBoardCategoryRollup = {
+  key: string;
+  projectId: string;
+  productionCategoryId: string | null;
+  fiscalYearName: string | null;
+  organizationLabel: string | null;
+  projectName: string;
+  season: string | null;
+  productionCategoryName: string;
+  startingAllotment: number;
+  obligatedTotal: number;
+  openRequestTotal: number;
+  remainingTrue: number;
+  remainingIfRequestsApproved: number;
+  lines: MyBoardLine[];
+};
+
+const roleRank: Record<AppRole, number> = {
+  viewer: 1,
+  buyer: 2,
+  project_manager: 3,
+  admin: 4
+};
+
+function highestRole(roles: string[]): AppRole {
+  let current: AppRole = "viewer";
+  for (const role of roles) {
+    const parsed = role as AppRole;
+    if (roleRank[parsed] > roleRank[current]) current = parsed;
+  }
+  return current;
+}
+
+function scopeMatches(
+  scope: { fiscalYearId: string | null; organizationId: string | null; projectId: string | null; productionCategoryId: string | null },
+  row: { fiscalYearId: string | null; organizationId: string | null; projectId: string; productionCategoryId: string | null }
+): boolean {
+  const fyMatch = !scope.fiscalYearId || scope.fiscalYearId === row.fiscalYearId;
+  const orgMatch = !scope.organizationId || scope.organizationId === row.organizationId;
+  const projectMatch = !scope.projectId || scope.projectId === row.projectId;
+  const categoryMatch = !scope.productionCategoryId || scope.productionCategoryId === row.productionCategoryId;
+  return fyMatch && orgMatch && projectMatch && categoryMatch;
+}
+
+export async function getCurrentAccessProfile(): Promise<AccessProfile> {
+  const supabase = await getSupabaseServerClient();
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+  if (!user) {
+    return { role: "viewer", isAdmin: false, canAddRequests: false, scopes: [] };
+  }
+
+  const [{ data: memberships }, { data: scopes }] = await Promise.all([
+    supabase.from("project_memberships").select("role").eq("user_id", user.id),
+    supabase
+      .from("user_access_scopes")
+      .select("scope_role, fiscal_year_id, organization_id, project_id, production_category_id, active")
+      .eq("user_id", user.id)
+      .eq("active", true)
+  ]);
+
+  const roleSources = [
+    ...((memberships ?? []).map((row) => String(row.role))),
+    ...((scopes ?? []).map((row) => String(row.scope_role)))
+  ];
+  const role = roleSources.length > 0 ? highestRole(roleSources) : "viewer";
+
+  return {
+    role,
+    isAdmin: role === "admin",
+    canAddRequests: role === "admin" || role === "project_manager" || role === "buyer",
+    scopes: (scopes ?? []).map((row) => ({
+      role: (row.scope_role as AppRole) ?? "viewer",
+      fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
+      organizationId: (row.organization_id as string | null) ?? null,
+      projectId: (row.project_id as string | null) ?? null,
+      productionCategoryId: (row.production_category_id as string | null) ?? null,
+      active: Boolean(row.active as boolean | null)
+    }))
+  };
+}
+
+export async function getAccessScopeAdminData(): Promise<{
+  canManage: boolean;
+  users: AccessUserOption[];
+  scopes: AccessScopeRow[];
+  fiscalYears: FiscalYearOption[];
+  organizations: OrganizationOption[];
+  projects: ProcurementProjectOption[];
+  categories: ProductionCategoryOption[];
+}> {
+  const supabase = await getSupabaseServerClient();
+  const profile = await getCurrentAccessProfile();
+  if (!profile.isAdmin) {
+    return {
+      canManage: false,
+      users: [],
+      scopes: [],
+      fiscalYears: [],
+      organizations: [],
+      projects: [],
+      categories: []
+    };
+  }
+
+  const [usersRes, scopesRes, fiscalYears, organizations, projects, categories] = await Promise.all([
+    supabase.from("users").select("id, full_name").order("full_name", { ascending: true }),
+    supabase
+      .from("user_access_scopes")
+      .select(
+        "id, user_id, scope_role, fiscal_year_id, organization_id, project_id, production_category_id, active, users(full_name), fiscal_years(name), organizations(name, org_code), projects(name, season), production_categories(name)"
+      )
+      .order("created_at", { ascending: false }),
+    getFiscalYearOptions(),
+    getOrganizationOptions(),
+    getProcurementData().then((d) => d.projectOptions),
+    getProductionCategoryOptions()
+  ]);
+  if (usersRes.error) throw usersRes.error;
+  if (scopesRes.error) throw scopesRes.error;
+
+  const users: AccessUserOption[] = (usersRes.data ?? []).map((row) => ({
+    id: row.id as string,
+    label: (row.full_name as string | null) ?? (row.id as string)
+  }));
+
+  const scopes: AccessScopeRow[] = (scopesRes.data ?? []).map((row) => {
+    const userRow = row.users as { full_name?: string } | null;
+    const fyRow = row.fiscal_years as { name?: string } | null;
+    const orgRow = row.organizations as { name?: string; org_code?: string } | null;
+    const projectRow = row.projects as { name?: string; season?: string | null } | null;
+    const categoryRow = row.production_categories as { name?: string } | null;
+    return {
+      id: row.id as string,
+      userId: row.user_id as string,
+      userName: userRow?.full_name ?? (row.user_id as string),
+      scopeRole: (row.scope_role as AppRole) ?? "viewer",
+      fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
+      fiscalYearName: fyRow?.name ?? null,
+      organizationId: (row.organization_id as string | null) ?? null,
+      organizationLabel: orgRow ? `${orgRow.org_code ?? ""} | ${orgRow.name ?? ""}` : null,
+      projectId: (row.project_id as string | null) ?? null,
+      projectLabel: projectRow ? `${projectRow.name ?? ""}${projectRow.season ? ` (${projectRow.season})` : ""}` : null,
+      productionCategoryId: (row.production_category_id as string | null) ?? null,
+      productionCategoryName: categoryRow?.name ?? null,
+      active: Boolean(row.active as boolean | null)
+    };
+  });
+
+  return { canManage: true, users, scopes, fiscalYears, organizations, projects, categories };
+}
+
+export async function getMyBoardData(): Promise<{
+  profile: AccessProfile;
+  rows: MyBoardCategoryRollup[];
+}> {
+  const supabase = await getSupabaseServerClient();
+  const profile = await getCurrentAccessProfile();
+  const scoped = profile.scopes.filter((scope) => scope.active);
+
+  const [budgetLinesRes, purchasesRes] = await Promise.all([
+    supabase
+      .from("project_budget_lines")
+      .select(
+        "id, project_id, production_category_id, allocated_amount, active, projects(name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name)), production_categories(name)"
+      )
+      .eq("active", true),
+    supabase
+      .from("purchases")
+      .select(
+        "id, project_id, production_category_id, title, po_number, status, request_type, procurement_status, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, projects(name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name)), production_categories(name), vendors(name)"
+      )
+      .neq("status", "cancelled")
+      .order("created_at", { ascending: false })
+  ]);
+
+  if (budgetLinesRes.error) throw budgetLinesRes.error;
+  if (purchasesRes.error) throw purchasesRes.error;
+
+  const allotmentMap = new Map<string, MyBoardCategoryRollup>();
+  for (const row of budgetLinesRes.data ?? []) {
+    const project = row.projects as
+      | { name?: string; season?: string | null; organization_id?: string | null; fiscal_year_id?: string | null; organizations?: { name?: string; org_code?: string } | null; fiscal_years?: { name?: string } | null }
+      | null;
+    const category = row.production_categories as { name?: string } | null;
+    const org = project?.organizations ?? null;
+    const categoryId = (row.production_category_id as string | null) ?? null;
+    const projectId = row.project_id as string;
+    const rowMeta = {
+      fiscalYearId: (project?.fiscal_year_id as string | null) ?? null,
+      organizationId: (project?.organization_id as string | null) ?? null,
+      projectId,
+      productionCategoryId: categoryId
+    };
+    const allow = profile.isAdmin || scoped.length === 0 || scoped.some((scope) => scopeMatches(scope, rowMeta));
+    if (!allow) continue;
+
+    const key = `${projectId}|${categoryId ?? "uncat"}`;
+    const existing = allotmentMap.get(key);
+    if (!existing) {
+      allotmentMap.set(key, {
+        key,
+        projectId,
+        productionCategoryId: categoryId,
+        fiscalYearName: (project?.fiscal_years?.name as string | undefined) ?? null,
+        organizationLabel: org ? `${org.org_code ?? ""} | ${org.name ?? ""}` : null,
+        projectName: (project?.name as string | undefined) ?? "Unknown Project",
+        season: (project?.season as string | undefined) ?? null,
+        productionCategoryName: category?.name ?? "Unassigned",
+        startingAllotment: asNumber(row.allocated_amount as string | number | null),
+        obligatedTotal: 0,
+        openRequestTotal: 0,
+        remainingTrue: 0,
+        remainingIfRequestsApproved: 0,
+        lines: []
+      });
+    } else {
+      existing.startingAllotment += asNumber(row.allocated_amount as string | number | null);
+    }
+  }
+
+  for (const row of purchasesRes.data ?? []) {
+    const project = row.projects as
+      | { name?: string; season?: string | null; organization_id?: string | null; fiscal_year_id?: string | null; organizations?: { name?: string; org_code?: string } | null; fiscal_years?: { name?: string } | null }
+      | null;
+    const category = row.production_categories as { name?: string } | null;
+    const vendor = row.vendors as { name?: string } | null;
+    const categoryId = (row.production_category_id as string | null) ?? null;
+    const projectId = row.project_id as string;
+    const rowMeta = {
+      fiscalYearId: (project?.fiscal_year_id as string | null) ?? null,
+      organizationId: (project?.organization_id as string | null) ?? null,
+      projectId,
+      productionCategoryId: categoryId
+    };
+    const allow = profile.isAdmin || scoped.length === 0 || scoped.some((scope) => scopeMatches(scope, rowMeta));
+    if (!allow) continue;
+
+    const key = `${projectId}|${categoryId ?? "uncat"}`;
+    const group =
+      allotmentMap.get(key) ??
+      ({
+        key,
+        projectId,
+        productionCategoryId: categoryId,
+        fiscalYearName: (project?.fiscal_years?.name as string | undefined) ?? null,
+        organizationLabel: project?.organizations
+          ? `${(project.organizations as { org_code?: string }).org_code ?? ""} | ${(project.organizations as { name?: string }).name ?? ""}`
+          : null,
+        projectName: (project?.name as string | undefined) ?? "Unknown Project",
+        season: (project?.season as string | undefined) ?? null,
+        productionCategoryName: category?.name ?? "Unassigned",
+        startingAllotment: 0,
+        obligatedTotal: 0,
+        openRequestTotal: 0,
+        remainingTrue: 0,
+        remainingIfRequestsApproved: 0,
+        lines: []
+      } as MyBoardCategoryRollup);
+
+    const requestType = ((row.request_type as string | null) ?? "requisition").toLowerCase();
+    const budgetStatus = ((row.status as string | null) ?? "requested").toLowerCase();
+    const amount = asNumber(row.posted_amount as string | number | null)
+      || asNumber(row.pending_cc_amount as string | number | null)
+      || asNumber(row.encumbered_amount as string | number | null)
+      || asNumber(row.requested_amount as string | number | null)
+      || asNumber(row.estimated_amount as string | number | null);
+    const lineType = requestType === "request" ? "planning_request" : "budget_line";
+    if (lineType === "planning_request") group.openRequestTotal += amount;
+    else group.obligatedTotal += amount;
+
+    group.lines.push({
+      id: row.id as string,
+      fiscalYearName: group.fiscalYearName,
+      organizationLabel: group.organizationLabel,
+      projectName: group.projectName,
+      season: group.season,
+      productionCategoryName: group.productionCategoryName,
+      title: (row.title as string) ?? "Untitled",
+      vendorName: vendor?.name ?? null,
+      poNumber: (row.po_number as string | null) ?? null,
+      procurementStatus: (row.procurement_status as string | null) ?? null,
+      budgetStatus,
+      lineType,
+      amount
+    });
+
+    allotmentMap.set(key, group);
+  }
+
+  const rows = Array.from(allotmentMap.values()).map((group) => {
+    group.remainingTrue = group.startingAllotment - group.obligatedTotal;
+    group.remainingIfRequestsApproved = group.startingAllotment - group.obligatedTotal - group.openRequestTotal;
+    return group;
+  });
+
+  rows.sort((a, b) => {
+    const fy = (a.fiscalYearName ?? "").localeCompare(b.fiscalYearName ?? "");
+    if (fy !== 0) return fy;
+    const org = (a.organizationLabel ?? "").localeCompare(b.organizationLabel ?? "");
+    if (org !== 0) return org;
+    const project = a.projectName.localeCompare(b.projectName);
+    if (project !== 0) return project;
+    return a.productionCategoryName.localeCompare(b.productionCategoryName);
+  });
+
+  return { profile, rows };
 }

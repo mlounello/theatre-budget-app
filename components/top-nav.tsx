@@ -1,22 +1,12 @@
 import Link from "next/link";
 import { signOut } from "@/app/auth/actions";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
-
-const links = [
-  { href: "/", label: "Dashboard" },
-  { href: "/overview", label: "Overview" },
-  { href: "/requests", label: "Requests" },
-  { href: "/procurement", label: "Procurement" },
-  { href: "/contracts", label: "Contracts" },
-  { href: "/income", label: "Income" },
-  { href: "/cc", label: "CC" },
-  { href: "/settings", label: "Settings" },
-  { href: "/debug", label: "Debug" }
-];
+import { getCurrentAccessProfile } from "@/lib/db";
 
 export async function TopNav() {
   let userEmail: string | null = null;
   let hasUser = false;
+  let role: "admin" | "project_manager" | "buyer" | "viewer" = "viewer";
 
   try {
     const supabase = await getSupabaseServerClient();
@@ -25,10 +15,48 @@ export async function TopNav() {
     } = await supabase.auth.getUser();
     hasUser = Boolean(user);
     userEmail = user?.email ?? null;
+    if (user) {
+      const profile = await getCurrentAccessProfile();
+      role = profile.role;
+    }
   } catch {
     hasUser = false;
     userEmail = null;
+    role = "viewer";
   }
+
+  const links =
+    role === "admin"
+      ? [
+          { href: "/", label: "Dashboard" },
+          { href: "/my-budget", label: "My Budget" },
+          { href: "/overview", label: "Overview" },
+          { href: "/requests", label: "Requests" },
+          { href: "/procurement", label: "Procurement" },
+          { href: "/contracts", label: "Contracts" },
+          { href: "/income", label: "Income" },
+          { href: "/cc", label: "CC" },
+          { href: "/settings", label: "Settings" },
+          { href: "/debug", label: "Debug" }
+        ]
+      : role === "project_manager"
+        ? [
+            { href: "/", label: "Dashboard" },
+            { href: "/my-budget", label: "My Budget" },
+            { href: "/overview", label: "Overview" },
+            { href: "/requests", label: "Requests" },
+            { href: "/procurement", label: "Procurement" },
+            { href: "/contracts", label: "Contracts" },
+            { href: "/income", label: "Income" },
+            { href: "/cc", label: "CC" }
+          ]
+        : role === "buyer"
+          ? [
+              { href: "/my-budget", label: "My Budget" },
+              { href: "/requests", label: "Requests" },
+              { href: "/procurement", label: "Procurement" }
+            ]
+          : [{ href: "/my-budget", label: "My Budget" }];
 
   return (
     <header className="topNav">

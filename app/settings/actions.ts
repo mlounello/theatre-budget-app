@@ -272,6 +272,78 @@ export async function createOrganizationAction(formData: FormData): Promise<void
   }
 }
 
+export async function createAccessScopeAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+
+    const roleCheck = await supabase.rpc("is_admin_user");
+    if (roleCheck.error || !roleCheck.data) {
+      throw new Error("Only Admin can manage access scopes.");
+    }
+
+    const targetUserId = String(formData.get("userId") ?? "").trim();
+    const scopeRole = String(formData.get("scopeRole") ?? "").trim();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
+    const projectId = String(formData.get("projectId") ?? "").trim();
+    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const active = formData.get("active") === "on";
+
+    if (!targetUserId) throw new Error("User is required.");
+    if (!["viewer", "buyer", "project_manager", "admin"].includes(scopeRole)) {
+      throw new Error("Invalid scope role.");
+    }
+
+    const { error } = await supabase.from("user_access_scopes").insert({
+      user_id: targetUserId,
+      scope_role: scopeRole,
+      fiscal_year_id: fiscalYearId || null,
+      organization_id: organizationId || null,
+      project_id: projectId || null,
+      production_category_id: productionCategoryId || null,
+      active
+    });
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/settings");
+    settingsSuccess("Access scope saved.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not save access scope."));
+  }
+}
+
+export async function deleteAccessScopeAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+
+    const roleCheck = await supabase.rpc("is_admin_user");
+    if (roleCheck.error || !roleCheck.data) {
+      throw new Error("Only Admin can manage access scopes.");
+    }
+
+    const id = String(formData.get("id") ?? "").trim();
+    if (!id) throw new Error("Scope id is required.");
+
+    const { error } = await supabase.from("user_access_scopes").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/settings");
+    settingsSuccess("Access scope deleted.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not delete access scope."));
+  }
+}
+
 export async function createAccountCodeAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();
