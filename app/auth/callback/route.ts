@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { sanitizeNextPath } from "@/lib/sanitize-next";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const next = requestUrl.searchParams.get("next") ?? "/";
+  const next = sanitizeNextPath(requestUrl.searchParams.get("next"));
 
   if (code) {
     const supabase = await getSupabaseServerClient();

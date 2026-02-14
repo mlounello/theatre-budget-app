@@ -1216,26 +1216,72 @@ export async function createUserAccessScopeAction(formData: FormData): Promise<v
     const resolvedProjects = projectIds.length > 0 ? projectIds : projectId ? [projectId] : [""];
     const resolvedCategories = categoryIds.length > 0 ? categoryIds : productionCategoryId ? [productionCategoryId] : [""];
 
+    const requestedRows = new Map<string, { projectId: string; categoryId: string }>();
     for (const pid of resolvedProjects) {
-      if (access.role !== "admin" && pid) {
-        await requireProjectSettingsWrite(supabase, pid);
-      }
       for (const cid of resolvedCategories) {
-        const { error } = await supabase.from("user_access_scopes").insert({
-          user_id: userId,
-          scope_role: scopeRole,
-          project_id: pid || null,
-          production_category_id: cid || null,
-          fiscal_year_id: fiscalYearId || null,
-          organization_id: organizationId || null,
-          active: true
-        });
-        if (error) throw new Error(error.message);
+        const key = [pid || "", cid || "", fiscalYearId || "", organizationId || ""].join("|");
+        if (!requestedRows.has(key)) {
+          requestedRows.set(key, { projectId: pid || "", categoryId: cid || "" });
+        }
       }
     }
 
+    const { data: existingRows, error: existingError } = await supabase
+      .from("user_access_scopes")
+      .select("project_id, production_category_id, fiscal_year_id, organization_id")
+      .eq("user_id", userId)
+      .eq("scope_role", scopeRole);
+    if (existingError) throw new Error(existingError.message);
+
+    const existingKeys = new Set(
+      (existingRows ?? []).map((row) =>
+        [
+          (row.project_id as string | null) ?? "",
+          (row.production_category_id as string | null) ?? "",
+          (row.fiscal_year_id as string | null) ?? "",
+          (row.organization_id as string | null) ?? ""
+        ].join("|")
+      )
+    );
+
+    let createdCount = 0;
+    let skippedCount = 0;
+
+    for (const row of requestedRows.values()) {
+      if (access.role !== "admin" && row.projectId) {
+        await requireProjectSettingsWrite(supabase, row.projectId);
+      }
+
+      const key = [row.projectId || "", row.categoryId || "", fiscalYearId || "", organizationId || ""].join("|");
+      if (existingKeys.has(key)) {
+        skippedCount += 1;
+        continue;
+      }
+
+      const { error } = await supabase.from("user_access_scopes").insert({
+        user_id: userId,
+        scope_role: scopeRole,
+        project_id: row.projectId || null,
+        production_category_id: row.categoryId || null,
+        fiscal_year_id: fiscalYearId || null,
+        organization_id: organizationId || null,
+        active: true
+      });
+      if (error) {
+        const duplicate = error.code === "23505" || /duplicate key/i.test(error.message ?? "");
+        if (duplicate) {
+          skippedCount += 1;
+          continue;
+        }
+        throw new Error(error.message);
+      }
+
+      createdCount += 1;
+      existingKeys.add(key);
+    }
+
     revalidatePath("/settings");
-    settingsSuccess("User scope saved.");
+    settingsSuccess(`User scope saved. Added ${createdCount}, skipped ${skippedCount} existing.`);
   } catch (error) {
     rethrowIfRedirect(error);
     settingsError(getErrorMessage(error, "Could not save user scope."));

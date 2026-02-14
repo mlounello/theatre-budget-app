@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-client";
+import { sanitizeNextPath } from "@/lib/sanitize-next";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -44,7 +45,7 @@ export default function LoginPage() {
 
     try {
       const supabase = getSupabaseBrowserClient();
-      const next = new URLSearchParams(window.location.search).get("next") ?? "/";
+      const next = sanitizeNextPath(new URLSearchParams(window.location.search).get("next"));
       const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
 
       const { error: signInError } = await supabase.auth.signInWithOAuth({
@@ -70,7 +71,7 @@ export default function LoginPage() {
 
     try {
       const supabase = getSupabaseBrowserClient();
-      const next = new URLSearchParams(window.location.search).get("next") ?? "/";
+      const next = sanitizeNextPath(new URLSearchParams(window.location.search).get("next"));
       const { error: signInError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password
@@ -116,7 +117,7 @@ export default function LoginPage() {
 
       if (data.session) {
         await upsertCurrentUserProfile(fullName);
-        const next = new URLSearchParams(window.location.search).get("next") ?? "/";
+        const next = sanitizeNextPath(new URLSearchParams(window.location.search).get("next"));
         router.push(next);
         router.refresh();
         return;
