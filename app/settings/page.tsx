@@ -142,7 +142,7 @@ export default async function SettingsPage({
   );
 
   const organizationLookup = new Map(
-    fiscalYearGroups.flatMap((fy) => Array.from(fy.organizations.values()).map((org) => [org.id, org] as const))
+    organizations.map((org) => [org.id, { id: org.id, name: org.name, orgCode: org.orgCode, fiscalYearId: org.fiscalYearId }] as const)
   );
 
   const projectLookup = new Map(
@@ -384,6 +384,48 @@ export default async function SettingsPage({
                 ))}
             </details>
           ))}
+        </article>
+
+        <article className="panel panelFull">
+          <h2>Current Organizations</h2>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Org Code</th>
+                  <th>Name</th>
+                  <th>Edit</th>
+                  <th>Trash</th>
+                </tr>
+              </thead>
+              <tbody>
+                {organizations.map((orgOption) => (
+                  <tr key={orgOption.id}>
+                    <td>{orgOption.orgCode}</td>
+                    <td>{orgOption.name}</td>
+                    <td>
+                      <a className="tinyButton" href={`/settings?editType=org&editId=${orgOption.id}`}>
+                        Edit
+                      </a>
+                    </td>
+                    <td>
+                      <form action={deleteOrganizationAction}>
+                        <input type="hidden" name="id" value={orgOption.id} />
+                        <button type="submit" className="tinyButton dangerButton">
+                          Trash
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+                {organizations.length === 0 ? (
+                  <tr>
+                    <td colSpan={4}>(none)</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
         </article>
 
         <article className="panel panelFull">
