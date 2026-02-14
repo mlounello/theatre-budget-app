@@ -1987,7 +1987,7 @@ export async function getMyBoardData(): Promise<{
     supabase
       .from("purchases")
       .select(
-        "id, project_id, budget_line_id, production_category_id, title, po_number, status, request_type, procurement_status, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, projects(name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name)), production_categories(name), vendors(name), project_budget_lines!purchases_budget_line_id_fkey(production_category_id, category, line_name)"
+        "id, project_id, budget_line_id, production_category_id, title, po_number, status, request_type, procurement_status, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, projects(name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name)), production_categories(name), vendors(name), project_budget_lines!purchases_budget_line_id_fkey(production_category_id, category, line_name), purchase_allocations(amount)"
       )
       .neq("status", "cancelled")
       .order("created_at", { ascending: false }),
@@ -2063,6 +2063,7 @@ export async function getMyBoardData(): Promise<{
       | { production_category_id?: string | null; category?: string | null; line_name?: string | null }
       | null;
     const vendor = row.vendors as { name?: string } | null;
+    const allocations = (row.purchase_allocations as Array<{ amount?: string | number | null }> | null) ?? [];
     const categoryId =
       (row.production_category_id as string | null) ??
       ((reportingLine?.production_category_id as string | null) ?? null);
@@ -2105,7 +2106,10 @@ export async function getMyBoardData(): Promise<{
 
     const requestType = ((row.request_type as string | null) ?? "requisition").toLowerCase();
     const budgetStatus = ((row.status as string | null) ?? "requested").toLowerCase();
-    const amount = asNumber(row.posted_amount as string | number | null)
+    const allocationTotal = allocations.reduce((sum, item) => sum + asNumber((item.amount as string | number | null) ?? null), 0);
+    const amount = allocationTotal !== 0
+      ? allocationTotal
+      : asNumber(row.posted_amount as string | number | null)
       || asNumber(row.pending_cc_amount as string | number | null)
       || asNumber(row.encumbered_amount as string | number | null)
       || asNumber(row.requested_amount as string | number | null)
