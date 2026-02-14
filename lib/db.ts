@@ -1987,7 +1987,7 @@ export async function getMyBoardData(): Promise<{
     supabase
       .from("purchases")
       .select(
-        "id, project_id, budget_line_id, production_category_id, title, po_number, status, request_type, procurement_status, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, projects(name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name)), production_categories(name), vendors(name), project_budget_lines!purchases_budget_line_id_fkey(production_category_id, category, line_name), purchase_allocations(amount)"
+        "id, project_id, budget_line_id, production_category_id, title, po_number, status, request_type, procurement_status, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, projects(name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name)), production_categories(name), vendors(name), project_budget_lines!purchases_budget_line_id_fkey(production_category_id, category, line_name), purchase_allocations(amount, production_category_id, reporting_budget_line_id, project_budget_lines!purchase_allocations_reporting_budget_line_id_fkey(production_category_id, category, line_name))"
       )
       .neq("status", "cancelled")
       .order("created_at", { ascending: false }),
@@ -2063,78 +2063,107 @@ export async function getMyBoardData(): Promise<{
       | { production_category_id?: string | null; category?: string | null; line_name?: string | null }
       | null;
     const vendor = row.vendors as { name?: string } | null;
-    const allocations = (row.purchase_allocations as Array<{ amount?: string | number | null }> | null) ?? [];
-    const categoryId =
-      (row.production_category_id as string | null) ??
-      ((reportingLine?.production_category_id as string | null) ?? null);
-    const rowCategoryName =
-      category?.name ??
-      ((reportingLine?.category as string | null) ?? null) ??
-      ((reportingLine?.line_name as string | null) ?? null);
     const projectId = row.project_id as string;
-    const rowMeta = {
-      fiscalYearId: (project?.fiscal_year_id as string | null) ?? null,
-      organizationId: (project?.organization_id as string | null) ?? null,
-      projectId,
-      productionCategoryId: categoryId,
-      productionCategoryName: rowCategoryName
-    };
-    const allow = profile.isAdmin || scoped.length === 0 || scoped.some((scope) => scopeMatches(scope, rowMeta));
-    if (!allow) continue;
-
-    const key = `${projectId}|${categoryId ?? "uncat"}`;
-    const group =
-      allotmentMap.get(key) ??
-      ({
-        key,
-        projectId,
-        productionCategoryId: categoryId,
-        fiscalYearName: (project?.fiscal_years?.name as string | undefined) ?? null,
-        organizationLabel: project?.organizations
-          ? `${(project.organizations as { org_code?: string }).org_code ?? ""} | ${(project.organizations as { name?: string }).name ?? ""}`
-          : null,
-        projectName: (project?.name as string | undefined) ?? "Unknown Project",
-        season: (project?.season as string | undefined) ?? null,
-        productionCategoryName: rowCategoryName ?? "Unassigned",
-        startingAllotment: 0,
-        obligatedTotal: 0,
-        openRequestTotal: 0,
-        remainingTrue: 0,
-        remainingIfRequestsApproved: 0,
-        lines: []
-      } as MyBoardCategoryRollup);
+    const allocations =
+      (row.purchase_allocations as
+        | Array<{
+            amount?: string | number | null;
+            production_category_id?: string | null;
+            project_budget_lines?:
+              | { production_category_id?: string | null; category?: string | null; line_name?: string | null }
+              | null;
+          }>
+        | null) ?? [];
 
     const requestType = ((row.request_type as string | null) ?? "requisition").toLowerCase();
     const budgetStatus = ((row.status as string | null) ?? "requested").toLowerCase();
-    const allocationTotal = allocations.reduce((sum, item) => sum + asNumber((item.amount as string | number | null) ?? null), 0);
-    const amount = allocationTotal !== 0
-      ? allocationTotal
-      : asNumber(row.posted_amount as string | number | null)
+    const lineType = requestType === "request" ? "planning_request" : "budget_line";
+    const defaultAmount =
+      asNumber(row.posted_amount as string | number | null)
       || asNumber(row.pending_cc_amount as string | number | null)
       || asNumber(row.encumbered_amount as string | number | null)
       || asNumber(row.requested_amount as string | number | null)
       || asNumber(row.estimated_amount as string | number | null);
-    const lineType = requestType === "request" ? "planning_request" : "budget_line";
-    if (lineType === "planning_request") group.openRequestTotal += amount;
-    else group.obligatedTotal += amount;
 
-    group.lines.push({
-      id: row.id as string,
-      fiscalYearName: group.fiscalYearName,
-      organizationLabel: group.organizationLabel,
-      projectName: group.projectName,
-      season: group.season,
-      productionCategoryName: group.productionCategoryName,
-      title: (row.title as string) ?? "Untitled",
-      vendorName: vendor?.name ?? null,
-      poNumber: (row.po_number as string | null) ?? null,
-      procurementStatus: (row.procurement_status as string | null) ?? null,
-      budgetStatus,
-      lineType,
-      amount
-    });
+    const allocationRows =
+      allocations.length > 0
+        ? allocations
+        : [
+            {
+              amount: defaultAmount,
+              production_category_id: (row.production_category_id as string | null) ?? ((reportingLine?.production_category_id as string | null) ?? null),
+              project_budget_lines: reportingLine
+            }
+          ];
 
-    allotmentMap.set(key, group);
+    for (const alloc of allocationRows) {
+      const allocCategoryId =
+        (alloc.production_category_id as string | null) ??
+        ((alloc.project_budget_lines?.production_category_id as string | null) ?? null) ??
+        ((row.production_category_id as string | null) ?? null) ??
+        ((reportingLine?.production_category_id as string | null) ?? null);
+      const allocCategoryName =
+        category?.name ??
+        ((alloc.project_budget_lines?.category as string | null) ?? null) ??
+        ((alloc.project_budget_lines?.line_name as string | null) ?? null) ??
+        ((reportingLine?.category as string | null) ?? null) ??
+        ((reportingLine?.line_name as string | null) ?? null);
+      const amount = asNumber((alloc.amount as string | number | null) ?? null);
+      if (amount === 0) continue;
+
+      const rowMeta = {
+        fiscalYearId: (project?.fiscal_year_id as string | null) ?? null,
+        organizationId: (project?.organization_id as string | null) ?? null,
+        projectId,
+        productionCategoryId: allocCategoryId,
+        productionCategoryName: allocCategoryName
+      };
+      const allow = profile.isAdmin || scoped.length === 0 || scoped.some((scope) => scopeMatches(scope, rowMeta));
+      if (!allow) continue;
+
+      const key = `${projectId}|${allocCategoryId ?? "uncat"}`;
+      const group =
+        allotmentMap.get(key) ??
+        ({
+          key,
+          projectId,
+          productionCategoryId: allocCategoryId,
+          fiscalYearName: (project?.fiscal_years?.name as string | undefined) ?? null,
+          organizationLabel: project?.organizations
+            ? `${(project.organizations as { org_code?: string }).org_code ?? ""} | ${(project.organizations as { name?: string }).name ?? ""}`
+            : null,
+          projectName: (project?.name as string | undefined) ?? "Unknown Project",
+          season: (project?.season as string | undefined) ?? null,
+          productionCategoryName: allocCategoryName ?? "Unassigned",
+          startingAllotment: 0,
+          obligatedTotal: 0,
+          openRequestTotal: 0,
+          remainingTrue: 0,
+          remainingIfRequestsApproved: 0,
+          lines: []
+        } as MyBoardCategoryRollup);
+
+      if (lineType === "planning_request") group.openRequestTotal += amount;
+      else group.obligatedTotal += amount;
+
+      group.lines.push({
+        id: `${row.id as string}:${allocCategoryId ?? "uncat"}:${group.lines.length}`,
+        fiscalYearName: group.fiscalYearName,
+        organizationLabel: group.organizationLabel,
+        projectName: group.projectName,
+        season: group.season,
+        productionCategoryName: group.productionCategoryName,
+        title: (row.title as string) ?? "Untitled",
+        vendorName: vendor?.name ?? null,
+        poNumber: (row.po_number as string | null) ?? null,
+        procurementStatus: (row.procurement_status as string | null) ?? null,
+        budgetStatus,
+        lineType,
+        amount
+      });
+
+      allotmentMap.set(key, group);
+    }
   }
 
   if (!profile.isAdmin && scoped.length > 0) {
