@@ -1,10 +1,12 @@
 import {
   addBudgetLineAction,
   createAccountCodeAction,
+  createUserAccessScopeAction,
   deleteFiscalYearAction,
   deleteOrganizationAction,
   deleteProductionCategoryAction,
   deleteAccountCodeAction,
+  deleteUserAccessScopeAction,
   importHierarchyCsvAction,
   updateProductionCategoryAction,
   updateAccountCodeAction,
@@ -25,6 +27,7 @@ import {
   getOrganizationOptions,
   getProductionCategoriesAdmin,
   getProductionCategoryOptions,
+  getSettingsAccessScopes,
   getSettingsProjects,
   getTemplateNames,
   type HierarchyRow
@@ -74,6 +77,7 @@ export default async function SettingsPage({
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
+  const isAdmin = access.role === "admin";
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const importStatus = resolvedSearchParams?.import;
@@ -83,14 +87,19 @@ export default async function SettingsPage({
   const editType = resolvedSearchParams?.editType;
   const editId = resolvedSearchParams?.editId;
 
-  const projects = await getSettingsProjects();
+  const projectsAll = await getSettingsProjects();
   const templates = await getTemplateNames();
   const allAccountCodes = await getAccountCodesAdmin();
   const productionCategories = await getProductionCategoryOptions();
   const allProductionCategories = await getProductionCategoriesAdmin();
   const fiscalYears = await getFiscalYearOptions();
   const organizations = await getOrganizationOptions();
-  const hierarchyRows = await getHierarchyRows();
+  const hierarchyRowsAll = await getHierarchyRows();
+  const { users: accessUsers, scopes: accessScopes } = await getSettingsAccessScopes();
+
+  const manageableProjectIds = access.manageableProjectIds;
+  const projects = isAdmin ? projectsAll : projectsAll.filter((project) => manageableProjectIds.has(project.id));
+  const hierarchyRows = isAdmin ? hierarchyRowsAll : hierarchyRowsAll.filter((row) => manageableProjectIds.has(row.projectId));
 
   const groupedByFiscalYear = new Map<string, FiscalYearGroup>();
   const noFiscalYearKey = "__no_fy__";
@@ -191,7 +200,7 @@ export default async function SettingsPage({
   return (
     <section>
       <header className="sectionHeader">
-        <p className="eyebrow">Admin</p>
+        <p className="eyebrow">{isAdmin ? "Admin" : "Project Manager"}</p>
         <h1>Settings</h1>
         {okMessage ? <p className="successNote">{okMessage}</p> : null}
         {errorMessage ? <p className="errorNote">{errorMessage}</p> : null}
@@ -206,14 +215,17 @@ export default async function SettingsPage({
           <p className="heroSubtitle">Hierarchy: Fiscal Year - Organization - Project - Budget Line. Reorder controls are collapsed to reduce clutter.</p>
         </article>
 
-        <AddEntityPanel
-          fiscalYears={fiscalYears}
-          organizations={organizations}
-          templates={templates}
-          projects={projects}
-          productionCategories={productionCategories}
-        />
+        {isAdmin ? (
+          <AddEntityPanel
+            fiscalYears={fiscalYears}
+            organizations={organizations}
+            templates={templates}
+            projects={projects}
+            productionCategories={productionCategories}
+          />
+        ) : null}
 
+        {isAdmin ? (
         <article className="panel panelFull">
           <h2>CSV Import</h2>
           <p>Download template, fill rows, upload to create/update hierarchy and budget lines.</p>
@@ -232,13 +244,16 @@ export default async function SettingsPage({
             </button>
           </form>
         </article>
+        ) : null}
 
         <article className="panel panelFull">
           <h2>Hierarchy Manager</h2>
           <p>Expand each level to edit records. Use Reorder sections only when you want to change card/table order.</p>
-          <FiscalYearReorder
-            items={fiscalYearGroups.filter((fy) => fy.id !== noFiscalYearKey).map((fy) => ({ id: fy.id, label: fy.name }))}
-          />
+          {isAdmin ? (
+            <FiscalYearReorder
+              items={fiscalYearGroups.filter((fy) => fy.id !== noFiscalYearKey).map((fy) => ({ id: fy.id, label: fy.name }))}
+            />
+          ) : null}
 
           {fiscalYearGroups.length === 0 ? <p>(none)</p> : null}
 
@@ -247,7 +262,7 @@ export default async function SettingsPage({
               <summary>
                 <strong>FY:</strong> {fy.name}
               </summary>
-              {fy.id !== noFiscalYearKey ? (
+              {isAdmin && fy.id !== noFiscalYearKey ? (
                 <div className="inlineActionRow">
                   <a className="tinyButton" href={`/settings?editType=fy&editId=${fy.id}`}>
                     Edit FY
@@ -255,13 +270,13 @@ export default async function SettingsPage({
                 </div>
               ) : null}
 
-              <OrganizationReorder
+              {isAdmin ? (<OrganizationReorder
                 fiscalYearId={fy.id === noFiscalYearKey ? null : fy.id}
                 items={Array.from(fy.organizations.values())
                   .filter((orgItem) => !orgItem.id.startsWith("__no_org__"))
                   .sort((a, b) => a.sortOrder - b.sortOrder || a.orgCode.localeCompare(b.orgCode))
                   .map((orgItem) => ({ id: orgItem.id, label: `${orgItem.orgCode} - ${orgItem.name}` }))}
-              />
+              />) : null}
 
               {Array.from(fy.organizations.values())
                 .sort((a, b) => a.sortOrder - b.sortOrder || a.orgCode.localeCompare(b.orgCode))
@@ -270,7 +285,7 @@ export default async function SettingsPage({
                     <summary>
                       <strong>Org:</strong> {org.orgCode} - {org.name}
                     </summary>
-                    {org.id.startsWith("__no_org__") ? null : (
+                    {isAdmin && !org.id.startsWith("__no_org__") ? (
                       <div className="inlineActionRow">
                         <a className="tinyButton" href={`/settings?editType=org&editId=${org.id}`}>
                           Edit Org
@@ -282,9 +297,9 @@ export default async function SettingsPage({
                           </button>
                         </form>
                       </div>
-                    )}
+                    ) : null}
 
-                    <ProjectReorder
+                    {isAdmin ? (<ProjectReorder
                       organizationId={org.id.startsWith("__no_org__") ? null : org.id}
                       items={Array.from(org.projects.values())
                         .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
@@ -292,7 +307,7 @@ export default async function SettingsPage({
                           id: projectItem.id,
                           label: `${projectItem.name}${projectItem.season ? ` (${projectItem.season})` : ""}`
                         }))}
-                    />
+                    />) : null}
 
                     {Array.from(org.projects.values())
                       .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
@@ -392,6 +407,7 @@ export default async function SettingsPage({
           ))}
         </article>
 
+        {isAdmin ? (
         <article className="panel panelFull">
           <h2>Current Organizations</h2>
           <div className="tableWrap">
@@ -433,7 +449,9 @@ export default async function SettingsPage({
             </table>
           </div>
         </article>
+        ) : null}
 
+        {isAdmin ? (
         <article className="panel panelFull">
           <h2>Current Production Categories</h2>
           <div className="tableWrap">
@@ -477,7 +495,9 @@ export default async function SettingsPage({
             </table>
           </div>
         </article>
+        ) : null}
 
+        {isAdmin ? (
         <article className="panel panelFull">
           <h2>Current Account Codes</h2>
           <div className="tableWrap">
@@ -544,9 +564,129 @@ export default async function SettingsPage({
             </button>
           </form>
         </article>
+        ) : null}
+
+        <article className="panel panelFull">
+          <h2>User Access Scopes</h2>
+          <p className="heroSubtitle">
+            {isAdmin
+              ? "Assign scopes for all users."
+              : "Assign Buyer/Viewer scopes for users in your managed projects."}
+          </p>
+          <form action={createUserAccessScopeAction} className="requestForm">
+            <label>
+              User
+              <select name="userId" required>
+                <option value="">Select user</option>
+                {accessUsers.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.fullName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Role
+              <select name="scopeRole" defaultValue={isAdmin ? "viewer" : "buyer"}>
+                {isAdmin ? <option value="admin">Admin</option> : null}
+                {isAdmin ? <option value="project_manager">Project Manager</option> : null}
+                <option value="buyer">Buyer</option>
+                <option value="viewer">Viewer</option>
+              </select>
+            </label>
+            <label>
+              Project
+              <select name="projectId">
+                <option value="">(optional for admin)</option>
+                {projects
+                  .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
+                  .map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.name}
+                    {project.season ? ` (${project.season})` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Department
+              <select name="productionCategoryId">
+                <option value="">All categories</option>
+                {productionCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Fiscal Year
+              <select name="fiscalYearId">
+                <option value="">(optional)</option>
+                {fiscalYears.map((fiscalYear) => (
+                  <option key={fiscalYear.id} value={fiscalYear.id}>
+                    {fiscalYear.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Organization
+              <select name="organizationId">
+                <option value="">(optional)</option>
+                {organizations.map((organization) => (
+                  <option key={organization.id} value={organization.id}>
+                    {organization.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button type="submit" className="buttonLink buttonPrimary">
+              Save Scope
+            </button>
+          </form>
+          <div className="tableWrap" style={{ marginTop: "0.8rem" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Role</th>
+                  <th>Project</th>
+                  <th>Category</th>
+                  <th>Active</th>
+                  <th>Remove</th>
+                </tr>
+              </thead>
+              <tbody>
+                {accessScopes.map((scope) => (
+                  <tr key={scope.id}>
+                    <td>{scope.userName}</td>
+                    <td>{scope.scopeRole}</td>
+                    <td>{projects.find((project) => project.id === scope.projectId)?.name ?? "-"}</td>
+                    <td>{productionCategories.find((category) => category.id === scope.productionCategoryId)?.name ?? "-"}</td>
+                    <td>{scope.active ? "Yes" : "No"}</td>
+                    <td>
+                      <form action={deleteUserAccessScopeAction}>
+                        <input type="hidden" name="id" value={scope.id} />
+                        <button type="submit" className="tinyButton dangerButton">
+                          Remove
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+                {accessScopes.length === 0 ? (
+                  <tr>
+                    <td colSpan={6}>(none)</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </article>
       </div>
 
-      {editingFiscalYear ? (
+      {isAdmin && editingFiscalYear ? (
         <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit fiscal year">
           <div className="modalPanel">
             <h2>Edit Fiscal Year</h2>
@@ -588,7 +728,7 @@ export default async function SettingsPage({
         </div>
       ) : null}
 
-      {editingOrganization ? (
+      {isAdmin && editingOrganization ? (
         <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit organization">
           <div className="modalPanel">
             <h2>Edit Organization</h2>
@@ -752,7 +892,7 @@ export default async function SettingsPage({
         </div>
       ) : null}
 
-      {editingAccountCode ? (
+      {isAdmin && editingAccountCode ? (
         <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit account code">
           <div className="modalPanel">
             <h2>Edit Account Code</h2>
@@ -790,7 +930,7 @@ export default async function SettingsPage({
         </div>
       ) : null}
 
-      {editingProductionCategory ? (
+      {isAdmin && editingProductionCategory ? (
         <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit production category">
           <div className="modalPanel">
             <h2>Edit Production Category</h2>

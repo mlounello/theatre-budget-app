@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { getAccessContext } from "@/lib/access";
 
 function parseMoney(value: FormDataEntryValue | null): number {
   if (typeof value !== "string" || value.trim() === "") return 0;
@@ -82,6 +83,34 @@ function isExternalProcurementProjectName(name: string): boolean {
   return name.trim().toLowerCase() === "external procurement";
 }
 
+async function requireSettingsAdmin(): Promise<void> {
+  const access = await getAccessContext();
+  if (!access.userId) throw new Error("You must be signed in.");
+  if (access.role !== "admin") throw new Error("Only admins can change global settings.");
+}
+
+async function requireProjectSettingsWrite(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  projectId: string
+): Promise<void> {
+  const access = await getAccessContext();
+  if (!access.userId) throw new Error("You must be signed in.");
+  if (access.role === "admin") return;
+
+  const { data, error } = await supabase
+    .from("project_memberships")
+    .select("role")
+    .eq("project_id", projectId)
+    .eq("user_id", access.userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+
+  const role = (data?.role as string | undefined) ?? null;
+  if (role !== "admin" && role !== "project_manager") {
+    throw new Error("Only project managers/admins for this project can edit these settings.");
+  }
+}
+
 function settingsSuccess(message: string, hash?: string): never {
   const target = `/settings?ok=${encodeURIComponent(message)}${hash ? `#${hash}` : ""}`;
   redirect(target);
@@ -131,6 +160,7 @@ async function createProjectViaRpc(
 
 export async function createProjectAction(formData: FormData): Promise<void> {
   try {
+    await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
@@ -207,6 +237,7 @@ export async function createProjectAction(formData: FormData): Promise<void> {
 
 export async function createFiscalYearAction(formData: FormData): Promise<void> {
   try {
+    await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
     const name = String(formData.get("name") ?? "").trim();
     const startDate = String(formData.get("startDate") ?? "").trim();
@@ -241,6 +272,7 @@ export async function createFiscalYearAction(formData: FormData): Promise<void> 
 
 export async function createOrganizationAction(formData: FormData): Promise<void> {
   try {
+    await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
     const name = String(formData.get("name") ?? "").trim();
     const orgCode = String(formData.get("orgCode") ?? "").trim();
@@ -274,6 +306,7 @@ export async function createOrganizationAction(formData: FormData): Promise<void
 
 export async function createAccountCodeAction(formData: FormData): Promise<void> {
   try {
+    await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
     const code = String(formData.get("code") ?? "").trim();
     const category = String(formData.get("category") ?? "").trim();
@@ -303,6 +336,7 @@ export async function createAccountCodeAction(formData: FormData): Promise<void>
 
 export async function createProductionCategoryAction(formData: FormData): Promise<void> {
   try {
+    await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
     const name = String(formData.get("name") ?? "").trim();
     const sortOrderRaw = String(formData.get("sortOrder") ?? "").trim();
@@ -361,6 +395,7 @@ export async function createProductionCategoryAction(formData: FormData): Promis
 
 export async function updateAccountCodeAction(formData: FormData): Promise<void> {
   try {
+    await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
     const id = String(formData.get("id") ?? "").trim();
     const code = String(formData.get("code") ?? "").trim();
@@ -392,6 +427,7 @@ export async function updateAccountCodeAction(formData: FormData): Promise<void>
 
 export async function updateProductionCategoryAction(formData: FormData): Promise<void> {
   try {
+    await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
     const id = String(formData.get("id") ?? "").trim();
     const name = String(formData.get("name") ?? "").trim();
@@ -423,6 +459,7 @@ export async function updateProductionCategoryAction(formData: FormData): Promis
 
 export async function deleteAccountCodeAction(formData: FormData): Promise<void> {
   try {
+    await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
     const id = String(formData.get("id") ?? "").trim();
     if (!id) throw new Error("Account code id is required.");
@@ -460,6 +497,7 @@ export async function deleteAccountCodeAction(formData: FormData): Promise<void>
 
 export async function deleteProductionCategoryAction(formData: FormData): Promise<void> {
   try {
+    await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
     const id = String(formData.get("id") ?? "").trim();
     if (!id) throw new Error("Category id is required.");
@@ -508,6 +546,7 @@ export async function deleteProductionCategoryAction(formData: FormData): Promis
 
 export async function updateFiscalYearAction(formData: FormData): Promise<void> {
   try {
+    await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
     const id = String(formData.get("id") ?? "").trim();
     const name = String(formData.get("name") ?? "").trim();
@@ -533,6 +572,7 @@ export async function updateFiscalYearAction(formData: FormData): Promise<void> 
 
 export async function deleteFiscalYearAction(formData: FormData): Promise<void> {
   try {
+    await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
     const id = String(formData.get("id") ?? "").trim();
     const clearProjectAssignments = formData.get("clearProjectAssignments") === "on";
@@ -567,6 +607,7 @@ export async function deleteFiscalYearAction(formData: FormData): Promise<void> 
 
 export async function updateOrganizationAction(formData: FormData): Promise<void> {
   try {
+    await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
     const id = String(formData.get("id") ?? "").trim();
     const name = String(formData.get("name") ?? "").trim();
@@ -591,6 +632,7 @@ export async function updateOrganizationAction(formData: FormData): Promise<void
 
 export async function deleteOrganizationAction(formData: FormData): Promise<void> {
   try {
+    await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
     const id = String(formData.get("id") ?? "").trim();
     const clearProjectAssignments = formData.get("clearProjectAssignments") === "on";
@@ -634,6 +676,7 @@ export async function updateProjectAction(formData: FormData): Promise<void> {
     const planningRequestsEnabled = !isExternalProcurementProjectName(name) && formData.get("planningRequestsEnabled") === "on";
 
     if (!id || !name) throw new Error("Project id and name are required.");
+    await requireProjectSettingsWrite(supabase, id);
 
     const { error } = await supabase
       .from("projects")
@@ -669,6 +712,8 @@ export async function updateBudgetLineAction(formData: FormData): Promise<void> 
     const active = formData.get("active") === "on";
 
     if (!id) throw new Error("Budget line id is required.");
+    if (currentProjectId) await requireProjectSettingsWrite(supabase, currentProjectId);
+    if (targetProjectId) await requireProjectSettingsWrite(supabase, targetProjectId);
 
     const nextValues: {
       allocated_amount: number;
@@ -735,6 +780,7 @@ export async function addBudgetLineAction(formData: FormData): Promise<void> {
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const allocatedAmount = parseMoney(formData.get("allocatedAmount"));
     if (!projectId || !productionCategoryId) throw new Error("Project and department are required.");
+    await requireProjectSettingsWrite(supabase, projectId);
 
     const { data: projectRow, error: projectError } = await supabase.from("projects").select("name").eq("id", projectId).single();
     if (projectError || !projectRow) throw new Error("Invalid project.");
@@ -815,6 +861,7 @@ export async function reorderBudgetLinesAction(formData: FormData): Promise<void
     const orderedLineIdsRaw = String(formData.get("orderedLineIds") ?? "").trim();
 
     if (!projectId || !orderedLineIdsRaw) throw new Error("Project and ordered lines are required.");
+    await requireProjectSettingsWrite(supabase, projectId);
 
     let orderedLineIds: string[] = [];
     try {
@@ -847,6 +894,7 @@ export async function reorderBudgetLinesAction(formData: FormData): Promise<void
 
 export async function reorderFiscalYearsAction(formData: FormData): Promise<void> {
   try {
+    await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
     const orderedIdsRaw = String(formData.get("orderedFiscalYearIds") ?? "").trim();
     if (!orderedIdsRaw) throw new Error("No fiscal year ordering payload provided.");
@@ -875,6 +923,7 @@ export async function reorderFiscalYearsAction(formData: FormData): Promise<void
 
 export async function reorderOrganizationsAction(formData: FormData): Promise<void> {
   try {
+    await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
     const orderedIdsRaw = String(formData.get("orderedOrganizationIds") ?? "").trim();
     if (!orderedIdsRaw) throw new Error("No organization ordering payload provided.");
@@ -915,6 +964,13 @@ export async function reorderProjectsAction(formData: FormData): Promise<void> {
       throw new Error("Invalid project ordering payload.");
     }
     if (orderedIds.length === 0) throw new Error("No projects provided for reorder.");
+    const access = await getAccessContext();
+    if (access.role !== "admin") {
+      if (!access.userId) throw new Error("You must be signed in.");
+      for (const projectId of orderedIds) {
+        await requireProjectSettingsWrite(supabase, projectId);
+      }
+    }
 
     for (let idx = 0; idx < orderedIds.length; idx += 1) {
       let query = supabase.from("projects").update({ sort_order: idx }).eq("id", orderedIds[idx]);
@@ -1120,5 +1176,83 @@ export async function importHierarchyCsvAction(formData: FormData): Promise<void
     rethrowIfRedirect(error);
     const message = error instanceof Error ? error.message : "CSV import failed.";
     redirect(`/settings?import=error&msg=${encodeURIComponent(message)}`);
+  }
+}
+
+export async function createUserAccessScopeAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const access = await getAccessContext();
+    if (!access.userId) throw new Error("You must be signed in.");
+
+    const userId = String(formData.get("userId") ?? "").trim();
+    const scopeRole = String(formData.get("scopeRole") ?? "").trim() as "admin" | "project_manager" | "buyer" | "viewer";
+    const projectId = String(formData.get("projectId") ?? "").trim();
+    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
+
+    if (!userId || !scopeRole) throw new Error("User and role are required.");
+
+    if (access.role !== "admin") {
+      if (scopeRole !== "buyer" && scopeRole !== "viewer") {
+        throw new Error("Project managers can only assign Buyer/Viewer scopes.");
+      }
+      if (!projectId) throw new Error("Project is required for PM-assigned scopes.");
+      await requireProjectSettingsWrite(supabase, projectId);
+    }
+
+    const { error } = await supabase.from("user_access_scopes").insert({
+      user_id: userId,
+      scope_role: scopeRole,
+      project_id: projectId || null,
+      production_category_id: productionCategoryId || null,
+      fiscal_year_id: fiscalYearId || null,
+      organization_id: organizationId || null,
+      active: true
+    });
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/settings");
+    settingsSuccess("User scope saved.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not save user scope."));
+  }
+}
+
+export async function deleteUserAccessScopeAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const access = await getAccessContext();
+    if (!access.userId) throw new Error("You must be signed in.");
+
+    const id = String(formData.get("id") ?? "").trim();
+    if (!id) throw new Error("Scope id is required.");
+
+    const { data: row, error: rowError } = await supabase
+      .from("user_access_scopes")
+      .select("id, scope_role, project_id")
+      .eq("id", id)
+      .single();
+    if (rowError || !row) throw new Error(rowError?.message ?? "Scope not found.");
+
+    if (access.role !== "admin") {
+      if ((row.scope_role as string) !== "buyer" && (row.scope_role as string) !== "viewer") {
+        throw new Error("Project managers can only remove Buyer/Viewer scopes.");
+      }
+      const projectId = (row.project_id as string | null) ?? "";
+      if (!projectId) throw new Error("PM can only remove project-scoped access rows.");
+      await requireProjectSettingsWrite(supabase, projectId);
+    }
+
+    const { error } = await supabase.from("user_access_scopes").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/settings");
+    settingsSuccess("User scope removed.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not remove user scope."));
   }
 }

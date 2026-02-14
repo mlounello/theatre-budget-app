@@ -433,6 +433,23 @@ export type HierarchyRow = {
   allocatedAmount: number | null;
 };
 
+export type SettingsUserRow = {
+  id: string;
+  fullName: string;
+};
+
+export type SettingsAccessScopeRow = {
+  id: string;
+  userId: string;
+  userName: string;
+  scopeRole: "admin" | "project_manager" | "buyer" | "viewer";
+  fiscalYearId: string | null;
+  organizationId: string | null;
+  projectId: string | null;
+  productionCategoryId: string | null;
+  active: boolean;
+};
+
 export async function getDashboardProjects(): Promise<DashboardProject[]> {
   const supabase = await getSupabaseServerClient();
 
@@ -1335,6 +1352,90 @@ export async function getSettingsProjects(): Promise<SettingsProject[]> {
     planningRequestsEnabled: (row.planning_requests_enabled as boolean | null) ?? true,
     sortOrder: (row.sort_order as number | null) ?? 0
   }));
+}
+
+export async function getSettingsAccessScopes(): Promise<{
+  users: SettingsUserRow[];
+  scopes: SettingsAccessScopeRow[];
+}> {
+  const supabase = await getSupabaseServerClient();
+  const access = await getAccessContext();
+
+  const [usersResponse, scopesResponse, membershipsResponse, projectsResponse, categoriesResponse] = await Promise.all([
+    supabase.from("users").select("id, full_name").order("full_name", { ascending: true }),
+    supabase
+      .from("user_access_scopes")
+      .select("id, user_id, scope_role, fiscal_year_id, organization_id, project_id, production_category_id, active")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("project_memberships")
+      .select("user_id, project_id")
+      .in("role", ["admin", "project_manager", "buyer", "viewer"]),
+    supabase.from("projects").select("id, name, season"),
+    supabase.from("production_categories").select("id, name")
+  ]);
+
+  if (usersResponse.error) throw usersResponse.error;
+  if (scopesResponse.error) throw scopesResponse.error;
+  if (membershipsResponse.error) throw membershipsResponse.error;
+  if (projectsResponse.error) throw projectsResponse.error;
+  if (categoriesResponse.error) throw categoriesResponse.error;
+
+  const isAdmin = access.role === "admin";
+  const manageableProjects = access.manageableProjectIds;
+
+  const users = (usersResponse.data ?? []).map((row) => ({
+    id: row.id as string,
+    fullName: ((row.full_name as string | null) ?? "").trim() || (row.id as string)
+  }));
+  const userNameById = new Map(users.map((user) => [user.id, user.fullName]));
+
+  const projectsById = new Map(
+    (projectsResponse.data ?? []).map((row) => [
+      row.id as string,
+      `${row.name as string}${(row.season as string | null) ? ` (${row.season as string})` : ""}`
+    ])
+  );
+  const categoriesById = new Map((categoriesResponse.data ?? []).map((row) => [row.id as string, row.name as string]));
+
+  const usersInManagedProjects = new Set<string>();
+  for (const membership of membershipsResponse.data ?? []) {
+    const projectId = membership.project_id as string;
+    if (isAdmin || manageableProjects.has(projectId)) {
+      usersInManagedProjects.add(membership.user_id as string);
+    }
+  }
+
+  const filteredUsers = isAdmin ? users : users.filter((user) => usersInManagedProjects.has(user.id));
+
+  const scopes = (scopesResponse.data ?? [])
+    .filter((row) => {
+      const projectId = (row.project_id as string | null) ?? null;
+      if (isAdmin) return true;
+      if (!projectId) return false;
+      return manageableProjects.has(projectId);
+    })
+    .map((row) => {
+      const projectId = (row.project_id as string | null) ?? null;
+      const productionCategoryId = (row.production_category_id as string | null) ?? null;
+      const userId = row.user_id as string;
+      const userName = userNameById.get(userId) ?? userId;
+      const projectLabel = projectId ? projectsById.get(projectId) ?? projectId : null;
+      const categoryLabel = productionCategoryId ? categoriesById.get(productionCategoryId) ?? productionCategoryId : null;
+      return {
+        id: row.id as string,
+        userId,
+        userName: projectLabel && categoryLabel ? `${userName} | ${projectLabel} | ${categoryLabel}` : userName,
+        scopeRole: (row.scope_role as "admin" | "project_manager" | "buyer" | "viewer") ?? "viewer",
+        fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
+        organizationId: (row.organization_id as string | null) ?? null,
+        projectId,
+        productionCategoryId,
+        active: Boolean(row.active as boolean | null)
+      };
+    });
+
+  return { users: filteredUsers, scopes };
 }
 
 export async function getTemplateNames(): Promise<string[]> {
