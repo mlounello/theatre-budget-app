@@ -13,6 +13,8 @@ import { CreateStatementMonthForm } from "@/app/cc/create-statement-month-form";
 import { getAccountCodeOptions, getCcPendingRows, getProductionCategoryOptions, getSettingsProjects } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { getAccessContext } from "@/lib/access";
+import { redirect } from "next/navigation";
 
 type StatementMonthRow = {
   id: string;
@@ -55,6 +57,10 @@ export default async function CreditCardPage({
     cc_pending_q?: string;
   }>;
 }) {
+  const access = await getAccessContext();
+  if (!access.userId) redirect("/login");
+  if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
+
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const okMessage = resolvedSearchParams?.ok;
   const errorMessage = resolvedSearchParams?.error;

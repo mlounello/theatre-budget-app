@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { updateDashboardRequisitionStatusAction } from "@/app/dashboard-actions";
 import { formatCurrency } from "@/lib/format";
 import { getDashboardOpenRequisitions, getDashboardProjects } from "@/lib/db";
 import type { DashboardOpenRequisition, DashboardProject } from "@/lib/db";
+import { getAccessContext } from "@/lib/access";
 
 const REQUISITION_PROCUREMENT_STATUSES = [
   { value: "requested", label: "Requested" },
@@ -25,6 +27,10 @@ export default async function DashboardPage({
 }: {
   searchParams?: Promise<{ ok?: string; error?: string }>;
 }) {
+  const access = await getAccessContext();
+  if (!access.userId) redirect("/login");
+  if (access.role === "buyer" || access.role === "viewer") redirect("/my-budget");
+
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const okMessage = resolvedSearchParams?.ok;
   const errorMessage = resolvedSearchParams?.error;

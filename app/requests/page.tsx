@@ -1,8 +1,14 @@
 import { getRequestsData } from "@/lib/db";
 import { CreateRequestForm } from "@/app/requests/create-request-form";
 import { RequestsTable } from "@/app/requests/requests-table";
+import { getAccessContext } from "@/lib/access";
+import { redirect } from "next/navigation";
 
 export default async function RequestsPage() {
+  const access = await getAccessContext();
+  if (!access.userId) redirect("/login");
+  if (!["admin", "project_manager", "buyer"].includes(access.role)) redirect("/my-budget");
+
   const { purchases, receipts, budgetLineOptions, projectOptions, accountCodeOptions, productionCategoryOptions, canManageSplits } =
     await getRequestsData();
 

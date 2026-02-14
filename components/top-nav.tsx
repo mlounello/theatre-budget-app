@@ -1,34 +1,70 @@
 import Link from "next/link";
 import { signOut } from "@/app/auth/actions";
-import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { getAccessContext } from "@/lib/access";
 
-const links = [
-  { href: "/", label: "Dashboard" },
-  { href: "/overview", label: "Overview" },
-  { href: "/requests", label: "Requests" },
-  { href: "/procurement", label: "Procurement" },
-  { href: "/contracts", label: "Contracts" },
-  { href: "/income", label: "Income" },
-  { href: "/cc", label: "CC" },
-  { href: "/settings", label: "Settings" },
-  { href: "/debug", label: "Debug" }
-];
+function linksForRole(role: string): Array<{ href: string; label: string }> {
+  if (role === "viewer") {
+    return [
+      { href: "/", label: "Dashboard" },
+      { href: "/my-budget", label: "My Budget" }
+    ];
+  }
+
+  if (role === "buyer") {
+    return [
+      { href: "/", label: "Dashboard" },
+      { href: "/my-budget", label: "My Budget" },
+      { href: "/requests", label: "Requests" }
+    ];
+  }
+
+  if (role === "project_manager") {
+    return [
+      { href: "/", label: "Dashboard" },
+      { href: "/overview", label: "Overview" },
+      { href: "/requests", label: "Requests" },
+      { href: "/procurement", label: "Procurement" },
+      { href: "/contracts", label: "Contracts" },
+      { href: "/income", label: "Income" },
+      { href: "/cc", label: "CC" },
+      { href: "/settings", label: "Settings" }
+    ];
+  }
+
+  if (role === "admin") {
+    return [
+      { href: "/", label: "Dashboard" },
+      { href: "/overview", label: "Overview" },
+      { href: "/requests", label: "Requests" },
+      { href: "/procurement", label: "Procurement" },
+      { href: "/contracts", label: "Contracts" },
+      { href: "/income", label: "Income" },
+      { href: "/cc", label: "CC" },
+      { href: "/settings", label: "Settings" },
+      { href: "/debug", label: "Debug" }
+    ];
+  }
+
+  return [];
+}
 
 export async function TopNav() {
   let userEmail: string | null = null;
   let hasUser = false;
+  let role = "none";
 
   try {
-    const supabase = await getSupabaseServerClient();
-    const {
-      data: { user }
-    } = await supabase.auth.getUser();
-    hasUser = Boolean(user);
-    userEmail = user?.email ?? null;
+    const context = await getAccessContext();
+    hasUser = Boolean(context.userId);
+    userEmail = context.email;
+    role = context.role;
   } catch {
     hasUser = false;
     userEmail = null;
+    role = "none";
   }
+
+  const links = linksForRole(role);
 
   return (
     <header className="topNav">

@@ -1,7 +1,12 @@
 import { getBannerCodeActualRows, getCategoryActualRows, getOrganizationOverviewRows } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
+import { getAccessContext } from "@/lib/access";
+import { redirect } from "next/navigation";
 
 export default async function OverviewPage() {
+  const access = await getAccessContext();
+  if (!access.userId) redirect("/login");
+
   const [rows, categoryActuals, bannerActuals] = await Promise.all([
     getOrganizationOverviewRows(),
     getCategoryActualRows(),

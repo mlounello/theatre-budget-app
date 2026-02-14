@@ -1,12 +1,17 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { formatCurrency } from "@/lib/format";
 import { getProjectBudgetBoard } from "@/lib/db";
+import { getAccessContext } from "@/lib/access";
 
 type Props = {
   params: Promise<{ projectId: string }>;
 };
 
 export default async function ProjectBudgetBoardPage({ params }: Props) {
+  const access = await getAccessContext();
+  if (!access.userId) redirect("/login");
+  if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
+
   const { projectId } = await params;
 
   let board;

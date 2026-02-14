@@ -1,6 +1,12 @@
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { getAccessContext } from "@/lib/access";
+import { redirect } from "next/navigation";
 
 export default async function DebugPage() {
+  const access = await getAccessContext();
+  if (!access.userId) redirect("/login");
+  if (access.role !== "admin") redirect("/");
+
   const supabase = await getSupabaseServerClient();
 
   const {

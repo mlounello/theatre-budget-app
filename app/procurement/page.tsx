@@ -3,12 +3,18 @@ import { CreateOrderForm } from "@/app/procurement/create-order-form";
 import { QuickBatchAddForm } from "@/app/procurement/quick-batch-add-form";
 import { ProcurementTable } from "@/app/procurement/procurement-table";
 import { getProcurementData } from "@/lib/db";
+import { getAccessContext } from "@/lib/access";
+import { redirect } from "next/navigation";
 
 export default async function ProcurementPage({
   searchParams
 }: {
   searchParams?: Promise<{ ok?: string; error?: string }>;
 }) {
+  const access = await getAccessContext();
+  if (!access.userId) redirect("/login");
+  if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
+
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const okMessage = resolvedSearchParams?.ok;
   const errorMessage = resolvedSearchParams?.error;

@@ -2,12 +2,18 @@ import { createIncomeEntryAction } from "@/app/income/actions";
 import { IncomeTable } from "@/app/income/income-table";
 import { formatCurrency } from "@/lib/format";
 import { getAccountCodeOptions, getIncomeRows, getOrganizationOptions, getProductionCategoryOptions } from "@/lib/db";
+import { getAccessContext } from "@/lib/access";
+import { redirect } from "next/navigation";
 
 export default async function IncomePage({
   searchParams
 }: {
   searchParams?: Promise<{ ok?: string; error?: string; fy?: string; org?: string }>;
 }) {
+  const access = await getAccessContext();
+  if (!access.userId) redirect("/login");
+  if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
+
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const okMessage = resolvedSearchParams?.ok;
   const errorMessage = resolvedSearchParams?.error;

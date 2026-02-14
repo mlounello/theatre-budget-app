@@ -30,6 +30,8 @@ import {
   type HierarchyRow
 } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
+import { getAccessContext } from "@/lib/access";
+import { redirect } from "next/navigation";
 
 type ProjectGroup = {
   id: string;
@@ -69,6 +71,10 @@ export default async function SettingsPage({
     editId?: string;
   }>;
 }) {
+  const access = await getAccessContext();
+  if (!access.userId) redirect("/login");
+  if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
+
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const importStatus = resolvedSearchParams?.import;
   const importMessage = resolvedSearchParams?.msg;

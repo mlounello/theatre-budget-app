@@ -7,6 +7,8 @@ import { CreateContractForm } from "@/app/contracts/create-contract-form";
 import { ContractRowActions } from "@/app/contracts/contract-row-actions";
 import { formatCurrency } from "@/lib/format";
 import { getContractsData } from "@/lib/db";
+import { getAccessContext } from "@/lib/access";
+import { redirect } from "next/navigation";
 
 function workflowLabel(value: string): string {
   if (value === "contract_sent") return "Contract Sent";
@@ -39,6 +41,10 @@ export default async function ContractsPage({
 }: {
   searchParams?: Promise<{ ok?: string; error?: string }>;
 }) {
+  const access = await getAccessContext();
+  if (!access.userId) redirect("/login");
+  if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
+
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const okMessage = resolvedSearchParams?.ok;
   const errorMessage = resolvedSearchParams?.error;

@@ -1,5 +1,6 @@
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import type { PurchaseStatus } from "@/lib/types";
+import { getAccessContext } from "@/lib/access";
 
 function asNumber(value: string | number | null): number {
   if (value === null) return 0;
@@ -35,6 +36,40 @@ export type DashboardOpenRequisition = {
   vendorName: string | null;
   procurementStatus: string;
   orderValue: number;
+};
+
+export type MyBudgetEntry = {
+  id: string;
+  title: string;
+  vendorName: string | null;
+  poNumber: string | null;
+  requisitionNumber: string | null;
+  procurementStatus: string;
+  status: PurchaseStatus;
+  requestType: "requisition" | "expense" | "contract" | "request" | "budget_transfer" | "contract_payment";
+  amount: number;
+  createdAt: string;
+};
+
+export type MyBudgetCard = {
+  projectId: string;
+  projectName: string;
+  season: string | null;
+  fiscalYearName: string | null;
+  orgCode: string | null;
+  organizationName: string | null;
+  productionCategoryId: string | null;
+  productionCategoryName: string;
+  allocatedTotal: number;
+  requestedOpenTotal: number;
+  heldTotal: number;
+  encTotal: number;
+  pendingCcTotal: number;
+  ytdTotal: number;
+  obligatedTotal: number;
+  remainingTrue: number;
+  remainingIfRequestedApproved: number;
+  entries: MyBudgetEntry[];
 };
 
 export type BudgetLineTotal = {
@@ -1734,4 +1769,236 @@ export async function getIncomeRows(): Promise<IncomeRow[]> {
       createdAt: row.created_at as string
     };
   });
+}
+
+function resolvedPurchaseAmount(row: {
+  estimated_amount?: number | string | null;
+  requested_amount?: number | string | null;
+  encumbered_amount?: number | string | null;
+  pending_cc_amount?: number | string | null;
+  posted_amount?: number | string | null;
+  status?: string | null;
+}): number {
+  const status = String(row.status ?? "").toLowerCase();
+  const estimated = asNumber((row.estimated_amount as string | number | null) ?? 0);
+  const requested = asNumber((row.requested_amount as string | number | null) ?? 0);
+  const encumbered = asNumber((row.encumbered_amount as string | number | null) ?? 0);
+  const pendingCc = asNumber((row.pending_cc_amount as string | number | null) ?? 0);
+  const posted = asNumber((row.posted_amount as string | number | null) ?? 0);
+
+  if (status === "posted") return posted;
+  if (status === "pending_cc") return pendingCc;
+  if (status === "encumbered") return encumbered;
+  if (status === "requested") return requested !== 0 ? requested : estimated;
+  return posted || pendingCc || encumbered || requested || estimated;
+}
+
+export async function getMyBudgetData(): Promise<{
+  role: "admin" | "project_manager" | "buyer" | "viewer" | "none";
+  cards: MyBudgetCard[];
+  openRequisitions: DashboardOpenRequisition[];
+}> {
+  const supabase = await getSupabaseServerClient();
+  const access = await getAccessContext();
+
+  if (!access.userId) {
+    return { role: "none", cards: [], openRequisitions: [] };
+  }
+
+  const role = access.role;
+  const scoped = role === "buyer" || role === "viewer";
+  const scopeRows = scoped ? access.scopes.filter((row) => row.scopeRole === role) : [];
+
+  const [{ data: projectsData, error: projectsError }, { data: linesData, error: linesError }, { data: purchasesData, error: purchasesError }] =
+    await Promise.all([
+      supabase
+        .from("projects")
+        .select("id, name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name)")
+        .not("name", "ilike", "external procurement")
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true }),
+      supabase
+        .from("project_budget_lines")
+        .select("id, project_id, production_category_id, allocated_amount, active, production_categories(name)")
+        .eq("active", true),
+      supabase
+        .from("purchases")
+        .select(
+          "id, project_id, production_category_id, title, requisition_number, po_number, procurement_status, status, request_type, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, created_at, vendors(name), production_categories(name)"
+        )
+        .neq("procurement_status", "cancelled")
+        .order("created_at", { ascending: false })
+    ]);
+
+  if (projectsError) throw projectsError;
+  if (linesError) throw linesError;
+  if (purchasesError) throw purchasesError;
+
+  const projectsById = new Map(
+    (projectsData ?? []).map((row) => {
+      const org = row.organizations as { name?: string; org_code?: string } | null;
+      const fy = row.fiscal_years as { name?: string } | null;
+      return [
+        row.id as string,
+        {
+          id: row.id as string,
+          name: (row.name as string) ?? "Project",
+          season: (row.season as string | null) ?? null,
+          organizationId: (row.organization_id as string | null) ?? null,
+          fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
+          organizationName: org?.name ?? null,
+          orgCode: org?.org_code ?? null,
+          fiscalYearName: fy?.name ?? null
+        }
+      ] as const;
+    })
+  );
+
+  function isRowInScope(projectId: string, productionCategoryId: string | null): boolean {
+    if (!scoped) return true;
+    if (scopeRows.length === 0) return false;
+    const project = projectsById.get(projectId);
+    if (!project) return false;
+
+    return scopeRows.some((scope) => {
+      if (scope.projectId && scope.projectId !== projectId) return false;
+      if (scope.organizationId && scope.organizationId !== project.organizationId) return false;
+      if (scope.fiscalYearId && scope.fiscalYearId !== project.fiscalYearId) return false;
+      if (scope.productionCategoryId && scope.productionCategoryId !== productionCategoryId) return false;
+      return true;
+    });
+  }
+
+  const cards = new Map<string, MyBudgetCard>();
+
+  for (const row of linesData ?? []) {
+    const projectId = row.project_id as string;
+    const project = projectsById.get(projectId);
+    if (!project) continue;
+    const productionCategoryId = (row.production_category_id as string | null) ?? null;
+    if (!isRowInScope(projectId, productionCategoryId)) continue;
+    const productionCategory = row.production_categories as { name?: string } | null;
+    const productionCategoryName = productionCategory?.name ?? "Unassigned";
+    const key = `${projectId}:${productionCategoryId ?? "none"}`;
+    const existing =
+      cards.get(key) ??
+      ({
+        projectId,
+        projectName: project.name,
+        season: project.season,
+        fiscalYearName: project.fiscalYearName,
+        orgCode: project.orgCode,
+        organizationName: project.organizationName,
+        productionCategoryId,
+        productionCategoryName,
+        allocatedTotal: 0,
+        requestedOpenTotal: 0,
+        heldTotal: 0,
+        encTotal: 0,
+        pendingCcTotal: 0,
+        ytdTotal: 0,
+        obligatedTotal: 0,
+        remainingTrue: 0,
+        remainingIfRequestedApproved: 0,
+        entries: []
+      } satisfies MyBudgetCard);
+    existing.allocatedTotal += asNumber(row.allocated_amount as string | number | null);
+    cards.set(key, existing);
+  }
+
+  const openRequisitions: DashboardOpenRequisition[] = [];
+  for (const row of purchasesData ?? []) {
+    const projectId = row.project_id as string;
+    const project = projectsById.get(projectId);
+    if (!project) continue;
+    const productionCategoryId = (row.production_category_id as string | null) ?? null;
+    if (!isRowInScope(projectId, productionCategoryId)) continue;
+    const productionCategory = row.production_categories as { name?: string } | null;
+    const productionCategoryName = productionCategory?.name ?? "Unassigned";
+    const key = `${projectId}:${productionCategoryId ?? "none"}`;
+    const card =
+      cards.get(key) ??
+      ({
+        projectId,
+        projectName: project.name,
+        season: project.season,
+        fiscalYearName: project.fiscalYearName,
+        orgCode: project.orgCode,
+        organizationName: project.organizationName,
+        productionCategoryId,
+        productionCategoryName,
+        allocatedTotal: 0,
+        requestedOpenTotal: 0,
+        heldTotal: 0,
+        encTotal: 0,
+        pendingCcTotal: 0,
+        ytdTotal: 0,
+        obligatedTotal: 0,
+        remainingTrue: 0,
+        remainingIfRequestedApproved: 0,
+        entries: []
+      } satisfies MyBudgetCard);
+
+    const amount = resolvedPurchaseAmount(row);
+    const status = ((row.status as string | null) ?? "requested").toLowerCase() as PurchaseStatus;
+    const requestType = ((row.request_type as string | null) ?? "requisition").toLowerCase() as MyBudgetEntry["requestType"];
+
+    if (requestType === "request") card.heldTotal += amount;
+    else if (status === "posted") card.ytdTotal += amount;
+    else if (status === "pending_cc") card.pendingCcTotal += amount;
+    else if (status === "encumbered") card.encTotal += amount;
+    else if (status === "requested") card.requestedOpenTotal += amount;
+
+    const vendor = row.vendors as { name?: string } | null;
+    card.entries.push({
+      id: row.id as string,
+      title: (row.title as string) ?? "Untitled",
+      vendorName: vendor?.name ?? null,
+      poNumber: (row.po_number as string | null) ?? null,
+      requisitionNumber: (row.requisition_number as string | null) ?? null,
+      procurementStatus: ((row.procurement_status as string | null) ?? "requested").toLowerCase(),
+      status,
+      requestType,
+      amount,
+      createdAt: row.created_at as string
+    });
+    cards.set(key, card);
+
+    if (
+      requestType === "requisition" &&
+      card.entries[card.entries.length - 1].procurementStatus !== "paid" &&
+      card.entries[card.entries.length - 1].procurementStatus !== "cancelled"
+    ) {
+      openRequisitions.push({
+        id: row.id as string,
+        projectId,
+        projectName: project.name,
+        season: project.season,
+        title: (row.title as string) ?? "Untitled",
+        requisitionNumber: (row.requisition_number as string | null) ?? null,
+        poNumber: (row.po_number as string | null) ?? null,
+        vendorName: vendor?.name ?? null,
+        procurementStatus: ((row.procurement_status as string | null) ?? "requested").toLowerCase(),
+        orderValue: amount
+      });
+    }
+  }
+
+  const output = Array.from(cards.values())
+    .map((card) => {
+      card.obligatedTotal = card.heldTotal + card.encTotal + card.pendingCcTotal + card.ytdTotal;
+      card.remainingTrue = card.allocatedTotal - card.obligatedTotal;
+      card.remainingIfRequestedApproved = card.remainingTrue - card.requestedOpenTotal;
+      card.entries.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+      return card;
+    })
+    .sort((a, b) => {
+      const projectSort = a.projectName.localeCompare(b.projectName);
+      if (projectSort !== 0) return projectSort;
+      return a.productionCategoryName.localeCompare(b.productionCategoryName);
+    });
+
+  openRequisitions.sort((a, b) => a.projectName.localeCompare(b.projectName) || a.title.localeCompare(b.title));
+
+  return { role, cards: output, openRequisitions };
 }
