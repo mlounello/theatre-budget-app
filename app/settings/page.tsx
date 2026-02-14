@@ -18,7 +18,6 @@ import { FiscalYearReorder } from "@/app/settings/fiscal-year-reorder";
 import { OrganizationReorder } from "@/app/settings/organization-reorder";
 import { ProjectReorder } from "@/app/settings/project-reorder";
 import {
-  getAccountCodeOptions,
   getAccountCodesAdmin,
   getFiscalYearOptions,
   getHierarchyRows,
@@ -79,7 +78,6 @@ export default async function SettingsPage({
 
   const projects = await getSettingsProjects();
   const templates = await getTemplateNames();
-  const accountCodes = await getAccountCodeOptions();
   const allAccountCodes = await getAccountCodesAdmin();
   const productionCategories = await getProductionCategoryOptions();
   const allProductionCategories = await getProductionCategoriesAdmin();
@@ -206,7 +204,6 @@ export default async function SettingsPage({
           organizations={organizations}
           templates={templates}
           projects={projects}
-          accountCodes={accountCodes}
           productionCategories={productionCategories}
         />
 
@@ -319,9 +316,7 @@ export default async function SettingsPage({
                             <table>
                               <thead>
                                 <tr>
-                                  <th>Code</th>
-                                  <th>Category</th>
-                                  <th>Line</th>
+                                  <th>Department</th>
                                   <th>Allocated</th>
                                   <th>Display Order</th>
                                   <th>Active</th>
@@ -333,9 +328,7 @@ export default async function SettingsPage({
                                   .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
                                   .map((line, idx) => (
                                   <tr key={`${project.id}-${line.budgetLineId ?? "none"}-${idx}`}>
-                                    <td>{line.budgetCode ?? "-"}</td>
-                                    <td>{line.budgetCategory ?? "-"}</td>
-                                    <td>{line.budgetLineName ?? "-"}</td>
+                                    <td>{line.budgetCategory ?? line.budgetLineName ?? "-"}</td>
                                     <td>{line.allocatedAmount === null ? "-" : formatCurrency(line.allocatedAmount)}</td>
                                     <td>{line.budgetLineId ? idx + 1 : "-"}</td>
                                     <td>{line.budgetLineId ? (line.budgetLineActive ? "Yes" : "No") : "-"}</td>
@@ -349,7 +342,7 @@ export default async function SettingsPage({
                                   </tr>
                                 ))}
                                 <tr>
-                                  <td colSpan={6}>Add a new budget line to this project</td>
+                                  <td colSpan={4}>Add a new category allocation line to this project</td>
                                   <td>
                                     <form action={addBudgetLineAction} className="inlineEditForm">
                                       <input type="hidden" name="projectId" value={project.id} />
@@ -358,14 +351,6 @@ export default async function SettingsPage({
                                         {productionCategories.map((category) => (
                                           <option key={category.id} value={category.id}>
                                             {category.name}
-                                          </option>
-                                        ))}
-                                      </select>
-                                      <select name="accountCodeId">
-                                        <option value="">Account code</option>
-                                        {accountCodes.map((accountCode) => (
-                                          <option key={accountCode.id} value={accountCode.id}>
-                                            {accountCode.code} | {accountCode.category} | {accountCode.name}
                                           </option>
                                         ))}
                                       </select>
@@ -659,21 +644,6 @@ export default async function SettingsPage({
                       );
                     })}
                 </select>
-              </label>
-              <label>
-                Account Code
-                <select name="accountCodeId" defaultValue={editingLine.accountCodeId ?? ""}>
-                  <option value="">(none)</option>
-                  {accountCodes.map((accountCode) => (
-                    <option key={accountCode.id} value={accountCode.id}>
-                      {accountCode.code} | {accountCode.category} | {accountCode.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="checkboxLabel">
-                <input name="clearAccountCode" type="checkbox" />
-                Clear account code link
               </label>
               <label>
                 Department

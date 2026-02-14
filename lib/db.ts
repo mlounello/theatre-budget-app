@@ -1276,6 +1276,7 @@ export async function getHierarchyRows(): Promise<HierarchyRow[]> {
     .select(
       "id, name, season, sort_order, organization_id, fiscal_year_id, organizations(id, name, org_code, sort_order), fiscal_years(id, name, start_date, end_date, sort_order), project_budget_lines(id, account_code_id, budget_code, category, line_name, allocated_amount, sort_order, active)"
     )
+    .not("name", "ilike", "external procurement")
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
 

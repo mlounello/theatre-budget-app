@@ -174,6 +174,25 @@ export async function createProjectAction(formData: FormData): Promise<void> {
       })
       .eq("id", newProjectId);
 
+    const isExternalProject = isExternalProcurementProjectName(projectName);
+    if (!isExternalProject) {
+      const { data: categories, error: categoriesError } = await supabase
+        .from("production_categories")
+        .select("id, name")
+        .eq("active", true)
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true });
+      if (categoriesError) throw new Error(categoriesError.message);
+
+      for (const category of categories ?? []) {
+        const { error: ensureError } = await supabase.rpc("ensure_project_category_line", {
+          p_project_id: newProjectId,
+          p_production_category_id: category.id as string
+        });
+        if (ensureError) throw new Error(ensureError.message);
+      }
+    }
+
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath("/settings");
@@ -306,8 +325,28 @@ export async function createProductionCategoryAction(formData: FormData): Promis
       sortOrder = ((maxSortRows?.[0]?.sort_order as number | null) ?? -1) + 1;
     }
 
-    const { error } = await supabase.from("production_categories").insert({ name, sort_order: sortOrder, active });
+    const { data: insertedCategory, error } = await supabase
+      .from("production_categories")
+      .insert({ name, sort_order: sortOrder, active })
+      .select("id, name")
+      .single();
     if (error) throw new Error(error.message);
+
+    if (active && insertedCategory) {
+      const { data: projectsData, error: projectsError } = await supabase
+        .from("projects")
+        .select("id, name")
+        .not("name", "ilike", "external procurement");
+      if (projectsError) throw new Error(projectsError.message);
+
+      for (const project of projectsData ?? []) {
+        const { error: ensureError } = await supabase.rpc("ensure_project_category_line", {
+          p_project_id: project.id as string,
+          p_production_category_id: insertedCategory.id as string
+        });
+        if (ensureError) throw new Error(ensureError.message);
+      }
+    }
 
     revalidatePath("/settings");
     revalidatePath("/requests");
@@ -591,22 +630,17 @@ export async function updateBudgetLineAction(formData: FormData): Promise<void> 
     const id = String(formData.get("id") ?? "").trim();
     const currentProjectId = String(formData.get("currentProjectId") ?? "").trim();
     const targetProjectId = String(formData.get("targetProjectId") ?? "").trim();
-    const accountCodeId = String(formData.get("accountCodeId") ?? "").trim();
     const allocatedAmount = parseMoney(formData.get("allocatedAmount"));
     const sortOrder = parseOptionalSortOrder(formData.get("sortOrder"));
     const active = formData.get("active") === "on";
 
     if (!id) throw new Error("Budget line id is required.");
 
-    let nextValues: {
+    const nextValues: {
       allocated_amount: number;
       sort_order?: number;
       active: boolean;
-      account_code_id?: string | null;
       production_category_id?: string | null;
-      budget_code?: string;
-      category?: string;
-      line_name?: string;
       project_id?: string;
     } = { allocated_amount: allocatedAmount, active };
 
@@ -623,22 +657,17 @@ export async function updateBudgetLineAction(formData: FormData): Promise<void> 
       nextValues.production_category_id = productionCategoryId;
     }
 
-    if (accountCodeId) {
-      const { data: accountCode, error: accountCodeError } = await supabase
-        .from("account_codes")
-        .select("id, code, category, name")
-        .eq("id", accountCodeId)
+    const destinationProjectId = targetProjectId || currentProjectId;
+    if (destinationProjectId) {
+      const { data: destinationProject, error: destinationProjectError } = await supabase
+        .from("projects")
+        .select("name")
+        .eq("id", destinationProjectId)
         .single();
-      if (accountCodeError || !accountCode) throw new Error("Invalid account code selection.");
-      nextValues = {
-        ...nextValues,
-        account_code_id: accountCode.id
-      };
-    } else if (String(formData.get("clearAccountCode") ?? "").trim() === "on") {
-      nextValues = {
-        ...nextValues,
-        account_code_id: null
-      };
+      if (destinationProjectError || !destinationProject) throw new Error("Invalid destination project.");
+      if (isExternalProcurementProjectName(destinationProject.name as string)) {
+        throw new Error("External Procurement does not support category allocation lines.");
+      }
     }
 
     const { error } = await supabase.from("project_budget_lines").update(nextValues).eq("id", id);
@@ -669,10 +698,15 @@ export async function addBudgetLineAction(formData: FormData): Promise<void> {
     if (!user) throw new Error("You must be signed in.");
 
     const projectId = String(formData.get("projectId") ?? "").trim();
-    const accountCodeId = String(formData.get("accountCodeId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const allocatedAmount = parseMoney(formData.get("allocatedAmount"));
     if (!projectId || !productionCategoryId) throw new Error("Project and department are required.");
+
+    const { data: projectRow, error: projectError } = await supabase.from("projects").select("name").eq("id", projectId).single();
+    if (projectError || !projectRow) throw new Error("Invalid project.");
+    if (isExternalProcurementProjectName(projectRow.name as string)) {
+      throw new Error("External Procurement does not support category allocation lines.");
+    }
 
     const { data: category, error: categoryError } = await supabase
       .from("production_categories")
@@ -680,21 +714,6 @@ export async function addBudgetLineAction(formData: FormData): Promise<void> {
       .eq("id", productionCategoryId)
       .single();
     if (categoryError || !category) throw new Error("Invalid department selection.");
-
-    let accountCode: { id: string; code: string } | null = null;
-    if (accountCodeId) {
-      const { data: accountCodeData, error: accountCodeError } = await supabase
-        .from("account_codes")
-        .select("id, code")
-        .eq("id", accountCodeId)
-        .single();
-
-      if (accountCodeError || !accountCodeData) throw new Error("Invalid account code selection.");
-      accountCode = {
-        id: accountCodeData.id as string,
-        code: accountCodeData.code as string
-      };
-    }
 
     const { data: existingLine, error: existingLineError } = await supabase
       .from("project_budget_lines")
@@ -709,8 +728,8 @@ export async function addBudgetLineAction(formData: FormData): Promise<void> {
       const { error: updateError } = await supabase
         .from("project_budget_lines")
         .update({
-          account_code_id: accountCode?.id ?? null,
-          budget_code: accountCode?.code ?? "UNASSIGNED",
+          account_code_id: null,
+          budget_code: "CATEGORY",
           category: category.name as string,
           line_name: category.name as string,
           production_category_id: productionCategoryId,
@@ -732,10 +751,10 @@ export async function addBudgetLineAction(formData: FormData): Promise<void> {
 
       const { error: insertError } = await supabase.from("project_budget_lines").insert({
         project_id: projectId,
-        budget_code: accountCode?.code ?? "UNASSIGNED",
+        budget_code: "CATEGORY",
         category: category.name as string,
         line_name: category.name as string,
-        account_code_id: accountCode?.id ?? null,
+        account_code_id: null,
         production_category_id: productionCategoryId,
         allocated_amount: allocatedAmount,
         sort_order: nextSort,

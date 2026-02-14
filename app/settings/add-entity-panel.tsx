@@ -10,7 +10,6 @@ import {
   createProjectAction
 } from "@/app/settings/actions";
 import type {
-  AccountCodeOption,
   FiscalYearOption,
   OrganizationOption,
   ProductionCategoryOption,
@@ -22,13 +21,12 @@ type Props = {
   organizations: OrganizationOption[];
   templates: string[];
   projects: SettingsProject[];
-  accountCodes: AccountCodeOption[];
   productionCategories: ProductionCategoryOption[];
 };
 
 type EntityType = "fiscal_year" | "organization" | "project" | "production_category" | "account_code" | "budget_line";
 
-export function AddEntityPanel({ fiscalYears, organizations, templates, projects, accountCodes, productionCategories }: Props) {
+export function AddEntityPanel({ fiscalYears, organizations, templates, projects, productionCategories }: Props) {
   const [entityType, setEntityType] = useState<EntityType>("project");
 
   return (
@@ -190,7 +188,9 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
             Project
             <select name="projectId" required>
               <option value="">Select project</option>
-              {projects.map((project) => (
+              {projects
+                .filter((project) => project.name.trim().toLowerCase() !== "external procurement")
+                .map((project) => (
                 <option key={project.id} value={project.id}>
                   {project.name} {project.season ? `(${project.season})` : ""}
                 </option>
@@ -204,17 +204,6 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
               {productionCategories.map((category) => (
                 <option key={category.id} value={category.id}>
                   {category.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Account Code (optional)
-            <select name="accountCodeId">
-              <option value="">(none)</option>
-              {accountCodes.map((accountCode) => (
-                <option key={accountCode.id} value={accountCode.id}>
-                  {accountCode.label}
                 </option>
               ))}
             </select>
