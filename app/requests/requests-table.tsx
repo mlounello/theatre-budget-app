@@ -52,6 +52,14 @@ function asString(value: string | null | undefined): string {
   return (value ?? "").toLowerCase();
 }
 
+function requestTypeLabel(value: PurchaseRow["requestType"]): string {
+  if (value === "request") return "Budget Hold";
+  if (value === "budget_transfer") return "Budget Transfer";
+  if (value === "requisition") return "Requisition";
+  if (value === "expense") return "Expense";
+  return "Contract";
+}
+
 function sortRows(rows: PurchaseRow[], key: SortKey, direction: SortDirection): PurchaseRow[] {
   const dir = direction === "asc" ? 1 : -1;
   return [...rows].sort((a, b) => {
@@ -239,6 +247,8 @@ export function RequestsTable({
             <option value="requisition">Requisition</option>
             <option value="expense">Expense</option>
             <option value="contract">Contract</option>
+            <option value="request">Budget Hold</option>
+            <option value="budget_transfer">Budget Transfer</option>
           </select>
         </label>
         <label>
@@ -320,7 +330,7 @@ export function RequestsTable({
                 <td>{purchase.requestType === "requisition" ? (purchase.requisitionNumber ?? "-") : (purchase.referenceNumber ?? "-")}</td>
                 <td>{purchase.title}</td>
                 <td>
-                  {purchase.requestType}
+                  {requestTypeLabel(purchase.requestType)}
                   {purchase.requestType === "expense" ? (purchase.isCreditCard ? " (cc)" : " (reimb)") : ""}
                 </td>
                 <td>
@@ -436,6 +446,8 @@ export function RequestsTable({
                   <option value="requisition">Requisition</option>
                   <option value="expense">Expense</option>
                   <option value="contract">Contract</option>
+                  <option value="request">Budget Hold</option>
+                  <option value="budget_transfer">Budget Transfer</option>
                 </select>
               </label>
 

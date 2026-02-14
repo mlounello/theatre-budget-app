@@ -28,6 +28,61 @@ type AllocationInput = {
   reportingBucket: "direct" | "miscellaneous";
 };
 
+type RequestType = "requisition" | "expense" | "contract" | "request" | "budget_transfer";
+
+function parseRequestType(value: FormDataEntryValue | null): RequestType {
+  const raw = String(value ?? "requisition").trim().toLowerCase();
+  if (raw === "expense" || raw === "contract" || raw === "request" || raw === "budget_transfer") return raw;
+  return "requisition";
+}
+
+function computeRequestAmounts(
+  requestType: RequestType,
+  estimatedAmount: number,
+  requestedAmountInput: number,
+  isCreditCard: boolean
+): {
+  status: PurchaseStatus;
+  requestedAmount: number;
+  encumberedAmount: number;
+  pendingCcAmount: number;
+  postedAmount: number;
+  ccWorkflowStatus: "requested" | "posted_to_account" | null;
+} {
+  const baseAmount = requestedAmountInput !== 0 ? requestedAmountInput : estimatedAmount;
+
+  if (requestType === "budget_transfer") {
+    return {
+      status: "posted",
+      requestedAmount: 0,
+      encumberedAmount: 0,
+      pendingCcAmount: 0,
+      postedAmount: baseAmount,
+      ccWorkflowStatus: null
+    };
+  }
+
+  if (requestType === "expense" && isCreditCard) {
+    return {
+      status: "pending_cc",
+      requestedAmount: 0,
+      encumberedAmount: 0,
+      pendingCcAmount: baseAmount,
+      postedAmount: 0,
+      ccWorkflowStatus: "requested"
+    };
+  }
+
+  return {
+    status: "requested",
+    requestedAmount: baseAmount,
+    encumberedAmount: 0,
+    pendingCcAmount: 0,
+    postedAmount: 0,
+    ccWorkflowStatus: null
+  };
+}
+
 async function requirePmOrAdmin(
   supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
   projectId: string,
@@ -65,9 +120,7 @@ export async function createRequest(formData: FormData): Promise<void> {
   const requisitionNumber = String(formData.get("requisitionNumber") ?? "").trim();
   const estimatedAmount = parseMoney(formData.get("estimatedAmount"));
   const requestedAmount = parseMoney(formData.get("requestedAmount"));
-  const requestTypeRaw = String(formData.get("requestType") ?? "requisition").trim().toLowerCase();
-  const requestType =
-    requestTypeRaw === "expense" || requestTypeRaw === "contract" ? requestTypeRaw : ("requisition" as const);
+  const requestType = parseRequestType(formData.get("requestType"));
   const isCreditCard = requestType === "expense" ? formData.get("isCreditCard") === "on" : false;
   const allocationsJson = String(formData.get("allocationsJson") ?? "").trim();
 
@@ -145,7 +198,7 @@ export async function createRequest(formData: FormData): Promise<void> {
   }
 
   const requestedTotal = allocations.length > 0 ? allocations.reduce((sum, allocation) => sum + allocation.amount, 0) : requestedAmount;
-  const isCcRequest = requestType === "expense" && isCreditCard;
+  const computed = computeRequestAmounts(requestType, estimatedAmount, requestedTotal, isCreditCard);
 
   const { data: inserted, error } = await supabase
     .from("purchases")
@@ -153,20 +206,21 @@ export async function createRequest(formData: FormData): Promise<void> {
       project_id: budgetLine.project_id,
       budget_line_id: budgetLine.id,
       production_category_id: productionCategoryId,
-      banner_account_code_id: bannerAccountCodeId || null,
+      banner_account_code_id: requestType === "request" ? null : bannerAccountCodeId || null,
       entered_by_user_id: user.id,
       title,
-      reference_number: requestType === "requisition" ? null : referenceNumber || null,
+      reference_number: requestType === "requisition" || requestType === "budget_transfer" ? null : referenceNumber || null,
       requisition_number: requestType === "requisition" ? requisitionNumber || null : null,
       estimated_amount: estimatedAmount,
-      requested_amount: requestedTotal,
-      encumbered_amount: 0,
-      pending_cc_amount: isCcRequest ? requestedTotal : 0,
-      posted_amount: 0,
+      requested_amount: computed.requestedAmount,
+      encumbered_amount: computed.encumberedAmount,
+      pending_cc_amount: computed.pendingCcAmount,
+      posted_amount: computed.postedAmount,
       request_type: requestType,
       is_credit_card: isCreditCard,
-      cc_workflow_status: isCcRequest ? "requested" : null,
-      status: isCcRequest ? "pending_cc" : "requested"
+      cc_workflow_status: computed.ccWorkflowStatus,
+      status: computed.status,
+      posted_date: computed.status === "posted" ? new Date().toISOString().slice(0, 10) : null
     })
     .select("id")
     .single();
@@ -199,7 +253,7 @@ export async function createRequest(formData: FormData): Promise<void> {
       allocations.map((allocation) => ({
         purchase_id: inserted.id,
         reporting_budget_line_id: allocation.reportingBudgetLineId,
-        account_code_id: allocation.accountCodeId,
+        account_code_id: requestType === "request" ? null : allocation.accountCodeId,
         production_category_id: productionCategoryId,
         amount: allocation.amount,
         reporting_bucket: allocation.reportingBucket
@@ -217,9 +271,9 @@ export async function createRequest(formData: FormData): Promise<void> {
     const { error: allocationError } = await supabase.from("purchase_allocations").insert({
       purchase_id: inserted.id,
       reporting_budget_line_id: budgetLine.id,
-      account_code_id: bannerAccountCodeId || lineWithCode.account_code_id,
+      account_code_id: requestType === "request" ? null : bannerAccountCodeId || lineWithCode.account_code_id,
       production_category_id: productionCategoryId,
-      amount: requestedTotal,
+      amount: computed.status === "posted" ? computed.postedAmount : requestedTotal,
       reporting_bucket: "direct"
     });
     if (allocationError) throw new Error(allocationError.message);
@@ -228,14 +282,21 @@ export async function createRequest(formData: FormData): Promise<void> {
   const eventError = await supabase.from("purchase_events").insert({
     purchase_id: inserted.id,
     from_status: null,
-    to_status: isCcRequest ? "pending_cc" : "requested",
+    to_status: computed.status,
     estimated_amount_snapshot: estimatedAmount,
-    requested_amount_snapshot: isCcRequest ? 0 : requestedTotal,
-    encumbered_amount_snapshot: 0,
-    pending_cc_amount_snapshot: isCcRequest ? requestedTotal : 0,
-    posted_amount_snapshot: 0,
+    requested_amount_snapshot: computed.requestedAmount,
+    encumbered_amount_snapshot: computed.encumberedAmount,
+    pending_cc_amount_snapshot: computed.pendingCcAmount,
+    posted_amount_snapshot: computed.postedAmount,
     changed_by_user_id: user.id,
-    note: isCcRequest ? "Credit-card request created and reserved in Pending CC" : "Request created"
+    note:
+      requestType === "request"
+        ? "Budget Hold created"
+        : requestType === "budget_transfer"
+          ? "Budget Transfer posted to YTD"
+          : requestType === "expense" && isCreditCard
+            ? "Credit-card request created and reserved in Pending CC"
+            : "Request created"
   });
 
   if (eventError.error) {
@@ -604,9 +665,7 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
   const requisitionNumber = String(formData.get("requisitionNumber") ?? "").trim();
   const estimatedAmount = parseMoney(formData.get("estimatedAmount"));
   const requestedAmount = parseMoney(formData.get("requestedAmount"));
-  const requestTypeRaw = String(formData.get("requestType") ?? "requisition").trim().toLowerCase();
-  const requestType =
-    requestTypeRaw === "expense" || requestTypeRaw === "contract" ? requestTypeRaw : ("requisition" as const);
+  const requestType = parseRequestType(formData.get("requestType"));
   const isCreditCard = requestType === "expense" ? formData.get("isCreditCard") === "on" : false;
 
   if (!purchaseId) throw new Error("Purchase ID required.");
@@ -641,11 +700,7 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
     throw new Error("Budget line must belong to the selected project.");
   }
 
-  const nextRequested = requestedAmount;
-  const nextIsCc = requestType === "expense" && isCreditCard;
-  const nextCcWorkflowStatus = nextIsCc
-    ? ((existing.status as PurchaseStatus) === "posted" ? "posted_to_account" : "requested")
-    : null;
+  const computed = computeRequestAmounts(requestType, estimatedAmount, requestedAmount, isCreditCard);
   const currentPostedAmount = Number(existing.posted_amount ?? 0);
   const currentPendingCcAmount = Number(existing.pending_cc_amount ?? 0);
   const currentEncumberedAmount = Number(existing.encumbered_amount ?? 0);
@@ -663,28 +718,33 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
     project_id: projectId,
     budget_line_id: resolvedBudgetLineId,
     production_category_id: productionCategoryId,
-    banner_account_code_id: bannerAccountCodeId || null,
+    banner_account_code_id: requestType === "request" ? null : bannerAccountCodeId || null,
     title,
-    reference_number: requestType === "requisition" ? null : referenceNumber || null,
+    reference_number: requestType === "requisition" || requestType === "budget_transfer" ? null : referenceNumber || null,
     requisition_number: requestType === "requisition" ? requisitionNumber || null : null,
     estimated_amount: (existing.status as PurchaseStatus) === "requested" ? estimatedAmount : statusLockedEstimatedAmount,
-    requested_amount: existing.status === "requested" ? nextRequested : nextRequested,
+    requested_amount: computed.requestedAmount,
+    encumbered_amount: computed.encumberedAmount,
+    pending_cc_amount: computed.pendingCcAmount,
+    posted_amount: computed.postedAmount,
+    status: computed.status,
+    posted_date: computed.status === "posted" ? new Date().toISOString().slice(0, 10) : null,
     request_type: requestType,
     is_credit_card: isCreditCard,
-    cc_workflow_status: nextCcWorkflowStatus
+    cc_workflow_status: computed.ccWorkflowStatus
   };
 
   const { error: updateError } = await supabase.from("purchases").update(nextValues).eq("id", purchaseId);
   if (updateError) throw new Error(updateError.message);
 
   const allocationAmount =
-    (existing.status as PurchaseStatus) === "encumbered"
-      ? Number(existing.encumbered_amount ?? 0)
-      : (existing.status as PurchaseStatus) === "pending_cc"
-        ? Number(existing.pending_cc_amount ?? 0)
-        : (existing.status as PurchaseStatus) === "posted"
-          ? Number(existing.posted_amount ?? 0)
-          : nextRequested;
+    computed.status === "encumbered"
+      ? computed.encumberedAmount
+      : computed.status === "pending_cc"
+        ? computed.pendingCcAmount
+        : computed.status === "posted"
+          ? computed.postedAmount
+          : computed.requestedAmount;
 
   const { error: deleteAllocationsError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", purchaseId);
   if (deleteAllocationsError) throw new Error(deleteAllocationsError.message);
@@ -692,7 +752,7 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
   const { error: insertAllocationError } = await supabase.from("purchase_allocations").insert({
     purchase_id: purchaseId,
     reporting_budget_line_id: resolvedBudgetLineId,
-    account_code_id: bannerAccountCodeId || (budgetLine.account_code_id as string | null) || null,
+    account_code_id: requestType === "request" ? null : bannerAccountCodeId || (budgetLine.account_code_id as string | null) || null,
     production_category_id: productionCategoryId,
     amount: allocationAmount,
     reporting_bucket: "direct"
@@ -782,8 +842,7 @@ export async function bulkUpdateRequestsAction(formData: FormData): Promise<void
   const targetBannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
   const targetTitle = String(formData.get("title") ?? "").trim();
   const targetRequestTypeRaw = String(formData.get("requestType") ?? "").trim().toLowerCase();
-  const targetRequestType =
-    targetRequestTypeRaw === "expense" || targetRequestTypeRaw === "contract" ? targetRequestTypeRaw : ("requisition" as const);
+  const targetRequestType = parseRequestType(targetRequestTypeRaw);
   const targetIsCreditCardRaw = String(formData.get("isCreditCard") ?? "").trim().toLowerCase();
   const targetIsCreditCard = targetIsCreditCardRaw === "true";
   const targetEstimatedAmount = parseMoney(formData.get("estimatedAmount"));
@@ -841,12 +900,16 @@ export async function bulkUpdateRequestsAction(formData: FormData): Promise<void
     nextProductionCategoryId: string;
     resolvedBudgetLineId: string;
     budgetLineAccountCodeId: string | null;
-    nextRequestType: "requisition" | "expense" | "contract";
+    nextRequestType: RequestType;
     nextIsCreditCard: boolean;
     nextCcWorkflowStatus: "requested" | "posted_to_account" | null;
+    nextStatus: PurchaseStatus;
     nextTitle: string;
     nextEstimatedAmount: number;
     nextRequestedAmount: number;
+    nextEncumberedAmount: number;
+    nextPendingCcAmount: number;
+    nextPostedAmount: number;
     requisitionNumber: string | null;
     referenceNumber: string | null;
     bannerAccountCodeId: string | null;
@@ -882,21 +945,16 @@ export async function bulkUpdateRequestsAction(formData: FormData): Promise<void
       .single();
     if (budgetLineError || !budgetLine) throw new Error("Could not resolve account code for reporting line.");
 
-    const existingRequestType = ((purchase.request_type as string | null) ?? "requisition") as "requisition" | "expense" | "contract";
+    const existingRequestType = ((purchase.request_type as string | null) ?? "requisition") as RequestType;
     const nextRequestType = applyType ? targetRequestType : existingRequestType;
     const nextIsCreditCard = nextRequestType === "expense" ? (applyCreditCard ? targetIsCreditCard : Boolean(purchase.is_credit_card)) : false;
-    const nextCcWorkflowStatus: "requested" | "posted_to_account" | null =
-      nextRequestType === "expense" && nextIsCreditCard
-        ? (purchase.status as PurchaseStatus) === "posted"
-          ? "posted_to_account"
-          : "requested"
-        : null;
 
     const nextTitle = applyTitle ? targetTitle : ((purchase.title as string) ?? "");
     if (!nextTitle) throw new Error("Title cannot be blank when applying title.");
 
     const nextEstimatedAmount = applyEstimated ? targetEstimatedAmount : Number(purchase.estimated_amount ?? 0);
-    const nextRequestedAmount = applyRequested ? targetRequestedAmount : Number(purchase.requested_amount ?? 0);
+    const nextRequestedAmountInput = applyRequested ? targetRequestedAmount : Number(purchase.requested_amount ?? 0);
+    const computed = computeRequestAmounts(nextRequestType, nextEstimatedAmount, nextRequestedAmountInput, nextIsCreditCard);
 
     const requisitionNumber =
       nextRequestType === "requisition"
@@ -905,25 +963,26 @@ export async function bulkUpdateRequestsAction(formData: FormData): Promise<void
           : ((purchase.requisition_number as string | null) ?? null)
         : null;
     const referenceNumber =
-      nextRequestType === "requisition"
+      nextRequestType === "requisition" || nextRequestType === "budget_transfer"
         ? null
         : applyReference
           ? targetReferenceNumber || null
           : ((purchase.reference_number as string | null) ?? null);
 
-    const bannerAccountCodeId = applyBannerCode
-      ? targetBannerAccountCodeId || null
-      : ((purchase.banner_account_code_id as string | null) ?? null);
+    const bannerAccountCodeId = nextRequestType === "request"
+      ? null
+      : applyBannerCode
+        ? targetBannerAccountCodeId || null
+        : ((purchase.banner_account_code_id as string | null) ?? null);
 
-    const status = purchase.status as PurchaseStatus;
     const allocationAmount =
-      status === "encumbered"
-        ? Number(purchase.encumbered_amount ?? 0)
-        : status === "pending_cc"
-          ? Number(purchase.pending_cc_amount ?? 0)
-        : status === "posted"
-            ? Number(purchase.posted_amount ?? 0)
-            : nextRequestedAmount;
+      computed.status === "encumbered"
+        ? computed.encumberedAmount
+        : computed.status === "pending_cc"
+          ? computed.pendingCcAmount
+          : computed.status === "posted"
+            ? computed.postedAmount
+            : computed.requestedAmount;
 
     plans.push({
       purchaseId,
@@ -934,10 +993,14 @@ export async function bulkUpdateRequestsAction(formData: FormData): Promise<void
       budgetLineAccountCodeId: (budgetLine.account_code_id as string | null) ?? null,
       nextRequestType,
       nextIsCreditCard,
-      nextCcWorkflowStatus,
+      nextCcWorkflowStatus: computed.ccWorkflowStatus,
+      nextStatus: computed.status,
       nextTitle,
       nextEstimatedAmount,
-      nextRequestedAmount,
+      nextRequestedAmount: computed.requestedAmount,
+      nextEncumberedAmount: computed.encumberedAmount,
+      nextPendingCcAmount: computed.pendingCcAmount,
+      nextPostedAmount: computed.postedAmount,
       requisitionNumber,
       referenceNumber,
       bannerAccountCodeId,
@@ -960,6 +1023,11 @@ export async function bulkUpdateRequestsAction(formData: FormData): Promise<void
         cc_workflow_status: plan.nextCcWorkflowStatus,
         estimated_amount: plan.nextEstimatedAmount,
         requested_amount: plan.nextRequestedAmount,
+        encumbered_amount: plan.nextEncumberedAmount,
+        pending_cc_amount: plan.nextPendingCcAmount,
+        posted_amount: plan.nextPostedAmount,
+        status: plan.nextStatus,
+        posted_date: plan.nextStatus === "posted" ? new Date().toISOString().slice(0, 10) : null,
         requisition_number: plan.requisitionNumber,
         reference_number: plan.referenceNumber
       })
@@ -972,7 +1040,7 @@ export async function bulkUpdateRequestsAction(formData: FormData): Promise<void
     const { error: insertAllocError } = await supabase.from("purchase_allocations").insert({
       purchase_id: plan.purchaseId,
       reporting_budget_line_id: plan.resolvedBudgetLineId,
-      account_code_id: plan.bannerAccountCodeId || plan.budgetLineAccountCodeId,
+      account_code_id: plan.nextRequestType === "request" ? null : plan.bannerAccountCodeId || plan.budgetLineAccountCodeId,
       production_category_id: plan.nextProductionCategoryId,
       amount: plan.allocationAmount,
       reporting_bucket: "direct"

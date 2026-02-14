@@ -40,7 +40,9 @@ export function CreateRequestForm({
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedProductionCategoryId, setSelectedProductionCategoryId] = useState("");
   const [selectedBannerAccountCodeId, setSelectedBannerAccountCodeId] = useState("");
-  const [requestType, setRequestType] = useState<"requisition" | "expense" | "contract">("requisition");
+  const [requestType, setRequestType] = useState<"requisition" | "expense" | "contract" | "request" | "budget_transfer">(
+    "requisition"
+  );
   const [isCreditCard, setIsCreditCard] = useState(false);
   const [rows, setRows] = useState<AllocationRow[]>([
     {
@@ -84,7 +86,9 @@ export function CreateRequestForm({
     if (project) setSelectedProjectId(project);
     if (productionCategory) setSelectedProductionCategoryId(productionCategory);
     if (bannerAccountCode) setSelectedBannerAccountCodeId(bannerAccountCode);
-    if (type === "expense" || type === "contract" || type === "requisition") setRequestType(type);
+    if (type === "expense" || type === "contract" || type === "request" || type === "budget_transfer" || type === "requisition") {
+      setRequestType(type);
+    }
     if (cc === "1") setIsCreditCard(true);
     if (splits === "1") setUseSplits(true);
   }, []);
@@ -246,11 +250,12 @@ export function CreateRequestForm({
       </label>
 
       <label>
-        Banner Account Code (optional)
+        Banner Account Code {requestType === "request" ? "(not used for Budget Hold)" : "(optional)"}
         <select
           name="bannerAccountCodeId"
           value={selectedBannerAccountCodeId}
           onChange={(event) => setSelectedBannerAccountCodeId(event.target.value)}
+          disabled={requestType === "request"}
         >
           <option value="">Unassigned</option>
           {accountCodeOptions.map((option) => (
@@ -268,17 +273,20 @@ export function CreateRequestForm({
           value={requestType}
           onChange={(event) => {
             const value = event.target.value;
-            if (value === "expense" || value === "contract") {
+            if (value === "expense" || value === "contract" || value === "request" || value === "budget_transfer") {
               setRequestType(value);
             } else {
               setRequestType("requisition");
             }
             if (value !== "expense") setIsCreditCard(false);
+            if (value === "request") setSelectedBannerAccountCodeId("");
           }}
         >
           <option value="requisition">Requisition (PO)</option>
           <option value="expense">Expense (CC/Reimbursement)</option>
           <option value="contract">Contract (Check Request)</option>
+          <option value="request">Request (Budget Hold)</option>
+          <option value="budget_transfer">Budget Transfer</option>
         </select>
       </label>
 
@@ -294,7 +302,7 @@ export function CreateRequestForm({
         </label>
       ) : null}
 
-      {canManageSplits ? (
+      {canManageSplits && requestType !== "request" && requestType !== "budget_transfer" ? (
         <label className="checkboxLabel">
           <input type="checkbox" checked={useSplits} onChange={(event) => setUseSplits(event.target.checked)} />
           Use split allocations
@@ -394,14 +402,18 @@ export function CreateRequestForm({
         Title
         <input name="title" required placeholder="Ex: Scenic hardware" />
       </label>
-      <label>
-        {requestType === "requisition" ? "Requisition #" : "Reference #"}
-        {requestType === "requisition" ? (
+      {requestType === "requisition" ? (
+        <label>
+          Requisition #
           <input name="requisitionNumber" placeholder="R0012345" />
-        ) : (
+        </label>
+      ) : null}
+      {requestType !== "requisition" && requestType !== "budget_transfer" ? (
+        <label>
+          Reference #
           <input name="referenceNumber" placeholder="EP/EC/J code" />
-        )}
-      </label>
+        </label>
+      ) : null}
       <label>
         Estimated
         <input name="estimatedAmount" type="number" step="0.01" />

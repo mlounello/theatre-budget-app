@@ -16,6 +16,7 @@ export function RequestRowActions({
   productionCategoryOptions: ProductionCategoryOption[];
 }) {
   const [open, setOpen] = useState(false);
+  const [editRequestType, setEditRequestType] = useState(purchase.requestType);
   const [editProjectId, setEditProjectId] = useState(purchase.projectId);
   const [editProductionCategoryId, setEditProductionCategoryId] = useState(purchase.productionCategoryId ?? "");
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState(purchase.bannerAccountCodeId ?? "");
@@ -28,6 +29,7 @@ export function RequestRowActions({
           className="tinyButton"
           onClick={() => {
             setEditProjectId(purchase.projectId);
+            setEditRequestType(purchase.requestType);
             setEditProductionCategoryId(purchase.productionCategoryId ?? "");
             setEditBannerAccountCodeId(purchase.bannerAccountCodeId ?? "");
             setOpen(true);
@@ -98,6 +100,7 @@ export function RequestRowActions({
                   name="bannerAccountCodeId"
                   value={editBannerAccountCodeId}
                   onChange={(event) => setEditBannerAccountCodeId(event.target.value)}
+                  disabled={editRequestType === "request"}
                 >
                   <option value="">Unassigned</option>
                   {accountCodeOptions.map((accountCode) => (
@@ -111,21 +114,38 @@ export function RequestRowActions({
                 Title
                 <input name="title" defaultValue={purchase.title} required />
               </label>
-              <label>
-                {purchase.requestType === "requisition" ? "Requisition #" : "Reference #"}
-                {purchase.requestType === "requisition" ? (
+              {editRequestType === "requisition" ? (
+                <label>
+                  Requisition #
                   <input name="requisitionNumber" defaultValue={purchase.requisitionNumber ?? ""} />
-                ) : (
+                </label>
+              ) : null}
+              {editRequestType !== "requisition" && editRequestType !== "budget_transfer" ? (
+                <label>
+                  Reference #
                   <input name="referenceNumber" defaultValue={purchase.referenceNumber ?? ""} />
-                )}
-              </label>
+                </label>
+              ) : null}
               <input type="hidden" name="budgetLineId" value="" />
               <label>
                 Type
-                <select name="requestType" defaultValue={purchase.requestType}>
+                <select
+                  name="requestType"
+                  value={editRequestType}
+                  onChange={(event) => {
+                    const value = event.target.value as typeof editRequestType;
+                    setEditRequestType(value);
+                    if (value !== "expense") {
+                      // CC only applies to expense rows.
+                    }
+                    if (value === "request") setEditBannerAccountCodeId("");
+                  }}
+                >
                   <option value="requisition">Requisition</option>
                   <option value="expense">Expense</option>
                   <option value="contract">Contract</option>
+                  <option value="request">Request (Budget Hold)</option>
+                  <option value="budget_transfer">Budget Transfer</option>
                 </select>
               </label>
               <label className="checkboxLabel">

@@ -95,7 +95,7 @@ export type PurchaseRow = {
   postedAmount: number;
   receiptTotal: number;
   receiptCount: number;
-  requestType: "requisition" | "expense" | "contract";
+  requestType: "requisition" | "expense" | "contract" | "request" | "budget_transfer";
   isCreditCard: boolean;
   ccWorkflowStatus: "requested" | "receipts_uploaded" | "statement_paid" | "posted_to_account" | null;
   status: PurchaseStatus;
@@ -139,7 +139,7 @@ export type ProcurementRow = {
   pendingCcAmount: number;
   postedAmount: number;
   budgetStatus: PurchaseStatus;
-  requestType: "requisition" | "expense" | "contract";
+  requestType: "requisition" | "expense" | "contract" | "request" | "budget_transfer";
   isCreditCard: boolean;
   ccWorkflowStatus: "requested" | "receipts_uploaded" | "statement_paid" | "posted_to_account" | null;
   procurementStatus: string;
@@ -707,7 +707,12 @@ export async function getRequestsData(): Promise<{
       postedAmount: asNumber(row.posted_amount as string | number | null),
       receiptTotal: receiptsByPurchase.get(row.id as string)?.total ?? 0,
       receiptCount: receiptsByPurchase.get(row.id as string)?.count ?? 0,
-      requestType: ((row.request_type as string | null) ?? "requisition") as "requisition" | "expense" | "contract",
+      requestType: ((row.request_type as string | null) ?? "requisition") as
+        | "requisition"
+        | "expense"
+        | "contract"
+        | "request"
+        | "budget_transfer",
       isCreditCard: Boolean(row.is_credit_card as boolean | null),
       ccWorkflowStatus: ((row.cc_workflow_status as string | null) ?? null) as
         | "requested"
@@ -930,7 +935,12 @@ export async function getProcurementData(): Promise<{
       pendingCcAmount: asNumber(row.pending_cc_amount as string | number | null),
       postedAmount: asNumber(row.posted_amount as string | number | null),
       budgetStatus: row.status as PurchaseStatus,
-      requestType: ((row.request_type as string | null) ?? "requisition") as "requisition" | "expense" | "contract",
+      requestType: ((row.request_type as string | null) ?? "requisition") as
+        | "requisition"
+        | "expense"
+        | "contract"
+        | "request"
+        | "budget_transfer",
       isCreditCard: Boolean(row.is_credit_card as boolean | null),
       ccWorkflowStatus: (row.cc_workflow_status as
         | "requested"

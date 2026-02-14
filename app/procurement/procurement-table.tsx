@@ -40,7 +40,9 @@ const CC_PROCUREMENT_STATUSES = [
   { value: "cancelled", label: "Cancelled" }
 ] as const;
 
-function procurementLabel(value: string, isCreditCard: boolean): string {
+function procurementLabel(value: string, isCreditCard: boolean, requestType: ProcurementRow["requestType"]): string {
+  if (requestType === "request") return "Budget Hold";
+  if (requestType === "budget_transfer") return "Budget Transfer";
   const list = isCreditCard ? CC_PROCUREMENT_STATUSES : PROCUREMENT_STATUSES;
   const found = list.find((status) => status.value === value);
   return found?.label ?? value;
@@ -359,6 +361,8 @@ export function ProcurementTable({
             <option value="requisition">Requisition</option>
             <option value="expense">Expense</option>
             <option value="contract">Contract</option>
+            <option value="request">Budget Hold</option>
+            <option value="budget_transfer">Budget Transfer</option>
           </select>
         </label>
         <label>
@@ -445,7 +449,11 @@ export function ProcurementTable({
                   <td>{formatCurrency(orderValueDisplay)}</td>
                   <td>
                     <span className={`statusChip status-${purchase.procurementStatus}`}>
-                      {procurementLabel(purchase.procurementStatus, purchase.requestType === "expense" && purchase.isCreditCard)}
+                      {procurementLabel(
+                        purchase.procurementStatus,
+                        purchase.requestType === "expense" && purchase.isCreditCard,
+                        purchase.requestType
+                      )}
                     </span>
                   </td>
                   <td>
