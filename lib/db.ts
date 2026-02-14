@@ -297,7 +297,6 @@ export type BannerCodeActualRow = {
   fiscalYearName: string | null;
   orgCode: string | null;
   organizationName: string | null;
-  projectName: string;
   bannerAccountCode: string;
   bannerCategory: string;
   bannerName: string;
@@ -1313,25 +1312,53 @@ export async function getBannerCodeActualRows(): Promise<BannerCodeActualRow[]> 
     )
     .order("banner_account_code", { ascending: true });
   if (error) throw error;
-  return (data ?? []).map((row) => {
+
+  const grouped = new Map<string, BannerCodeActualRow>();
+
+  for (const row of data ?? []) {
     const project = row.projects as
       | { name?: string; organizations?: { name?: string; org_code?: string; fiscal_years?: { name?: string } | null } | null }
       | null;
     const org = project?.organizations ?? null;
-    return {
-      fiscalYearName: (org?.fiscal_years?.name as string | undefined) ?? null,
-      orgCode: (org?.org_code as string | undefined) ?? null,
-      organizationName: (org?.name as string | undefined) ?? null,
-      projectName: (project?.name as string | undefined) ?? "Unknown Project",
-      bannerAccountCode: row.banner_account_code as string,
-      bannerCategory: row.banner_category as string,
-      bannerName: row.banner_name as string,
-      requestedTotal: asNumber(row.requested_total as string | number | null),
-      encTotal: asNumber(row.enc_total as string | number | null),
-      pendingCcTotal: asNumber(row.pending_cc_total as string | number | null),
-      postedTotal: asNumber(row.posted_total as string | number | null),
-      obligatedTotal: asNumber(row.obligated_total as string | number | null)
-    };
+    const fiscalYearName = (org?.fiscal_years?.name as string | undefined) ?? null;
+    const orgCode = (org?.org_code as string | undefined) ?? null;
+    const organizationName = (org?.name as string | undefined) ?? null;
+    const bannerAccountCode = (row.banner_account_code as string) ?? "UNASSIGNED";
+    const bannerCategory = (row.banner_category as string) ?? "Unassigned";
+    const bannerName = (row.banner_name as string) ?? "Unassigned";
+    const key = `${fiscalYearName ?? ""}|${orgCode ?? ""}|${organizationName ?? ""}|${bannerAccountCode}`;
+
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, {
+        fiscalYearName,
+        orgCode,
+        organizationName,
+        bannerAccountCode,
+        bannerCategory,
+        bannerName,
+        requestedTotal: asNumber(row.requested_total as string | number | null),
+        encTotal: asNumber(row.enc_total as string | number | null),
+        pendingCcTotal: asNumber(row.pending_cc_total as string | number | null),
+        postedTotal: asNumber(row.posted_total as string | number | null),
+        obligatedTotal: asNumber(row.obligated_total as string | number | null)
+      });
+      continue;
+    }
+
+    existing.requestedTotal += asNumber(row.requested_total as string | number | null);
+    existing.encTotal += asNumber(row.enc_total as string | number | null);
+    existing.pendingCcTotal += asNumber(row.pending_cc_total as string | number | null);
+    existing.postedTotal += asNumber(row.posted_total as string | number | null);
+    existing.obligatedTotal += asNumber(row.obligated_total as string | number | null);
+  }
+
+  return Array.from(grouped.values()).sort((a, b) => {
+    const fy = (a.fiscalYearName ?? "").localeCompare(b.fiscalYearName ?? "");
+    if (fy !== 0) return fy;
+    const org = (a.orgCode ?? "").localeCompare(b.orgCode ?? "");
+    if (org !== 0) return org;
+    return (a.bannerAccountCode ?? "").localeCompare(b.bannerAccountCode ?? "");
   });
 }
 

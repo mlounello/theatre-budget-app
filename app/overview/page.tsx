@@ -119,7 +119,6 @@ export default async function OverviewPage() {
               <tr>
                 <th>FY</th>
                 <th>Org</th>
-                <th>Project</th>
                 <th>Banner Code</th>
                 <th>Banner Category</th>
                 <th>Banner Name</th>
@@ -133,14 +132,13 @@ export default async function OverviewPage() {
             <tbody>
               {bannerActuals.length === 0 ? (
                 <tr>
-                  <td colSpan={11}>No Banner-code actuals yet.</td>
+                  <td colSpan={10}>No Banner-code actuals yet.</td>
                 </tr>
               ) : null}
               {bannerActuals.map((row, index) => (
-                <tr key={`${row.projectName}-${row.bannerAccountCode}-${index}`}>
+                <tr key={`${row.fiscalYearName ?? ""}-${row.orgCode ?? ""}-${row.bannerAccountCode}-${index}`}>
                   <td>{row.fiscalYearName ?? "-"}</td>
                   <td>{row.orgCode ?? "-"}</td>
-                  <td>{row.projectName}</td>
                   <td>{row.bannerAccountCode}</td>
                   <td>{row.bannerCategory}</td>
                   <td>{row.bannerName}</td>
