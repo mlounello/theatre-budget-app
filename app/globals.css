@@ -686,6 +686,34 @@ th {
   padding: 0.6rem;
 }
 
+.contractBulkShared {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.7rem;
+  align-items: end;
+}
+
+.contractBulkShared label {
+  display: grid;
+  gap: 0.35rem;
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.86rem;
+}
+
+.contractBulkShared input,
+.contractBulkShared select {
+  border: 1px solid #cbd6ce;
+  border-radius: 8px;
+  padding: 0.42rem 0.5rem;
+  font-family: "Merriweather", "Georgia", serif;
+  min-width: 0;
+}
+
+.contractBulkLines {
+  grid-column: 1 / -1;
+}
+
 .contractBulkHeader {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(120px, 1fr) minmax(120px, 0.8fr) auto;
@@ -723,6 +751,22 @@ th {
 .contractBulkAction {
   display: flex;
   align-items: flex-end;
+}
+
+.contractBatchRow {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(140px, 1fr) minmax(170px, 1fr) auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.contractBatchRow input,
+.contractBatchRow select {
+  border: 1px solid #cbd6ce;
+  border-radius: 8px;
+  padding: 0.42rem 0.5rem;
+  font-family: "Merriweather", "Georgia", serif;
+  min-width: 0;
 }
 
 .reorderBlock {
@@ -835,6 +879,10 @@ th {
 
   .contractBulkRow label > span {
     display: block;
+  }
+
+  .contractBatchRow {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -87,110 +87,96 @@ export function CreateContractBatchForm({
 
   return (
     <form className="requestForm" action={createContractsBulkAction}>
-      <label>
-        Fiscal Year
-        <select name="fiscalYearId" value={fiscalYearId} onChange={(event) => setFiscalYearId(event.target.value)}>
-          <option value="">From project default</option>
-          {fiscalYearOptions.map((fiscalYear) => (
-            <option key={fiscalYear.id} value={fiscalYear.id}>
-              {fiscalYear.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Organization
-        <select name="organizationId" value={organizationId} onChange={(event) => setOrganizationId(event.target.value)}>
-          <option value="">From project default</option>
-          {organizationOptions.map((organization) => (
-            <option key={organization.id} value={organization.id}>
-              {organization.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Project
-        <select name="projectId" value={projectId} onChange={(event) => setProjectId(event.target.value)} required>
-          <option value="">Select project</option>
-          {projectOptions.map((project) => (
-            <option key={project.id} value={project.id}>
-              {project.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Banner Account Code
-        <select
-          name="bannerAccountCodeId"
-          value={bannerAccountCodeId}
-          onChange={(event) => setBannerAccountCodeId(event.target.value)}
-          required
-        >
-          <option value="">Select account code</option>
-          {accountCodeOptions.map((accountCode) => (
-            <option key={accountCode.id} value={accountCode.id}>
-              {accountCode.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <div className="tablePanel contractBulkPanel">
-        <div className="contractBulkHeader" aria-hidden="true">
-          <span>Name</span>
-          <span>Amount</span>
-          <span>Installments</span>
-          <span>Actions</span>
-        </div>
-        <div className="contractBulkRows">
-          {rows.map((row, index) => (
-            <div key={`bulk-contract-row-${index + 1}`} className="contractBulkRow">
-              <label>
-                <span>Name</span>
-                <input
-                  value={row.contractorName}
-                  onChange={(event) => updateRow(index, "contractorName", event.target.value)}
-                  placeholder="Contracted employee"
-                />
-              </label>
-              <label>
-                <span>Amount</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={row.contractValue}
-                  onChange={(event) => updateRow(index, "contractValue", event.target.value)}
-                  placeholder="0.00"
-                />
-              </label>
-              <label>
-                <span>Installments</span>
-                <select
-                  value={row.installmentCount}
-                  onChange={(event) => updateRow(index, "installmentCount", event.target.value)}
-                >
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                </select>
-              </label>
-              <div className="contractBulkAction">
-                <button type="button" className="tinyButton" onClick={() => removeRow(index)}>
-                  Remove
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className="contractBulkShared">
+        <label>
+          Fiscal Year
+          <select name="fiscalYearId" value={fiscalYearId} onChange={(event) => setFiscalYearId(event.target.value)}>
+            <option value="">From project default</option>
+            {fiscalYearOptions.map((fiscalYear) => (
+              <option key={fiscalYear.id} value={fiscalYear.id}>
+                {fiscalYear.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Organization
+          <select name="organizationId" value={organizationId} onChange={(event) => setOrganizationId(event.target.value)}>
+            <option value="">From project default</option>
+            {organizationOptions.map((organization) => (
+              <option key={organization.id} value={organization.id}>
+                {organization.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Project
+          <select name="projectId" value={projectId} onChange={(event) => setProjectId(event.target.value)} required>
+            <option value="">Select project</option>
+            {projectOptions.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Banner Account Code
+          <select
+            name="bannerAccountCodeId"
+            value={bannerAccountCodeId}
+            onChange={(event) => setBannerAccountCodeId(event.target.value)}
+            required
+          >
+            <option value="">Select account code</option>
+            {accountCodeOptions.map((accountCode) => (
+              <option key={accountCode.id} value={accountCode.id}>
+                {accountCode.label}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
-      <div className="inlineActions" style={{ justifyContent: "space-between" }}>
-        <button type="button" className="buttonLink" onClick={addRow}>
-          Add Row
-        </button>
+      <div className="batchLinesBlock contractBulkLines">
+        <div className="batchLinesHeader">
+          <strong>Contract Lines</strong>
+          <button type="button" className="tinyButton" onClick={addRow}>
+            Add Row
+          </button>
+        </div>
+        {rows.map((row, index) => (
+          <div key={`bulk-contract-row-${index + 1}`} className="contractBatchRow">
+            <input
+              value={row.contractorName}
+              onChange={(event) => updateRow(index, "contractorName", event.target.value)}
+              placeholder="Contracted employee name"
+            />
+            <input
+              type="number"
+              step="0.01"
+              value={row.contractValue}
+              onChange={(event) => updateRow(index, "contractValue", event.target.value)}
+              placeholder="Amount"
+            />
+            <select
+              value={row.installmentCount}
+              onChange={(event) => updateRow(index, "installmentCount", event.target.value)}
+            >
+              <option value="1">1 installment</option>
+              <option value="2">2 installments</option>
+              <option value="3">3 installments</option>
+              <option value="4">4 installments</option>
+            </select>
+            <button type="button" className="tinyButton dangerButton" onClick={() => removeRow(index)}>
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="inlineActions" style={{ justifyContent: "flex-end" }}>
         <button type="submit" className="buttonLink buttonPrimary">
           Save Bulk Contracts
         </button>
