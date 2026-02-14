@@ -109,13 +109,15 @@ export function RequestsTable({
   receipts,
   projectOptions,
   accountCodeOptions,
-  productionCategoryOptions
+  productionCategoryOptions,
+  canManageRows
 }: {
   purchases: PurchaseRow[];
   receipts: RequestReceiptRow[];
   projectOptions: ProcurementProjectOption[];
   accountCodeOptions: AccountCodeOption[];
   productionCategoryOptions: ProductionCategoryOption[];
+  canManageRows: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -194,29 +196,31 @@ export function RequestsTable({
 
   return (
     <>
-      <div className="bulkToolbar">
-        <p className="bulkMeta">
-          Selected: {selectedIds.length} total ({selectedVisibleCount} visible)
-        </p>
-        <div className="bulkActions">
-          <button type="button" className="tinyButton" disabled={selectedIds.length === 0} onClick={() => setBulkEditOpen(true)}>
-            Bulk Edit
-          </button>
-          <form
-            action={bulkDeleteRequestsAction}
-            onSubmit={(event) => {
-              if (!window.confirm(`Delete ${selectedIds.length} selected request(s)? This cannot be undone.`)) {
-                event.preventDefault();
-              }
-            }}
-          >
-            <input type="hidden" name="selectedIdsJson" value={selectedIdsJson} />
-            <button type="submit" className="tinyButton dangerButton" disabled={selectedIds.length === 0}>
-              Bulk Delete
+      {canManageRows ? (
+        <div className="bulkToolbar">
+          <p className="bulkMeta">
+            Selected: {selectedIds.length} total ({selectedVisibleCount} visible)
+          </p>
+          <div className="bulkActions">
+            <button type="button" className="tinyButton" disabled={selectedIds.length === 0} onClick={() => setBulkEditOpen(true)}>
+              Bulk Edit
             </button>
-          </form>
+            <form
+              action={bulkDeleteRequestsAction}
+              onSubmit={(event) => {
+                if (!window.confirm(`Delete ${selectedIds.length} selected request(s)? This cannot be undone.`)) {
+                  event.preventDefault();
+                }
+              }}
+            >
+              <input type="hidden" name="selectedIdsJson" value={selectedIdsJson} />
+              <button type="submit" className="tinyButton dangerButton" disabled={selectedIds.length === 0}>
+                Bulk Delete
+              </button>
+            </form>
+          </div>
         </div>
-      </div>
+      ) : null}
 
       <div className="inlineFilters" style={{ marginBottom: "0.5rem" }}>
         <label>
@@ -271,7 +275,9 @@ export function RequestsTable({
           <thead>
             <tr>
               <th className="rowSelectHeader">
-                <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} aria-label="Select all visible rows" />
+                {canManageRows ? (
+                  <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} aria-label="Select all visible rows" />
+                ) : null}
               </th>
               <SortTh label="Project" sortKey="projectName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <SortTh
@@ -318,12 +324,14 @@ export function RequestsTable({
             {sortedPurchases.map((purchase) => (
               <tr key={purchase.id}>
                 <td className="rowSelectCell">
-                  <input
-                    type="checkbox"
-                    checked={selectedSet.has(purchase.id)}
-                    onChange={() => toggleRowSelection(purchase.id)}
-                    aria-label={`Select request ${purchase.title}`}
-                  />
+                  {canManageRows ? (
+                    <input
+                      type="checkbox"
+                      checked={selectedSet.has(purchase.id)}
+                      onChange={() => toggleRowSelection(purchase.id)}
+                      aria-label={`Select request ${purchase.title}`}
+                    />
+                  ) : null}
                 </td>
                 <td>{purchase.projectName}</td>
                 <td>{purchase.productionCategoryName ?? purchase.category ?? "-"}</td>
@@ -354,15 +362,19 @@ export function RequestsTable({
                   )}
                 </td>
                 <td>
-                  <CcReconcileModal purchase={purchase} receipts={receipts} />
+                  {canManageRows ? <CcReconcileModal purchase={purchase} receipts={receipts} /> : "-"}
                 </td>
                 <td>
-                  <RequestRowActions
-                    purchase={purchase}
-                    projectOptions={projectOptions}
-                    accountCodeOptions={accountCodeOptions}
-                    productionCategoryOptions={productionCategoryOptions}
-                  />
+                  {canManageRows ? (
+                    <RequestRowActions
+                      purchase={purchase}
+                      projectOptions={projectOptions}
+                      accountCodeOptions={accountCodeOptions}
+                      productionCategoryOptions={productionCategoryOptions}
+                    />
+                  ) : (
+                    "-"
+                  )}
                 </td>
               </tr>
             ))}
@@ -370,7 +382,7 @@ export function RequestsTable({
         </table>
       </div>
 
-      {bulkEditOpen ? (
+      {canManageRows && bulkEditOpen ? (
         <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Bulk edit requests">
           <div className="modalPanel">
             <h2>Bulk Edit Requests</h2>

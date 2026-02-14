@@ -44,6 +44,7 @@ export type MyBudgetEntry = {
   vendorName: string | null;
   poNumber: string | null;
   requisitionNumber: string | null;
+  referenceNumber: string | null;
   procurementStatus: string;
   status: PurchaseStatus;
   requestType: "requisition" | "expense" | "contract" | "request" | "budget_transfer" | "contract_payment";
@@ -1808,6 +1809,20 @@ export async function getMyBudgetData(): Promise<{
   const role = access.role;
   const scoped = role === "buyer" || role === "viewer";
   const scopeRows = scoped ? access.scopes.filter((row) => row.scopeRole === role) : [];
+  const scopeCategoryNameById = new Map<string, string>();
+  if (scoped) {
+    const scopeCategoryIds = [...new Set(scopeRows.map((row) => row.productionCategoryId).filter((id): id is string => Boolean(id)))];
+    if (scopeCategoryIds.length > 0) {
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .from("production_categories")
+        .select("id, name")
+        .in("id", scopeCategoryIds);
+      if (categoriesError) throw categoriesError;
+      for (const row of categoriesData ?? []) {
+        scopeCategoryNameById.set(row.id as string, String(row.name ?? ""));
+      }
+    }
+  }
 
   const [{ data: projectsData, error: projectsError }, { data: linesData, error: linesError }, { data: purchasesData, error: purchasesError }] =
     await Promise.all([
@@ -1819,12 +1834,12 @@ export async function getMyBudgetData(): Promise<{
         .order("name", { ascending: true }),
       supabase
         .from("project_budget_lines")
-        .select("id, project_id, production_category_id, allocated_amount, active, production_categories(name)")
+        .select("id, project_id, production_category_id, category, allocated_amount, active, production_categories(name)")
         .eq("active", true),
       supabase
         .from("purchases")
         .select(
-          "id, project_id, production_category_id, title, requisition_number, po_number, procurement_status, status, request_type, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, created_at, vendors(name), production_categories(name)"
+          "id, project_id, production_category_id, title, reference_number, requisition_number, po_number, procurement_status, status, request_type, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, created_at, vendors(name), production_categories(name)"
         )
         .neq("procurement_status", "cancelled")
         .order("created_at", { ascending: false })
@@ -1854,7 +1869,7 @@ export async function getMyBudgetData(): Promise<{
     })
   );
 
-  function isRowInScope(projectId: string, productionCategoryId: string | null): boolean {
+  function isRowInScope(projectId: string, productionCategoryId: string | null, fallbackCategoryName: string | null = null): boolean {
     if (!scoped) return true;
     if (scopeRows.length === 0) return false;
     const project = projectsById.get(projectId);
@@ -1864,7 +1879,15 @@ export async function getMyBudgetData(): Promise<{
       if (scope.projectId && scope.projectId !== projectId) return false;
       if (scope.organizationId && scope.organizationId !== project.organizationId) return false;
       if (scope.fiscalYearId && scope.fiscalYearId !== project.fiscalYearId) return false;
-      if (scope.productionCategoryId && scope.productionCategoryId !== productionCategoryId) return false;
+      if (scope.productionCategoryId) {
+        if (productionCategoryId && scope.productionCategoryId === productionCategoryId) {
+          // Exact category id match.
+        } else {
+          const scopedCategoryName = scopeCategoryNameById.get(scope.productionCategoryId)?.trim().toLowerCase();
+          const fallback = (fallbackCategoryName ?? "").trim().toLowerCase();
+          if (!scopedCategoryName || !fallback || scopedCategoryName !== fallback) return false;
+        }
+      }
       return true;
     });
   }
@@ -1876,10 +1899,11 @@ export async function getMyBudgetData(): Promise<{
     const project = projectsById.get(projectId);
     if (!project) continue;
     const productionCategoryId = (row.production_category_id as string | null) ?? null;
-    if (!isRowInScope(projectId, productionCategoryId)) continue;
+    const lineCategoryName = ((row.category as string | null) ?? null) || null;
+    if (!isRowInScope(projectId, productionCategoryId, lineCategoryName)) continue;
     const productionCategory = row.production_categories as { name?: string } | null;
-    const productionCategoryName = productionCategory?.name ?? "Unassigned";
-    const key = `${projectId}:${productionCategoryId ?? "none"}`;
+    const productionCategoryName = productionCategory?.name ?? lineCategoryName ?? "Unassigned";
+    const key = `${projectId}:${productionCategoryId ?? `name:${productionCategoryName.toLowerCase()}`}`;
     const existing =
       cards.get(key) ??
       ({
@@ -1912,10 +1936,10 @@ export async function getMyBudgetData(): Promise<{
     const project = projectsById.get(projectId);
     if (!project) continue;
     const productionCategoryId = (row.production_category_id as string | null) ?? null;
-    if (!isRowInScope(projectId, productionCategoryId)) continue;
     const productionCategory = row.production_categories as { name?: string } | null;
     const productionCategoryName = productionCategory?.name ?? "Unassigned";
-    const key = `${projectId}:${productionCategoryId ?? "none"}`;
+    if (!isRowInScope(projectId, productionCategoryId, productionCategoryName)) continue;
+    const key = `${projectId}:${productionCategoryId ?? `name:${productionCategoryName.toLowerCase()}`}`;
     const card =
       cards.get(key) ??
       ({
@@ -1956,6 +1980,7 @@ export async function getMyBudgetData(): Promise<{
       vendorName: vendor?.name ?? null,
       poNumber: (row.po_number as string | null) ?? null,
       requisitionNumber: (row.requisition_number as string | null) ?? null,
+      referenceNumber: (row.reference_number as string | null) ?? null,
       procurementStatus: ((row.procurement_status as string | null) ?? "requested").toLowerCase(),
       status,
       requestType,

@@ -680,6 +680,8 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
     .single();
   if (existingError || !existing) throw new Error("Purchase not found.");
 
+  await requirePmOrAdmin(supabase, existing.project_id as string, user.id);
+
   let resolvedBudgetLineId = budgetLineId;
   if (!resolvedBudgetLineId) {
     const { data: ensuredLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {

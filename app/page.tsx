@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { updateDashboardRequisitionStatusAction } from "@/app/dashboard-actions";
 import { formatCurrency } from "@/lib/format";
-import { getDashboardOpenRequisitions, getDashboardProjects } from "@/lib/db";
+import { getDashboardOpenRequisitions, getDashboardProjects, getMyBudgetData } from "@/lib/db";
 import type { DashboardOpenRequisition, DashboardProject } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
 
@@ -29,11 +29,131 @@ export default async function DashboardPage({
 }) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
-  if (access.role === "buyer" || access.role === "viewer") redirect("/my-budget");
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const okMessage = resolvedSearchParams?.ok;
   const errorMessage = resolvedSearchParams?.error;
+  if (access.role === "buyer" || access.role === "viewer") {
+    const { cards, openRequisitions } = await getMyBudgetData();
+    return (
+      <section>
+        <div className="heroCard">
+          <p className="eyebrow">Scoped Dashboard</p>
+          <h1 className="heroTitle">Production Budget Dashboard</h1>
+          <p className="heroSubtitle">Open requisitions and scoped project/category cards for your assigned budget areas.</p>
+          {okMessage ? <p className="successNote">{okMessage}</p> : null}
+          {errorMessage ? <p className="errorNote">{errorMessage}</p> : null}
+        </div>
+
+        <article className="panel">
+          <h2>Requisition Follow-Up</h2>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>Title</th>
+                  <th>Req #</th>
+                  <th>PO #</th>
+                  <th>Vendor</th>
+                  <th>Status</th>
+                  <th>Order Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                {openRequisitions.length === 0 ? (
+                  <tr>
+                    <td colSpan={7}>No open requisitions.</td>
+                  </tr>
+                ) : null}
+                {openRequisitions.map((row) => (
+                  <tr key={row.id}>
+                    <td>
+                      {row.projectName}
+                      {row.season ? <div>{row.season}</div> : null}
+                    </td>
+                    <td>{row.title}</td>
+                    <td>{row.requisitionNumber ?? "-"}</td>
+                    <td>{row.poNumber ?? "-"}</td>
+                    <td>{row.vendorName ?? "-"}</td>
+                    <td>
+                      <span className={`statusChip status-${row.procurementStatus}`}>{requisitionProcurementLabel(row.procurementStatus)}</span>
+                    </td>
+                    <td>{formatCurrency(row.orderValue)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <div className="gridCards">
+          {cards.length === 0 ? (
+            <article className="projectCard">
+              <h2>No scoped cards</h2>
+              <p>No scoped budget rows are visible yet.</p>
+            </article>
+          ) : null}
+          {cards.map((card) => (
+            <article key={`${card.projectId}:${card.productionCategoryId ?? "none"}`} className="projectCard">
+              <div className="projectCardHeader">
+                <h2>
+                  {card.projectName}
+                  {card.season ? ` (${card.season})` : ""} - {card.productionCategoryName}
+                </h2>
+                <p>
+                  {card.fiscalYearName ?? "No Fiscal Year"} | {card.orgCode ?? "-"} | {card.organizationName ?? "No Organization"}
+                </p>
+              </div>
+              <dl className="metricGrid">
+                <div>
+                  <dt>Allocated</dt>
+                  <dd>{formatCurrency(card.allocatedTotal)}</dd>
+                </div>
+                <div>
+                  <dt>YTD</dt>
+                  <dd>{formatCurrency(card.ytdTotal)}</dd>
+                </div>
+                <div>
+                  <dt>ENC</dt>
+                  <dd>{formatCurrency(card.encTotal)}</dd>
+                </div>
+                <div>
+                  <dt>Held</dt>
+                  <dd>{formatCurrency(card.heldTotal)}</dd>
+                </div>
+                <div>
+                  <dt>Pending CC</dt>
+                  <dd>{formatCurrency(card.pendingCcTotal)}</dd>
+                </div>
+                <div>
+                  <dt>Obligated</dt>
+                  <dd>{formatCurrency(card.obligatedTotal)}</dd>
+                </div>
+                <div>
+                  <dt>Remaining</dt>
+                  <dd className={card.remainingTrue < 0 ? "negative" : "positive"}>{formatCurrency(card.remainingTrue)}</dd>
+                </div>
+                <div>
+                  <dt>Remaining if Requested Approved</dt>
+                  <dd className={card.remainingIfRequestedApproved < 0 ? "negative" : "positive"}>
+                    {formatCurrency(card.remainingIfRequestedApproved)}
+                  </dd>
+                </div>
+              </dl>
+              <Link
+                href={`/my-budget?projectId=${encodeURIComponent(card.projectId)}`}
+                className="buttonLink"
+              >
+                Open My Budget
+              </Link>
+            </article>
+          ))}
+        </div>
+      </section>
+    );
+  }
+
   let projects: DashboardProject[] = [];
   let openRequisitions: DashboardOpenRequisition[] = [];
   let loadError: string | null = null;

@@ -8,6 +8,7 @@ export default async function RequestsPage() {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
   if (!["admin", "project_manager", "buyer"].includes(access.role)) redirect("/my-budget");
+  const canManageRows = access.role === "admin" || access.role === "project_manager";
 
   const { purchases, receipts, budgetLineOptions, projectOptions, accountCodeOptions, productionCategoryOptions, canManageSplits } =
     await getRequestsData();
@@ -53,6 +54,7 @@ export default async function RequestsPage() {
         accountCodeOptions={accountCodeOptions}
         projectOptions={projectOptions}
         productionCategoryOptions={productionCategoryOptions}
+        canManageRows={canManageRows}
       />
     </section>
   );

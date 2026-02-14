@@ -21,155 +21,113 @@ function labelForStatus(value: string): string {
   return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-export default async function MyBudgetPage() {
+export default async function MyBudgetPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ projectId?: string }>;
+}) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
 
-  const { cards, openRequisitions } = await getMyBudgetData();
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const selectedProjectId = (resolvedSearchParams?.projectId ?? "").trim();
+
+  const { cards } = await getMyBudgetData();
+  const projectChoices = Array.from(new Map(cards.map((card) => [card.projectId, card.projectName])).entries()).map(([id, name]) => ({
+    id,
+    name
+  }));
+
+  const filteredCards = selectedProjectId ? cards.filter((card) => card.projectId === selectedProjectId) : cards;
+  const flattenedRows = filteredCards.flatMap((card) =>
+    card.entries.map((entry) => ({
+      ...entry,
+      projectId: card.projectId,
+      projectName: card.projectName,
+      season: card.season,
+      category: card.productionCategoryName,
+      fiscalYearName: card.fiscalYearName,
+      orgCode: card.orgCode,
+      organizationName: card.organizationName
+    }))
+  );
 
   return (
     <section>
       <header className="sectionHeader">
         <p className="eyebrow">My Budget</p>
-        <h1>Assigned Budget Board</h1>
-        <p className="heroSubtitle">Project and category scoped view with obligations and open planning impact.</p>
+        <h1>Project Running List</h1>
+        <p className="heroSubtitle">Full scoped running list of requests/orders for reconciliation and budget tracking.</p>
       </header>
 
-      <article className="panel">
-        <h2>Open Requisition Follow-Up</h2>
-        <div className="tableWrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Project</th>
-                <th>Title</th>
-                <th>Req #</th>
-                <th>PO #</th>
-                <th>Vendor</th>
-                <th>Status</th>
-                <th>Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {openRequisitions.length === 0 ? (
-                <tr>
-                  <td colSpan={7}>No open requisitions in your scope.</td>
-                </tr>
-              ) : null}
-              {openRequisitions.map((row) => (
-                <tr key={row.id}>
-                  <td>
-                    {row.projectName}
-                    {row.season ? ` (${row.season})` : ""}
-                  </td>
-                  <td>{row.title}</td>
-                  <td>{row.requisitionNumber ?? "-"}</td>
-                  <td>{row.poNumber ?? "-"}</td>
-                  <td>{row.vendorName ?? "-"}</td>
-                  <td>
-                    <span className={`statusChip status-${row.procurementStatus}`}>{labelForStatus(row.procurementStatus)}</span>
-                  </td>
-                  <td>{formatCurrency(row.orderValue)}</td>
-                </tr>
+      <article className="panel requestFormPanel">
+        <h2>View Project</h2>
+        <form method="get" className="requestForm">
+          <label>
+            Project
+            <select name="projectId" defaultValue={selectedProjectId}>
+              <option value="">All scoped projects</option>
+              {projectChoices.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </select>
+          </label>
+          <button type="submit" className="buttonLink buttonPrimary">
+            Apply
+          </button>
+        </form>
       </article>
 
-      {cards.length === 0 ? (
-        <article className="panel">
-          <h2>No Assigned Rows</h2>
-          <p>No budget rows are visible for your account yet.</p>
-        </article>
-      ) : null}
-
-      <div className="gridCards">
-        {cards.map((card) => (
-          <article key={`${card.projectId}:${card.productionCategoryId ?? "none"}`} className="projectCard">
-            <div className="projectCardHeader">
-              <h2>
-                {card.projectName}
-                {card.season ? ` (${card.season})` : ""} - {card.productionCategoryName}
-              </h2>
-              <p>
-                {card.fiscalYearName ?? "No Fiscal Year"} | {card.orgCode ?? "-"} | {card.organizationName ?? "No Organization"}
-              </p>
-            </div>
-            <dl className="metricGrid">
-              <div>
-                <dt>Allocated</dt>
-                <dd>{formatCurrency(card.allocatedTotal)}</dd>
-              </div>
-              <div>
-                <dt>YTD</dt>
-                <dd>{formatCurrency(card.ytdTotal)}</dd>
-              </div>
-              <div>
-                <dt>ENC</dt>
-                <dd>{formatCurrency(card.encTotal)}</dd>
-              </div>
-              <div>
-                <dt>Held</dt>
-                <dd>{formatCurrency(card.heldTotal)}</dd>
-              </div>
-              <div>
-                <dt>Pending CC</dt>
-                <dd>{formatCurrency(card.pendingCcTotal)}</dd>
-              </div>
-              <div>
-                <dt>Obligated</dt>
-                <dd>{formatCurrency(card.obligatedTotal)}</dd>
-              </div>
-              <div>
-                <dt>Remaining</dt>
-                <dd className={card.remainingTrue < 0 ? "negative" : "positive"}>{formatCurrency(card.remainingTrue)}</dd>
-              </div>
-              <div>
-                <dt>Remaining if Requested Approved</dt>
-                <dd className={card.remainingIfRequestedApproved < 0 ? "negative" : "positive"}>
-                  {formatCurrency(card.remainingIfRequestedApproved)}
-                </dd>
-              </div>
-            </dl>
-
-            <div className="tableWrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Type</th>
-                    <th>Title</th>
-                    <th>Vendor</th>
-                    <th>Req/Ref #</th>
-                    <th>PO #</th>
-                    <th>Status</th>
-                    <th>Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {card.entries.length === 0 ? (
-                    <tr>
-                      <td colSpan={7}>No line items yet.</td>
-                    </tr>
-                  ) : null}
-                  {card.entries.map((entry) => (
-                    <tr key={entry.id}>
-                      <td>{labelForType(entry.requestType)}</td>
-                      <td>{entry.title}</td>
-                      <td>{entry.vendorName ?? "-"}</td>
-                      <td>{entry.requisitionNumber ?? "-"}</td>
-                      <td>{entry.poNumber ?? "-"}</td>
-                      <td>
-                        <span className={`statusChip status-${entry.procurementStatus}`}>{labelForStatus(entry.procurementStatus)}</span>
-                      </td>
-                      <td>{formatCurrency(entry.amount)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </article>
-        ))}
+      <div className="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Project</th>
+              <th>Department</th>
+              <th>Type</th>
+              <th>Title</th>
+              <th>Vendor</th>
+              <th>Req/Ref #</th>
+              <th>PO #</th>
+              <th>Procurement Status</th>
+              <th>Budget Status</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            {flattenedRows.length === 0 ? (
+              <tr>
+                <td colSpan={10}>No line items in this scope yet.</td>
+              </tr>
+            ) : null}
+            {flattenedRows.map((row) => (
+              <tr key={row.id}>
+                <td>
+                  {row.projectName}
+                  {row.season ? ` (${row.season})` : ""}
+                  <div style={{ opacity: 0.8 }}>
+                    {row.fiscalYearName ?? "No FY"} | {row.orgCode ?? "-"} | {row.organizationName ?? "No Org"}
+                  </div>
+                </td>
+                <td>{row.category}</td>
+                <td>{labelForType(row.requestType)}</td>
+                <td>{row.title}</td>
+                <td>{row.vendorName ?? "-"}</td>
+                <td>{row.requisitionNumber ?? row.referenceNumber ?? "-"}</td>
+                <td>{row.poNumber ?? "-"}</td>
+                <td>
+                  <span className={`statusChip status-${row.procurementStatus}`}>{labelForStatus(row.procurementStatus)}</span>
+                </td>
+                <td>
+                  <span className={`statusChip status-${row.status}`}>{labelForStatus(row.status)}</span>
+                </td>
+                <td>{formatCurrency(row.amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </section>
   );
