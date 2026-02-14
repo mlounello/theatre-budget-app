@@ -137,55 +137,54 @@ export function CreateContractBatchForm({
         </select>
       </label>
 
-      <div className="tablePanel" style={{ padding: "0.6rem" }}>
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Amount</th>
-              <th>Installments</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row, index) => (
-              <tr key={`bulk-contract-row-${index + 1}`}>
-                <td>
-                  <input
-                    value={row.contractorName}
-                    onChange={(event) => updateRow(index, "contractorName", event.target.value)}
-                    placeholder="Contracted employee"
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={row.contractValue}
-                    onChange={(event) => updateRow(index, "contractValue", event.target.value)}
-                    placeholder="0.00"
-                  />
-                </td>
-                <td>
-                  <select
-                    value={row.installmentCount}
-                    onChange={(event) => updateRow(index, "installmentCount", event.target.value)}
-                  >
-                    <option value="1">1</option>
-                    <option value="2">2</option>
-                    <option value="3">3</option>
-                    <option value="4">4</option>
-                  </select>
-                </td>
-                <td>
-                  <button type="button" className="tinyButton" onClick={() => removeRow(index)}>
-                    Remove
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="tablePanel contractBulkPanel">
+        <div className="contractBulkHeader" aria-hidden="true">
+          <span>Name</span>
+          <span>Amount</span>
+          <span>Installments</span>
+          <span>Actions</span>
+        </div>
+        <div className="contractBulkRows">
+          {rows.map((row, index) => (
+            <div key={`bulk-contract-row-${index + 1}`} className="contractBulkRow">
+              <label>
+                <span>Name</span>
+                <input
+                  value={row.contractorName}
+                  onChange={(event) => updateRow(index, "contractorName", event.target.value)}
+                  placeholder="Contracted employee"
+                />
+              </label>
+              <label>
+                <span>Amount</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={row.contractValue}
+                  onChange={(event) => updateRow(index, "contractValue", event.target.value)}
+                  placeholder="0.00"
+                />
+              </label>
+              <label>
+                <span>Installments</span>
+                <select
+                  value={row.installmentCount}
+                  onChange={(event) => updateRow(index, "installmentCount", event.target.value)}
+                >
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                </select>
+              </label>
+              <div className="contractBulkAction">
+                <button type="button" className="tinyButton" onClick={() => removeRow(index)}>
+                  Remove
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="inlineActions" style={{ justifyContent: "space-between" }}>

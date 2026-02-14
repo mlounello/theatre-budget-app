@@ -682,6 +682,49 @@ th {
   gap: 0.5rem;
 }
 
+.contractBulkPanel {
+  padding: 0.6rem;
+}
+
+.contractBulkHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(120px, 1fr) minmax(120px, 0.8fr) auto;
+  gap: 0.6rem;
+  margin: 0 0 0.4rem;
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.contractBulkRows {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.contractBulkRow {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(120px, 1fr) minmax(120px, 0.8fr) auto;
+  gap: 0.6rem;
+  align-items: end;
+}
+
+.contractBulkRow label {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.contractBulkRow label > span {
+  display: none;
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.contractBulkAction {
+  display: flex;
+  align-items: flex-end;
+}
+
 .reorderBlock {
   margin: 0.55rem 0 0.7rem;
 }
@@ -777,6 +820,21 @@ th {
   .bulkToolbar {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .contractBulkHeader {
+    display: none;
+  }
+
+  .contractBulkRow {
+    grid-template-columns: 1fr;
+    border: 1px solid #d7ddd7;
+    border-radius: 10px;
+    padding: 0.5rem;
+  }
+
+  .contractBulkRow label > span {
+    display: block;
   }
 }
 
