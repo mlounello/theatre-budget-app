@@ -2,6 +2,7 @@ import {
   addBudgetLineAction,
   createAccountCodeAction,
   deleteFiscalYearAction,
+  deleteOrganizationAction,
   deleteProductionCategoryAction,
   deleteAccountCodeAction,
   importHierarchyCsvAction,
@@ -268,6 +269,12 @@ export default async function SettingsPage({
                         <a className="tinyButton" href={`/settings?editType=org&editId=${org.id}`}>
                           Edit Org
                         </a>
+                        <form action={deleteOrganizationAction}>
+                          <input type="hidden" name="id" value={org.id} />
+                          <button type="submit" className="tinyButton dangerButton">
+                            Delete Org
+                          </button>
+                        </form>
                       </div>
                     )}
 
@@ -316,7 +323,7 @@ export default async function SettingsPage({
                             <table>
                               <thead>
                                 <tr>
-                                  <th>Department</th>
+                                  <th>Category</th>
                                   <th>Allocated</th>
                                   <th>Display Order</th>
                                   <th>Active</th>
@@ -347,7 +354,7 @@ export default async function SettingsPage({
                                     <form action={addBudgetLineAction} className="inlineEditForm">
                                       <input type="hidden" name="projectId" value={project.id} />
                                       <select name="productionCategoryId" required>
-                                        <option value="">Department</option>
+                                        <option value="">Category</option>
                                         {productionCategories.map((category) => (
                                           <option key={category.id} value={category.id}>
                                             {category.name}
@@ -555,6 +562,16 @@ export default async function SettingsPage({
                   Save Org
                 </button>
               </div>
+            </form>
+            <form action={deleteOrganizationAction} className="requestForm">
+              <input type="hidden" name="id" value={editingOrganization.id} />
+              <label className="checkboxLabel">
+                <input name="clearProjectAssignments" type="checkbox" />
+                Clear project organization assignments before delete
+              </label>
+              <button type="submit" className="tinyButton dangerButton">
+                Delete Organization
+              </button>
             </form>
           </div>
         </div>
