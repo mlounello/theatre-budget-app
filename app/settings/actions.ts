@@ -25,6 +25,11 @@ function parseOrderedIds(raw: string): string[] {
   return orderedIds;
 }
 
+function parseMultiIds(formData: FormData, key: string): string[] {
+  const values = formData.getAll(key).map((value) => String(value).trim()).filter(Boolean);
+  return Array.from(new Set(values));
+}
+
 function parseCsv(text: string): Array<Record<string, string>> {
   const rows: string[][] = [];
   let current = "";
@@ -287,10 +292,10 @@ export async function createAccessScopeAction(formData: FormData): Promise<void>
 
     const targetUserId = String(formData.get("userId") ?? "").trim();
     const scopeRole = String(formData.get("scopeRole") ?? "").trim();
-    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
-    const organizationId = String(formData.get("organizationId") ?? "").trim();
-    const projectId = String(formData.get("projectId") ?? "").trim();
-    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const fiscalYearIds = parseMultiIds(formData, "fiscalYearIds");
+    const organizationIds = parseMultiIds(formData, "organizationIds");
+    const projectIds = parseMultiIds(formData, "projectIds");
+    const productionCategoryIds = parseMultiIds(formData, "productionCategoryIds");
     const active = formData.get("active") === "on";
 
     if (!targetUserId) throw new Error("User is required.");
@@ -298,22 +303,114 @@ export async function createAccessScopeAction(formData: FormData): Promise<void>
       throw new Error("Invalid scope role.");
     }
 
-    const { error } = await supabase.from("user_access_scopes").insert({
-      user_id: targetUserId,
-      scope_role: scopeRole,
-      fiscal_year_id: fiscalYearId || null,
-      organization_id: organizationId || null,
-      project_id: projectId || null,
-      production_category_id: productionCategoryId || null,
-      active
-    });
-    if (error) throw new Error(error.message);
+    const fyValues: Array<string | null> = fiscalYearIds.length > 0 ? fiscalYearIds : [null];
+    const orgValues: Array<string | null> = organizationIds.length > 0 ? organizationIds : [null];
+    const projectValues: Array<string | null> = projectIds.length > 0 ? projectIds : [null];
+    const categoryValues: Array<string | null> = productionCategoryIds.length > 0 ? productionCategoryIds : [null];
+
+    const rowsToInsert: Array<{
+      user_id: string;
+      scope_role: string;
+      fiscal_year_id: string | null;
+      organization_id: string | null;
+      project_id: string | null;
+      production_category_id: string | null;
+      active: boolean;
+    }> = [];
+    for (const fiscalYearId of fyValues) {
+      for (const organizationId of orgValues) {
+        for (const projectId of projectValues) {
+          for (const productionCategoryId of categoryValues) {
+            rowsToInsert.push({
+              user_id: targetUserId,
+              scope_role: scopeRole,
+              fiscal_year_id: fiscalYearId,
+              organization_id: organizationId,
+              project_id: projectId,
+              production_category_id: productionCategoryId,
+              active
+            });
+          }
+        }
+      }
+    }
+
+    const { data: existingRows, error: existingError } = await supabase
+      .from("user_access_scopes")
+      .select("scope_role, fiscal_year_id, organization_id, project_id, production_category_id")
+      .eq("user_id", targetUserId);
+    if (existingError) throw new Error(existingError.message);
+    const existingKeys = new Set(
+      (existingRows ?? []).map(
+        (row) =>
+          `${String(row.scope_role)}|${String(row.fiscal_year_id ?? "")}|${String(row.organization_id ?? "")}|${String(row.project_id ?? "")}|${String(row.production_category_id ?? "")}`
+      )
+    );
+
+    const insertableRows = rowsToInsert.filter(
+      (row) =>
+        !existingKeys.has(
+          `${row.scope_role}|${row.fiscal_year_id ?? ""}|${row.organization_id ?? ""}|${row.project_id ?? ""}|${row.production_category_id ?? ""}`
+        )
+    );
+
+    if (insertableRows.length > 0) {
+      const { error } = await supabase.from("user_access_scopes").insert(insertableRows);
+      if (error) throw new Error(error.message);
+    }
 
     revalidatePath("/settings");
-    settingsSuccess("Access scope saved.");
+    settingsSuccess(insertableRows.length > 0 ? `Access scopes saved (${insertableRows.length}).` : "No new scopes added.");
   } catch (error) {
     rethrowIfRedirect(error);
     settingsError(getErrorMessage(error, "Could not save access scope."));
+  }
+}
+
+export async function updateAccessScopeAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) throw new Error("You must be signed in.");
+
+    const roleCheck = await supabase.rpc("is_admin_user");
+    if (roleCheck.error || !roleCheck.data) {
+      throw new Error("Only Admin can manage access scopes.");
+    }
+
+    const id = String(formData.get("id") ?? "").trim();
+    const scopeRole = String(formData.get("scopeRole") ?? "").trim();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
+    const projectId = String(formData.get("projectId") ?? "").trim();
+    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const active = String(formData.get("active") ?? "true").trim() === "true";
+
+    if (!id) throw new Error("Scope id is required.");
+    if (!["viewer", "buyer", "project_manager", "admin"].includes(scopeRole)) {
+      throw new Error("Invalid scope role.");
+    }
+
+    const { error } = await supabase
+      .from("user_access_scopes")
+      .update({
+        scope_role: scopeRole,
+        fiscal_year_id: fiscalYearId || null,
+        organization_id: organizationId || null,
+        project_id: projectId || null,
+        production_category_id: productionCategoryId || null,
+        active
+      })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+
+    revalidatePath("/settings");
+    settingsSuccess("Access scope updated.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not update access scope."));
   }
 }
 

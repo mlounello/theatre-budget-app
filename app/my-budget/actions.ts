@@ -30,18 +30,12 @@ export async function createPlanningRequestAction(formData: FormData): Promise<v
     throw new Error("Amount cannot be zero.");
   }
 
-  const {
-    data: membership,
-    error: membershipError
-  } = await supabase
-    .from("project_memberships")
-    .select("role")
-    .eq("project_id", projectId)
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (membershipError) throw new Error(membershipError.message);
-  const role = (membership?.role as string | undefined) ?? "";
-  if (!["admin", "project_manager", "buyer"].includes(role)) {
+  const { data: canCreate, error: canCreateError } = await supabase.rpc("has_project_role", {
+    target_project_id: projectId,
+    allowed_roles: ["admin", "project_manager", "buyer"]
+  });
+  if (canCreateError) throw new Error(canCreateError.message);
+  if (!canCreate) {
     throw new Error("Only Buyer, Project Manager, or Admin can add planning requests.");
   }
 
@@ -55,13 +49,30 @@ export async function createPlanningRequestAction(formData: FormData): Promise<v
 
   let vendorId: string | null = null;
   if (vendorName) {
-    const { data: vendor, error: vendorError } = await supabase
+    const { data: existingVendor, error: existingVendorError } = await supabase
       .from("vendors")
-      .upsert({ name: vendorName }, { onConflict: "name" })
       .select("id")
-      .single();
-    if (vendorError) throw new Error(vendorError.message);
-    vendorId = vendor.id as string;
+      .eq("name", vendorName)
+      .maybeSingle();
+    if (existingVendorError) throw new Error(existingVendorError.message);
+    if (existingVendor?.id) {
+      vendorId = existingVendor.id as string;
+    } else {
+      const { data: canManageVendor, error: canManageVendorError } = await supabase.rpc("has_project_role", {
+        target_project_id: projectId,
+        allowed_roles: ["admin", "project_manager"]
+      });
+      if (canManageVendorError) throw new Error(canManageVendorError.message);
+      if (canManageVendor) {
+        const { data: vendor, error: vendorError } = await supabase
+          .from("vendors")
+          .insert({ name: vendorName })
+          .select("id")
+          .single();
+        if (vendorError) throw new Error(vendorError.message);
+        vendorId = vendor.id as string;
+      }
+    }
   }
 
   const { data: inserted, error: insertError } = await supabase

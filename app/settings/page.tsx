@@ -11,6 +11,7 @@ import {
   updateProductionCategoryAction,
   updateAccountCodeAction,
   updateBudgetLineAction,
+  updateAccessScopeAction,
   updateFiscalYearAction,
   updateOrganizationAction,
   updateProjectAction
@@ -70,7 +71,7 @@ export default async function SettingsPage({
     msg?: string;
     ok?: string;
     error?: string;
-    editType?: "fy" | "org" | "project" | "line" | "account" | "production_category";
+    editType?: "fy" | "org" | "project" | "line" | "account" | "production_category" | "access_scope";
     editId?: string;
   }>;
 }) {
@@ -191,6 +192,8 @@ export default async function SettingsPage({
   const productionCategoryLookup = new Map(allProductionCategories.map((row) => [row.id, row] as const));
   const editingProductionCategory =
     editType === "production_category" && editId ? productionCategoryLookup.get(editId) : null;
+  const accessScopeLookup = new Map(accessScopeAdminData.scopes.map((row) => [row.id, row] as const));
+  const editingAccessScope = editType === "access_scope" && editId ? accessScopeLookup.get(editId) : null;
 
   return (
     <section>
@@ -237,8 +240,7 @@ export default async function SettingsPage({
               </label>
               <label>
                 Fiscal Year (Optional)
-                <select name="fiscalYearId" defaultValue="">
-                  <option value="">Any fiscal year</option>
+                <select name="fiscalYearIds" multiple size={4}>
                   {accessScopeAdminData.fiscalYears.map((fy) => (
                     <option key={fy.id} value={fy.id}>
                       {fy.name}
@@ -248,8 +250,7 @@ export default async function SettingsPage({
               </label>
               <label>
                 Organization (Optional)
-                <select name="organizationId" defaultValue="">
-                  <option value="">Any organization</option>
+                <select name="organizationIds" multiple size={4}>
                   {accessScopeAdminData.organizations.map((org) => (
                     <option key={org.id} value={org.id}>
                       {org.label}
@@ -259,8 +260,7 @@ export default async function SettingsPage({
               </label>
               <label>
                 Project (Optional)
-                <select name="projectId" defaultValue="">
-                  <option value="">Any project</option>
+                <select name="projectIds" multiple size={5}>
                   {accessScopeAdminData.projects.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.label}
@@ -270,8 +270,7 @@ export default async function SettingsPage({
               </label>
               <label>
                 Production Category (Optional)
-                <select name="productionCategoryId" defaultValue="">
-                  <option value="">Any department</option>
+                <select name="productionCategoryIds" multiple size={5}>
                   {accessScopeAdminData.categories.map((category) => (
                     <option key={category.id} value={category.id}>
                       {category.name}
@@ -287,6 +286,7 @@ export default async function SettingsPage({
                 Save Scope
               </button>
             </form>
+            <p className="heroSubtitle">Tip: Hold Command (Mac) or Ctrl (Windows) to select multiple values.</p>
             <div className="tableWrap">
               <table>
                 <thead>
@@ -298,6 +298,7 @@ export default async function SettingsPage({
                     <th>Project</th>
                     <th>Department</th>
                     <th>Active</th>
+                    <th>Edit</th>
                     <th>Trash</th>
                   </tr>
                 </thead>
@@ -312,6 +313,11 @@ export default async function SettingsPage({
                       <td>{scope.productionCategoryName ?? "Any"}</td>
                       <td>{scope.active ? "Yes" : "No"}</td>
                       <td>
+                        <a className="tinyButton" href={`/settings?editType=access_scope&editId=${scope.id}`}>
+                          Edit
+                        </a>
+                      </td>
+                      <td>
                         <form action={deleteAccessScopeAction}>
                           <input type="hidden" name="id" value={scope.id} />
                           <button type="submit" className="tinyButton dangerButton">
@@ -323,7 +329,7 @@ export default async function SettingsPage({
                   ))}
                   {accessScopeAdminData.scopes.length === 0 ? (
                     <tr>
-                      <td colSpan={8}>(none)</td>
+                      <td colSpan={9}>(none)</td>
                     </tr>
                   ) : null}
                 </tbody>
@@ -909,6 +915,85 @@ export default async function SettingsPage({
                 </a>
                 <button type="submit" className="buttonLink buttonPrimary">
                   Save Account Code
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {editingAccessScope ? (
+        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit access scope">
+          <div className="modalPanel">
+            <h2>Edit Access Scope</h2>
+            <form action={updateAccessScopeAction} className="requestForm">
+              <input type="hidden" name="id" value={editingAccessScope.id} />
+              <label>
+                Role
+                <select name="scopeRole" defaultValue={editingAccessScope.scopeRole}>
+                  <option value="viewer">Viewer</option>
+                  <option value="buyer">Buyer</option>
+                  <option value="project_manager">Project Manager</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </label>
+              <label>
+                Fiscal Year
+                <select name="fiscalYearId" defaultValue={editingAccessScope.fiscalYearId ?? ""}>
+                  <option value="">Any fiscal year</option>
+                  {accessScopeAdminData.fiscalYears.map((fy) => (
+                    <option key={fy.id} value={fy.id}>
+                      {fy.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Organization
+                <select name="organizationId" defaultValue={editingAccessScope.organizationId ?? ""}>
+                  <option value="">Any organization</option>
+                  {accessScopeAdminData.organizations.map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {org.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Project
+                <select name="projectId" defaultValue={editingAccessScope.projectId ?? ""}>
+                  <option value="">Any project</option>
+                  {accessScopeAdminData.projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Production Category
+                <select name="productionCategoryId" defaultValue={editingAccessScope.productionCategoryId ?? ""}>
+                  <option value="">Any department</option>
+                  {accessScopeAdminData.categories.map((category) => (
+                    <option key={category.id} value={category.id}>
+                      {category.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Active
+                <select name="active" defaultValue={editingAccessScope.active ? "true" : "false"}>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              </label>
+              <div className="modalActions">
+                <a className="tinyButton" href="/settings">
+                  Cancel
+                </a>
+                <button type="submit" className="buttonLink buttonPrimary">
+                  Save Scope
                 </button>
               </div>
             </form>
