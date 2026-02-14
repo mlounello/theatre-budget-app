@@ -1824,6 +1824,11 @@ function scopeMatches(
   scope: { fiscalYearId: string | null; organizationId: string | null; projectId: string | null; productionCategoryId: string | null },
   row: { fiscalYearId: string | null; organizationId: string | null; projectId: string; productionCategoryId: string | null }
 ): boolean {
+  if (scope.projectId) {
+    if (scope.projectId !== row.projectId) return false;
+    if (!scope.productionCategoryId) return true;
+    return !row.productionCategoryId || scope.productionCategoryId === row.productionCategoryId;
+  }
   const fyMatch = !scope.fiscalYearId || scope.fiscalYearId === row.fiscalYearId;
   const orgMatch = !scope.organizationId || scope.organizationId === row.organizationId;
   const projectMatch = !scope.projectId || scope.projectId === row.projectId;
@@ -1949,8 +1954,12 @@ export async function getMyBoardData(): Promise<{
   const supabase = await getSupabaseServerClient();
   const profile = await getCurrentAccessProfile();
   const scoped = profile.scopes.filter((scope) => scope.active);
+  const scopedProjectIds = Array.from(new Set(scoped.map((scope) => scope.projectId).filter(Boolean))) as string[];
+  const scopedCategoryIds = Array.from(
+    new Set(scoped.map((scope) => scope.productionCategoryId).filter(Boolean))
+  ) as string[];
 
-  const [budgetLinesRes, purchasesRes] = await Promise.all([
+  const [budgetLinesRes, purchasesRes, scopedProjectsRes, scopedCategoriesRes] = await Promise.all([
     supabase
       .from("project_budget_lines")
       .select(
@@ -1963,11 +1972,22 @@ export async function getMyBoardData(): Promise<{
         "id, project_id, production_category_id, title, po_number, status, request_type, procurement_status, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, projects(name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name)), production_categories(name), vendors(name)"
       )
       .neq("status", "cancelled")
-      .order("created_at", { ascending: false })
+      .order("created_at", { ascending: false }),
+    scopedProjectIds.length > 0
+      ? supabase
+          .from("projects")
+          .select("id, name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name)")
+          .in("id", scopedProjectIds)
+      : Promise.resolve({ data: [], error: null }),
+    scopedCategoryIds.length > 0
+      ? supabase.from("production_categories").select("id, name").in("id", scopedCategoryIds)
+      : Promise.resolve({ data: [], error: null })
   ]);
 
   if (budgetLinesRes.error) throw budgetLinesRes.error;
   if (purchasesRes.error) throw purchasesRes.error;
+  if (scopedProjectsRes.error) throw scopedProjectsRes.error;
+  if (scopedCategoriesRes.error) throw scopedCategoriesRes.error;
 
   const allotmentMap = new Map<string, MyBoardCategoryRollup>();
   for (const row of budgetLinesRes.data ?? []) {
@@ -2080,13 +2100,55 @@ export async function getMyBoardData(): Promise<{
     allotmentMap.set(key, group);
   }
 
-  const rows = Array.from(allotmentMap.values()).map((group) => {
+  if (!profile.isAdmin && scoped.length > 0) {
+    const projectById = new Map(
+      ((scopedProjectsRes.data ?? []) as Array<{
+        id?: string;
+        name?: string;
+        season?: string | null;
+        fiscal_years?: { name?: string } | null;
+        organizations?: { name?: string; org_code?: string } | null;
+      }>).map((row) => [row.id as string, row] as const)
+    );
+    const categoryById = new Map(
+      ((scopedCategoriesRes.data ?? []) as Array<{ id?: string; name?: string }>).map((row) => [row.id as string, row] as const)
+    );
+
+    for (const scope of scoped) {
+      if (!scope.projectId) continue;
+      const key = `${scope.projectId}|${scope.productionCategoryId ?? "uncat"}`;
+      if (allotmentMap.has(key)) continue;
+
+      const project = projectById.get(scope.projectId);
+      const category = scope.productionCategoryId ? categoryById.get(scope.productionCategoryId) : null;
+      allotmentMap.set(key, {
+        key,
+        projectId: scope.projectId,
+        productionCategoryId: scope.productionCategoryId,
+        fiscalYearName: project?.fiscal_years?.name ?? null,
+        organizationLabel: project?.organizations
+          ? `${project.organizations.org_code ?? ""} | ${project.organizations.name ?? ""}`
+          : null,
+        projectName: project?.name ?? "Unknown Project",
+        season: project?.season ?? null,
+        productionCategoryName: category?.name ?? "Unassigned",
+        startingAllotment: 0,
+        obligatedTotal: 0,
+        openRequestTotal: 0,
+        remainingTrue: 0,
+        remainingIfRequestsApproved: 0,
+        lines: []
+      });
+    }
+  }
+
+  const finalRows = Array.from(allotmentMap.values()).map((group) => {
     group.remainingTrue = group.startingAllotment - group.obligatedTotal;
     group.remainingIfRequestsApproved = group.startingAllotment - group.obligatedTotal - group.openRequestTotal;
     return group;
   });
 
-  rows.sort((a, b) => {
+  finalRows.sort((a, b) => {
     const fy = (a.fiscalYearName ?? "").localeCompare(b.fiscalYearName ?? "");
     if (fy !== 0) return fy;
     const org = (a.organizationLabel ?? "").localeCompare(b.organizationLabel ?? "");
@@ -2096,5 +2158,5 @@ export async function getMyBoardData(): Promise<{
     return a.productionCategoryName.localeCompare(b.productionCategoryName);
   });
 
-  return { profile, rows };
+  return { profile, rows: finalRows };
 }
