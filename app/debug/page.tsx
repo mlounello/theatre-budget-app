@@ -17,6 +17,21 @@ export default async function DebugPage() {
     .select("id, name, season")
     .order("name", { ascending: true });
 
+  const { data: scopes, error: scopesError } = await supabase
+    .from("user_access_scopes")
+    .select("id, scope_role, fiscal_year_id, organization_id, project_id, production_category_id, active")
+    .order("created_at", { ascending: false });
+
+  const { count: visibleBudgetLines, error: budgetLinesError } = await supabase
+    .from("project_budget_lines")
+    .select("id", { head: true, count: "exact" })
+    .eq("active", true);
+
+  const { count: visiblePurchases, error: purchasesError } = await supabase
+    .from("purchases")
+    .select("id", { head: true, count: "exact" })
+    .neq("status", "cancelled");
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const supabaseRef = supabaseUrl.replace("https://", "").split(".")[0] || "unknown";
 
@@ -68,6 +83,33 @@ export default async function DebugPage() {
             })}
             {(memberships ?? []).length === 0 ? <li>(none)</li> : null}
           </ul>
+        </article>
+
+        <article className="panel">
+          <h2>Visible Access Scopes</h2>
+          {scopesError ? <p>{scopesError.message}</p> : null}
+          <ul>
+            {(scopes ?? []).map((s) => (
+              <li key={s.id}>
+                {s.scope_role} | FY: {s.fiscal_year_id ?? "any"} | Org: {s.organization_id ?? "any"} | Project:{" "}
+                {s.project_id ?? "any"} | Category: {s.production_category_id ?? "any"} | Active:{" "}
+                {s.active ? "yes" : "no"}
+              </li>
+            ))}
+            {(scopes ?? []).length === 0 ? <li>(none)</li> : null}
+          </ul>
+        </article>
+
+        <article className="panel">
+          <h2>Visible Row Counts</h2>
+          {budgetLinesError ? <p>{budgetLinesError.message}</p> : null}
+          {purchasesError ? <p>{purchasesError.message}</p> : null}
+          <p>
+            <strong>Active Budget Lines:</strong> {visibleBudgetLines ?? 0}
+          </p>
+          <p>
+            <strong>Purchases (non-cancelled):</strong> {visiblePurchases ?? 0}
+          </p>
         </article>
       </div>
     </section>
