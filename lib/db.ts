@@ -1827,7 +1827,9 @@ function scopeMatches(
   const fyMatch = !scope.fiscalYearId || scope.fiscalYearId === row.fiscalYearId;
   const orgMatch = !scope.organizationId || scope.organizationId === row.organizationId;
   const projectMatch = !scope.projectId || scope.projectId === row.projectId;
-  const categoryMatch = !scope.productionCategoryId || scope.productionCategoryId === row.productionCategoryId;
+  // Backward-compatible: if a row has no category id (legacy data), allow project/fy/org scope to include it.
+  const categoryMatch =
+    !scope.productionCategoryId || !row.productionCategoryId || scope.productionCategoryId === row.productionCategoryId;
   return fyMatch && orgMatch && projectMatch && categoryMatch;
 }
 
