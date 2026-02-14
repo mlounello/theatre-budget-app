@@ -710,7 +710,7 @@ export async function getRequestsData(): Promise<{
   const { data: productionCategoryData, error: productionCategoryError } = await supabase
     .from("production_categories")
     .select("id, name, sort_order")
-    .eq("active", true)
+    .order("active", { ascending: false })
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
   if (productionCategoryError) throw productionCategoryError;
@@ -915,7 +915,7 @@ export async function getProcurementData(): Promise<{
     supabase
       .from("production_categories")
       .select("id, name, sort_order")
-      .eq("active", true)
+      .order("active", { ascending: false })
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true })
   ]);
@@ -1353,7 +1353,7 @@ export async function getProductionCategoryOptions(): Promise<ProductionCategory
   const { data, error } = await supabase
     .from("production_categories")
     .select("id, name, sort_order")
-    .eq("active", true)
+    .order("active", { ascending: false })
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
 
