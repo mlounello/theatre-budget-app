@@ -7,6 +7,7 @@ const links = [
   { href: "/overview", label: "Overview" },
   { href: "/requests", label: "Requests" },
   { href: "/procurement", label: "Procurement" },
+  { href: "/contracts", label: "Contracts" },
   { href: "/income", label: "Income" },
   { href: "/cc", label: "CC" },
   { href: "/settings", label: "Settings" },

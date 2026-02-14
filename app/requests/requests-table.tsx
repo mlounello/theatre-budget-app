@@ -55,6 +55,7 @@ function asString(value: string | null | undefined): string {
 function requestTypeLabel(value: PurchaseRow["requestType"]): string {
   if (value === "request") return "Budget Hold";
   if (value === "budget_transfer") return "Budget Transfer";
+  if (value === "contract_payment") return "Contract Payment";
   if (value === "requisition") return "Requisition";
   if (value === "expense") return "Expense";
   return "Contract";

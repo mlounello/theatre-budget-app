@@ -19,6 +19,79 @@ const PROCUREMENT_STATUSES = [
 const CC_PROCUREMENT_STATUSES = ["requested", "receipts_uploaded", "statement_paid", "posted_to_account", "cancelled"] as const;
 
 type ProcurementStatus = (typeof PROCUREMENT_STATUSES)[number] | (typeof CC_PROCUREMENT_STATUSES)[number];
+type ProcurementRequestType =
+  | "requisition"
+  | "expense"
+  | "contract"
+  | "request"
+  | "budget_transfer"
+  | "contract_payment";
+
+function parseProcurementRequestType(value: FormDataEntryValue | null): ProcurementRequestType {
+  const raw = String(value ?? "requisition").trim().toLowerCase();
+  if (
+    raw === "expense" ||
+    raw === "contract" ||
+    raw === "request" ||
+    raw === "budget_transfer" ||
+    raw === "contract_payment"
+  ) {
+    return raw;
+  }
+  return "requisition";
+}
+
+function computeInitialByRequestType(
+  requestType: ProcurementRequestType,
+  orderValue: number,
+  isCreditCard: boolean
+): {
+  status: PurchaseStatus;
+  requestedAmount: number;
+  encumberedAmount: number;
+  pendingCcAmount: number;
+  postedAmount: number;
+  procurementStatus: ProcurementStatus;
+  ccWorkflowStatus: "requested" | "receipts_uploaded" | "statement_paid" | "posted_to_account" | null;
+  postedDate: string | null;
+} {
+  if (requestType === "budget_transfer") {
+    return {
+      status: "posted",
+      requestedAmount: 0,
+      encumberedAmount: 0,
+      pendingCcAmount: 0,
+      postedAmount: orderValue,
+      procurementStatus: "paid",
+      ccWorkflowStatus: null,
+      postedDate: new Date().toISOString().slice(0, 10)
+    };
+  }
+
+  if (requestType === "expense" && isCreditCard) {
+    return {
+      status: "pending_cc",
+      requestedAmount: 0,
+      encumberedAmount: 0,
+      pendingCcAmount: orderValue,
+      postedAmount: 0,
+      procurementStatus: "requested",
+      ccWorkflowStatus: "requested",
+      postedDate: null
+    };
+  }
+
+  return {
+    status: "requested",
+    requestedAmount: orderValue,
+    encumberedAmount: 0,
+    pendingCcAmount: 0,
+    postedAmount: 0,
+    procurementStatus: "requested",
+    ccWorkflowStatus: null,
+    postedDate: null
+  };
+}
 
 function getStatusAmount(
   status: string | null | undefined,
@@ -206,6 +279,8 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
     const requisitionNumber = String(formData.get("requisitionNumber") ?? "").trim();
     const poNumber = String(formData.get("poNumber") ?? "").trim();
     const vendorId = String(formData.get("vendorId") ?? "").trim();
+    const requestType = parseProcurementRequestType(formData.get("requestType"));
+    const isCreditCard = requestType === "expense" ? formData.get("isCreditCard") === "on" : false;
 
     if (!projectId || !title) throw new Error("Project and title are required.");
     if (orderValueRaw === "" || orderValue === 0) throw new Error("Order value must be non-zero.");
@@ -215,6 +290,7 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
     const explicitOrganizationId = projectMeta.isExternal ? organizationId || null : null;
     if (projectMeta.isExternal && !explicitOrganizationId) throw new Error("Organization is required for External Procurement.");
     if (budgetTracked && !productionCategoryId) throw new Error("Department is required.");
+    const computed = computeInitialByRequestType(requestType, orderValue, isCreditCard);
 
     let line: { id: string; project_id: string; account_code_id: string | null } | null = null;
     if (budgetTracked) {
@@ -252,16 +328,21 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
         budget_tracked: budgetTracked,
         entered_by_user_id: user.id,
         title,
-        reference_number: referenceNumber || null,
-        requisition_number: requisitionNumber || null,
+        reference_number: requestType === "budget_transfer" ? null : referenceNumber || null,
+        requisition_number: requestType === "requisition" ? requisitionNumber || null : null,
         po_number: poNumber || null,
         vendor_id: vendorId || null,
         estimated_amount: orderValue,
-        requested_amount: orderValue,
-        request_type: "requisition",
-        is_credit_card: false,
-        status: "requested",
-        procurement_status: "requested"
+        requested_amount: computed.requestedAmount,
+        encumbered_amount: computed.encumberedAmount,
+        pending_cc_amount: computed.pendingCcAmount,
+        posted_amount: computed.postedAmount,
+        request_type: requestType,
+        is_credit_card: isCreditCard,
+        cc_workflow_status: computed.ccWorkflowStatus,
+        status: computed.status,
+        procurement_status: computed.procurementStatus,
+        posted_date: computed.postedDate
       })
       .select("id, project_id")
       .single();
@@ -285,12 +366,12 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
     const { error: eventError } = await supabase.from("purchase_events").insert({
       purchase_id: purchase.id,
       from_status: null,
-      to_status: "requested",
+      to_status: computed.status,
       estimated_amount_snapshot: orderValue,
-      requested_amount_snapshot: orderValue,
-      encumbered_amount_snapshot: 0,
-      pending_cc_amount_snapshot: 0,
-      posted_amount_snapshot: 0,
+      requested_amount_snapshot: computed.requestedAmount,
+      encumbered_amount_snapshot: computed.encumberedAmount,
+      pending_cc_amount_snapshot: computed.pendingCcAmount,
+      posted_amount_snapshot: computed.postedAmount,
       changed_by_user_id: user.id,
       note: "Procurement order created"
     });
@@ -310,9 +391,10 @@ export async function createProcurementOrderAction(formData: FormData): Promise<
 type BatchProcurementLine = {
   title: string;
   requisitionNumber: string | null;
+  referenceNumber: string | null;
   poNumber: string | null;
   amount: number;
-  entryType: "requisition" | "cc";
+  requestType: ProcurementRequestType;
 };
 
 function parseBatchLinesJson(value: FormDataEntryValue | null): BatchProcurementLine[] {
@@ -324,9 +406,10 @@ function parseBatchLinesJson(value: FormDataEntryValue | null): BatchProcurement
       .map((entry): BatchProcurementLine => ({
         title: String((entry as { title?: unknown }).title ?? "").trim(),
         requisitionNumber: String((entry as { requisitionNumber?: unknown }).requisitionNumber ?? "").trim() || null,
+        referenceNumber: String((entry as { referenceNumber?: unknown }).referenceNumber ?? "").trim() || null,
         poNumber: String((entry as { poNumber?: unknown }).poNumber ?? "").trim() || null,
         amount: Number.parseFloat(String((entry as { amount?: unknown }).amount ?? "0")),
-        entryType: String((entry as { entryType?: unknown }).entryType ?? "").trim().toLowerCase() === "cc" ? "cc" : "requisition"
+        requestType: parseProcurementRequestType(String((entry as { requestType?: unknown }).requestType ?? "requisition"))
       }))
       .filter((line) => line.title && Number.isFinite(line.amount) && line.amount !== 0);
   } catch {
@@ -383,13 +466,12 @@ export async function createProcurementBatchAction(formData: FormData): Promise<
     for (const entry of lines) {
       if (!entry.title) throw new Error("Each line needs a title.");
       if (!Number.isFinite(entry.amount) || entry.amount === 0) throw new Error("Each line amount must be non-zero.");
-      if (entry.entryType !== "requisition" && entry.entryType !== "cc") throw new Error("Invalid line type.");
     }
 
     const createdPurchaseIds: string[] = [];
     for (const entry of lines) {
-      const isCc = entry.entryType === "cc";
-      const toStatus: PurchaseStatus = isCc ? "pending_cc" : "requested";
+      const isCc = entry.requestType === "expense";
+      const computed = computeInitialByRequestType(entry.requestType, entry.amount, isCc);
       const requisitionNumber = entry.requisitionNumber;
       const poNumber = entry.poNumber;
 
@@ -404,19 +486,20 @@ export async function createProcurementBatchAction(formData: FormData): Promise<
           budget_tracked: budgetTracked,
           entered_by_user_id: user.id,
           title: entry.title,
-          reference_number: null,
-          requisition_number: requisitionNumber,
+          reference_number: entry.requestType === "budget_transfer" ? null : entry.referenceNumber,
+          requisition_number: entry.requestType === "requisition" ? requisitionNumber : null,
           po_number: poNumber,
           estimated_amount: entry.amount,
-          requested_amount: isCc ? 0 : entry.amount,
-          encumbered_amount: 0,
-          pending_cc_amount: isCc ? entry.amount : 0,
-          posted_amount: 0,
-          request_type: isCc ? "expense" : "requisition",
+          requested_amount: computed.requestedAmount,
+          encumbered_amount: computed.encumberedAmount,
+          pending_cc_amount: computed.pendingCcAmount,
+          posted_amount: computed.postedAmount,
+          request_type: entry.requestType,
           is_credit_card: isCc,
-          cc_workflow_status: isCc ? "requested" : null,
-          status: toStatus,
-          procurement_status: "requested"
+          cc_workflow_status: computed.ccWorkflowStatus,
+          status: computed.status,
+          procurement_status: computed.procurementStatus,
+          posted_date: computed.postedDate
         })
         .select("id")
         .single();
@@ -441,14 +524,14 @@ export async function createProcurementBatchAction(formData: FormData): Promise<
       const { error: eventError } = await supabase.from("purchase_events").insert({
         purchase_id: purchase.id,
         from_status: null,
-        to_status: toStatus,
+        to_status: computed.status,
         estimated_amount_snapshot: entry.amount,
-        requested_amount_snapshot: isCc ? 0 : entry.amount,
-        encumbered_amount_snapshot: 0,
-        pending_cc_amount_snapshot: isCc ? entry.amount : 0,
-        posted_amount_snapshot: 0,
+        requested_amount_snapshot: computed.requestedAmount,
+        encumbered_amount_snapshot: computed.encumberedAmount,
+        pending_cc_amount_snapshot: computed.pendingCcAmount,
+        posted_amount_snapshot: computed.postedAmount,
         changed_by_user_id: user.id,
-        note: isCc ? "Batch created credit-card entry" : "Batch created requisition entry"
+        note: "Batch created procurement entry"
       });
       if (eventError) throw new Error(eventError.message);
     }

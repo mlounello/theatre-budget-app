@@ -95,7 +95,7 @@ export type PurchaseRow = {
   postedAmount: number;
   receiptTotal: number;
   receiptCount: number;
-  requestType: "requisition" | "expense" | "contract" | "request" | "budget_transfer";
+  requestType: "requisition" | "expense" | "contract" | "request" | "budget_transfer" | "contract_payment";
   isCreditCard: boolean;
   ccWorkflowStatus: "requested" | "receipts_uploaded" | "statement_paid" | "posted_to_account" | null;
   status: PurchaseStatus;
@@ -139,7 +139,7 @@ export type ProcurementRow = {
   pendingCcAmount: number;
   postedAmount: number;
   budgetStatus: PurchaseStatus;
-  requestType: "requisition" | "expense" | "contract" | "request" | "budget_transfer";
+  requestType: "requisition" | "expense" | "contract" | "request" | "budget_transfer" | "contract_payment";
   isCreditCard: boolean;
   ccWorkflowStatus: "requested" | "receipts_uploaded" | "statement_paid" | "posted_to_account" | null;
   procurementStatus: string;
@@ -160,6 +160,47 @@ export type ProcurementReceiptRow = {
   fullyReceived: boolean;
   attachmentUrl: string | null;
   createdAt: string;
+};
+
+export type ContractWorkflowStatus =
+  | "w9_requested"
+  | "contract_sent"
+  | "contract_signed_returned"
+  | "siena_signed";
+
+export type ContractInstallmentStatus = "planned" | "check_request_submitted" | "check_paid";
+
+export type ContractRow = {
+  id: string;
+  fiscalYearId: string | null;
+  fiscalYearName: string | null;
+  organizationId: string | null;
+  organizationLabel: string | null;
+  projectId: string;
+  projectName: string;
+  season: string | null;
+  bannerAccountCodeId: string;
+  bannerAccountCode: string | null;
+  contractorName: string;
+  contractorEmployeeId: string | null;
+  contractorEmail: string | null;
+  contractorPhone: string | null;
+  contractValue: number;
+  installmentCount: number;
+  workflowStatus: ContractWorkflowStatus;
+  notes: string | null;
+  createdAt: string;
+};
+
+export type ContractInstallmentRow = {
+  id: string;
+  contractId: string;
+  purchaseId: string | null;
+  installmentNumber: number;
+  installmentAmount: number;
+  status: ContractInstallmentStatus;
+  checkRequestSubmittedOn: string | null;
+  checkPaidOn: string | null;
 };
 
 export type VendorOption = {
@@ -589,6 +630,7 @@ export async function getRequestsData(): Promise<{
     .select(
       "id, project_id, budget_line_id, production_category_id, banner_account_code_id, title, reference_number, requisition_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, created_at, projects(name, planning_requests_enabled), production_categories(name), account_codes(code), project_budget_lines(budget_code, category)"
     )
+    .neq("request_type", "contract_payment")
     .order("created_at", { ascending: false })
     .limit(100);
 
@@ -712,7 +754,8 @@ export async function getRequestsData(): Promise<{
         | "expense"
         | "contract"
         | "request"
-        | "budget_transfer",
+        | "budget_transfer"
+        | "contract_payment",
       isCreditCard: Boolean(row.is_credit_card as boolean | null),
       ccWorkflowStatus: ((row.cc_workflow_status as string | null) ?? null) as
         | "requested"
@@ -834,6 +877,7 @@ export async function getProcurementData(): Promise<{
       .select(
         "id, project_id, organization_id, budget_line_id, production_category_id, banner_account_code_id, budget_tracked, title, reference_number, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, procurement_status, ordered_on, received_on, paid_on, vendor_id, notes, created_at, organizations(name, org_code), projects(name, season, organization_id, organizations(name, org_code)), production_categories(name), account_codes(code), project_budget_lines(budget_code, category, line_name), vendors(id, name)"
       )
+      .neq("request_type", "contract_payment")
       .order("created_at", { ascending: false })
       .limit(200),
     supabase
@@ -940,7 +984,8 @@ export async function getProcurementData(): Promise<{
         | "expense"
         | "contract"
         | "request"
-        | "budget_transfer",
+        | "budget_transfer"
+        | "contract_payment",
       isCreditCard: Boolean(row.is_credit_card as boolean | null),
       ccWorkflowStatus: (row.cc_workflow_status as
         | "requested"
@@ -1085,6 +1130,119 @@ export async function getProcurementData(): Promise<{
     accountCodeOptions,
     productionCategoryOptions,
     canManageProcurement
+  };
+}
+
+export async function getContractsData(): Promise<{
+  contracts: ContractRow[];
+  installments: ContractInstallmentRow[];
+  fiscalYearOptions: FiscalYearOption[];
+  organizationOptions: OrganizationOption[];
+  projectOptions: ProcurementProjectOption[];
+  accountCodeOptions: AccountCodeOption[];
+  canManageContracts: boolean;
+}> {
+  const supabase = await getSupabaseServerClient();
+
+  const [contractsResponse, installmentsResponse, fiscalYears, organizations, projects, accountCodes] = await Promise.all([
+    supabase
+      .from("contracts")
+      .select(
+        "id, fiscal_year_id, organization_id, project_id, banner_account_code_id, contractor_name, contractor_employee_id, contractor_email, contractor_phone, contract_value, installment_count, workflow_status, notes, created_at, fiscal_years(name), organizations(name, org_code), projects(name, season), account_codes(code)"
+      )
+      .order("created_at", { ascending: false })
+      .limit(200),
+    supabase
+      .from("contract_installments")
+      .select("id, contract_id, purchase_id, installment_number, installment_amount, status, check_request_submitted_on, check_paid_on")
+      .order("contract_id", { ascending: true })
+      .order("installment_number", { ascending: true }),
+    getFiscalYearOptions(),
+    getOrganizationOptions(),
+    getSettingsProjects(),
+    getAccountCodeOptions()
+  ]);
+
+  if (contractsResponse.error) throw contractsResponse.error;
+  if (installmentsResponse.error) throw installmentsResponse.error;
+
+  const {
+    data: { user }
+  } = await supabase.auth.getUser();
+
+  let canManageContracts = false;
+  if (user) {
+    const { data: elevatedRoles } = await supabase
+      .from("project_memberships")
+      .select("role")
+      .eq("user_id", user.id)
+      .in("role", ["admin", "project_manager"])
+      .limit(1);
+    canManageContracts = (elevatedRoles ?? []).length > 0;
+  }
+
+  const projectById = new Map(projects.map((project) => [project.id, project]));
+  const fiscalYearById = new Map(fiscalYears.map((fiscalYear) => [fiscalYear.id, fiscalYear.name]));
+
+  const contracts: ContractRow[] = (contractsResponse.data ?? []).map((row) => {
+    const fy = row.fiscal_years as { name?: string } | null;
+    const org = row.organizations as { name?: string; org_code?: string } | null;
+    const project = row.projects as { name?: string; season?: string | null } | null;
+    const account = row.account_codes as { code?: string } | null;
+    const projectMeta = projectById.get(row.project_id as string);
+    return {
+      id: row.id as string,
+      fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
+      fiscalYearName:
+        fy?.name ??
+        (projectMeta?.fiscalYearId ? (fiscalYearById.get(projectMeta.fiscalYearId) ?? null) : null),
+      organizationId: (row.organization_id as string | null) ?? null,
+      organizationLabel: org ? `${org.org_code ?? ""} | ${org.name ?? ""}` : null,
+      projectId: row.project_id as string,
+      projectName: project?.name ?? "Unknown Project",
+      season: (project?.season as string | null) ?? null,
+      bannerAccountCodeId: row.banner_account_code_id as string,
+      bannerAccountCode: account?.code ?? null,
+      contractorName: row.contractor_name as string,
+      contractorEmployeeId: (row.contractor_employee_id as string | null) ?? null,
+      contractorEmail: (row.contractor_email as string | null) ?? null,
+      contractorPhone: (row.contractor_phone as string | null) ?? null,
+      contractValue: asNumber(row.contract_value as string | number | null),
+      installmentCount: Number(row.installment_count ?? 1),
+      workflowStatus: (row.workflow_status as ContractWorkflowStatus) ?? "w9_requested",
+      notes: (row.notes as string | null) ?? null,
+      createdAt: row.created_at as string
+    };
+  });
+
+  const installments: ContractInstallmentRow[] = (installmentsResponse.data ?? []).map((row) => ({
+    id: row.id as string,
+    contractId: row.contract_id as string,
+    purchaseId: (row.purchase_id as string | null) ?? null,
+    installmentNumber: Number(row.installment_number ?? 1),
+    installmentAmount: asNumber(row.installment_amount as string | number | null),
+    status: ((row.status as string | null) ?? "planned") as ContractInstallmentStatus,
+    checkRequestSubmittedOn: (row.check_request_submitted_on as string | null) ?? null,
+    checkPaidOn: (row.check_paid_on as string | null) ?? null
+  }));
+
+  const projectOptions: ProcurementProjectOption[] = projects.map((project) => ({
+    id: project.id,
+    name: project.name,
+    label: `${project.name}${project.season ? ` (${project.season})` : ""}`,
+    organizationId: project.organizationId,
+    fiscalYearId: project.fiscalYearId,
+    isExternal: project.name.trim().toLowerCase() === "external procurement"
+  }));
+
+  return {
+    contracts,
+    installments,
+    fiscalYearOptions: fiscalYears,
+    organizationOptions: organizations,
+    projectOptions,
+    accountCodeOptions: accountCodes,
+    canManageContracts
   };
 }
 

@@ -35,6 +35,10 @@ export function CreateOrderForm({
   const [vendorId, setVendorId] = useState("");
   const [productionCategoryId, setProductionCategoryId] = useState("");
   const [bannerAccountCodeId, setBannerAccountCodeId] = useState("");
+  const [requestType, setRequestType] = useState<
+    "requisition" | "expense" | "contract" | "request" | "budget_transfer" | "contract_payment"
+  >("requisition");
+  const [isCreditCard, setIsCreditCard] = useState(true);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -44,12 +48,25 @@ export function CreateOrderForm({
     const vendor = window.localStorage.getItem("tba_procurement_vendor_id");
     const productionCategory = window.localStorage.getItem("tba_procurement_production_category_id");
     const bannerCode = window.localStorage.getItem("tba_procurement_banner_account_code_id");
+    const type = window.localStorage.getItem("tba_procurement_request_type");
+    const cc = window.localStorage.getItem("tba_procurement_is_cc");
     if (fy) setFiscalYearId(fy);
     if (org) setOrganizationId(org);
     if (project) setProjectId(project);
     if (vendor) setVendorId(vendor);
     if (productionCategory) setProductionCategoryId(productionCategory);
     if (bannerCode) setBannerAccountCodeId(bannerCode);
+    if (
+      type === "requisition" ||
+      type === "expense" ||
+      type === "contract" ||
+      type === "request" ||
+      type === "budget_transfer" ||
+      type === "contract_payment"
+    ) {
+      setRequestType(type);
+    }
+    if (cc === "0") setIsCreditCard(false);
   }, []);
 
   useEffect(() => {
@@ -60,7 +77,9 @@ export function CreateOrderForm({
     window.localStorage.setItem("tba_procurement_vendor_id", vendorId);
     window.localStorage.setItem("tba_procurement_production_category_id", productionCategoryId);
     window.localStorage.setItem("tba_procurement_banner_account_code_id", bannerAccountCodeId);
-  }, [fiscalYearId, organizationId, projectId, vendorId, productionCategoryId, bannerAccountCodeId]);
+    window.localStorage.setItem("tba_procurement_request_type", requestType);
+    window.localStorage.setItem("tba_procurement_is_cc", isCreditCard ? "1" : "0");
+  }, [fiscalYearId, organizationId, projectId, vendorId, productionCategoryId, bannerAccountCodeId, requestType, isCreditCard]);
 
   const fiscalYearOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -181,6 +200,32 @@ export function CreateOrderForm({
       {isExternalProject ? <p className="heroSubtitle">External Procurement rows are automatically marked as off-budget.</p> : null}
       <input type="hidden" name="organizationId" value={organizationId} />
       <input type="hidden" name="budgetLineId" value="" />
+      <label>
+        Request Type
+        <select
+          name="requestType"
+          value={requestType}
+          onChange={(event) => {
+            const value = event.target.value as typeof requestType;
+            setRequestType(value);
+            if (value !== "expense") setIsCreditCard(false);
+            if (value === "expense") setIsCreditCard(true);
+          }}
+        >
+          <option value="requisition">Requisition</option>
+          <option value="expense">Expense</option>
+          <option value="contract">Contract</option>
+          <option value="request">Budget Hold</option>
+          <option value="budget_transfer">Budget Transfer</option>
+          <option value="contract_payment">Contract Payment</option>
+        </select>
+      </label>
+      {requestType === "expense" ? (
+        <label className="checkboxLabel">
+          <input name="isCreditCard" type="checkbox" checked={isCreditCard} onChange={(event) => setIsCreditCard(event.target.checked)} />
+          Credit Card Expense
+        </label>
+      ) : null}
       <label>
         Title
         <input name="title" placeholder="Order title" required />

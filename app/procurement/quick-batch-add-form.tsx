@@ -13,10 +13,11 @@ import type {
 type BatchLine = {
   id: string;
   title: string;
+  referenceNumber: string;
   requisitionNumber: string;
   poNumber: string;
   amount: string;
-  entryType: "requisition" | "cc";
+  requestType: "requisition" | "expense" | "contract" | "request" | "budget_transfer" | "contract_payment";
 };
 
 const NONE_FISCAL_YEAR = "__none_fiscal_year__";
@@ -26,10 +27,11 @@ function makeLine(): BatchLine {
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     title: "",
+    referenceNumber: "",
     requisitionNumber: "",
     poNumber: "",
     amount: "",
-    entryType: "requisition"
+    requestType: "requisition"
   };
 }
 
@@ -129,10 +131,11 @@ export function QuickBatchAddForm({
   const linesJson = JSON.stringify(
     lines.map((line) => ({
       title: line.title.trim(),
+      referenceNumber: line.referenceNumber.trim(),
       requisitionNumber: line.requisitionNumber.trim(),
       poNumber: line.poNumber.trim(),
       amount: line.amount.trim(),
-      entryType: line.entryType
+      requestType: line.requestType
     }))
   );
 
@@ -226,6 +229,11 @@ export function QuickBatchAddForm({
           <div key={line.id} className="batchLineRow">
             <input placeholder="Title" value={line.title} onChange={(event) => updateLine(line.id, { title: event.target.value })} />
             <input
+              placeholder="Ref # (optional)"
+              value={line.referenceNumber}
+              onChange={(event) => updateLine(line.id, { referenceNumber: event.target.value })}
+            />
+            <input
               placeholder="Req # (optional)"
               value={line.requisitionNumber}
               onChange={(event) => updateLine(line.id, { requisitionNumber: event.target.value })}
@@ -238,9 +246,20 @@ export function QuickBatchAddForm({
               value={line.amount}
               onChange={(event) => updateLine(line.id, { amount: event.target.value })}
             />
-            <select value={line.entryType} onChange={(event) => updateLine(line.id, { entryType: event.target.value as "requisition" | "cc" })}>
+            <select
+              value={line.requestType}
+              onChange={(event) =>
+                updateLine(line.id, {
+                  requestType: event.target.value as BatchLine["requestType"]
+                })
+              }
+            >
               <option value="requisition">Requisition</option>
-              <option value="cc">CC</option>
+              <option value="expense">Expense</option>
+              <option value="contract">Contract</option>
+              <option value="request">Budget Hold</option>
+              <option value="budget_transfer">Budget Transfer</option>
+              <option value="contract_payment">Contract Payment</option>
             </select>
             <button type="button" className="tinyButton dangerButton" onClick={() => removeLine(line.id)}>
               Remove

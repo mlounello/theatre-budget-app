@@ -43,6 +43,7 @@ const CC_PROCUREMENT_STATUSES = [
 function procurementLabel(value: string, isCreditCard: boolean, requestType: ProcurementRow["requestType"]): string {
   if (requestType === "request") return "Budget Hold";
   if (requestType === "budget_transfer") return "Budget Transfer";
+  if (requestType === "contract_payment") return "Contract Payment";
   const list = isCreditCard ? CC_PROCUREMENT_STATUSES : PROCUREMENT_STATUSES;
   const found = list.find((status) => status.value === value);
   return found?.label ?? value;
@@ -363,6 +364,7 @@ export function ProcurementTable({
             <option value="contract">Contract</option>
             <option value="request">Budget Hold</option>
             <option value="budget_transfer">Budget Transfer</option>
+            <option value="contract_payment">Contract Payment</option>
           </select>
         </label>
         <label>
