@@ -1767,6 +1767,7 @@ export type AccessProfile = {
     organizationId: string | null;
     projectId: string | null;
     productionCategoryId: string | null;
+    productionCategoryName: string | null;
     active: boolean;
   }>;
 };
@@ -1821,20 +1822,36 @@ function highestRole(roles: string[]): AppRole {
 }
 
 function scopeMatches(
-  scope: { fiscalYearId: string | null; organizationId: string | null; projectId: string | null; productionCategoryId: string | null },
-  row: { fiscalYearId: string | null; organizationId: string | null; projectId: string; productionCategoryId: string | null }
+  scope: {
+    fiscalYearId: string | null;
+    organizationId: string | null;
+    projectId: string | null;
+    productionCategoryId: string | null;
+    productionCategoryName: string | null;
+  },
+  row: {
+    fiscalYearId: string | null;
+    organizationId: string | null;
+    projectId: string;
+    productionCategoryId: string | null;
+    productionCategoryName: string | null;
+  }
 ): boolean {
+  const scopeCategoryName = (scope.productionCategoryName ?? "").trim().toLowerCase();
+  const rowCategoryName = (row.productionCategoryName ?? "").trim().toLowerCase();
+  const categoryMatchByName = scopeCategoryName.length > 0 && rowCategoryName.length > 0 && scopeCategoryName === rowCategoryName;
+
   if (scope.projectId) {
     if (scope.projectId !== row.projectId) return false;
     if (!scope.productionCategoryId) return true;
-    return !row.productionCategoryId || scope.productionCategoryId === row.productionCategoryId;
+    return !row.productionCategoryId || scope.productionCategoryId === row.productionCategoryId || categoryMatchByName;
   }
   const fyMatch = !scope.fiscalYearId || scope.fiscalYearId === row.fiscalYearId;
   const orgMatch = !scope.organizationId || scope.organizationId === row.organizationId;
   const projectMatch = !scope.projectId || scope.projectId === row.projectId;
   // Backward-compatible: if a row has no category id (legacy data), allow project/fy/org scope to include it.
   const categoryMatch =
-    !scope.productionCategoryId || !row.productionCategoryId || scope.productionCategoryId === row.productionCategoryId;
+    !scope.productionCategoryId || !row.productionCategoryId || scope.productionCategoryId === row.productionCategoryId || categoryMatchByName;
   return fyMatch && orgMatch && projectMatch && categoryMatch;
 }
 
@@ -1851,7 +1868,7 @@ export async function getCurrentAccessProfile(): Promise<AccessProfile> {
     supabase.from("project_memberships").select("role").eq("user_id", user.id),
     supabase
       .from("user_access_scopes")
-      .select("scope_role, fiscal_year_id, organization_id, project_id, production_category_id, active")
+      .select("scope_role, fiscal_year_id, organization_id, project_id, production_category_id, active, production_categories(name)")
       .eq("user_id", user.id)
       .eq("active", true)
   ]);
@@ -1872,6 +1889,7 @@ export async function getCurrentAccessProfile(): Promise<AccessProfile> {
       organizationId: (row.organization_id as string | null) ?? null,
       projectId: (row.project_id as string | null) ?? null,
       productionCategoryId: (row.production_category_id as string | null) ?? null,
+      productionCategoryName: ((row.production_categories as { name?: string } | null)?.name as string | undefined) ?? null,
       active: Boolean(row.active as boolean | null)
     }))
   };
@@ -2002,7 +2020,8 @@ export async function getMyBoardData(): Promise<{
       fiscalYearId: (project?.fiscal_year_id as string | null) ?? null,
       organizationId: (project?.organization_id as string | null) ?? null,
       projectId,
-      productionCategoryId: categoryId
+      productionCategoryId: categoryId,
+      productionCategoryName: category?.name ?? null
     };
     const allow = profile.isAdmin || scoped.length === 0 || scoped.some((scope) => scopeMatches(scope, rowMeta));
     if (!allow) continue;
@@ -2043,7 +2062,8 @@ export async function getMyBoardData(): Promise<{
       fiscalYearId: (project?.fiscal_year_id as string | null) ?? null,
       organizationId: (project?.organization_id as string | null) ?? null,
       projectId,
-      productionCategoryId: categoryId
+      productionCategoryId: categoryId,
+      productionCategoryName: category?.name ?? null
     };
     const allow = profile.isAdmin || scoped.length === 0 || scoped.some((scope) => scopeMatches(scope, rowMeta));
     if (!allow) continue;
