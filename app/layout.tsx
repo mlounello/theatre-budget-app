@@ -6,7 +6,12 @@ import { ScrollRestore } from "@/components/scroll-restore";
 
 export const metadata: Metadata = {
   title: "Theatre Budget App",
-  description: "Siena-branded production budget and purchase tracking"
+  description: "Siena-branded production budget and purchase tracking",
+  icons: {
+    icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
+    shortcut: ["/favicon.svg"],
+    apple: [{ url: "/favicon.svg" }]
+  }
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

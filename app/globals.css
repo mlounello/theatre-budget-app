@@ -87,11 +87,11 @@ th {
   gap: 0.75rem;
 }
 
-.brandMark {
-  width: 14px;
+.brandLogo {
+  width: 42px;
   height: 42px;
-  background: var(--siena-yellow);
-  border-radius: 999px;
+  object-fit: contain;
+  display: block;
 }
 
 .brandTitle {

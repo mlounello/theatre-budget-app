@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { signOut } from "@/app/auth/actions";
 import { getAccessContext } from "@/lib/access";
 
@@ -74,7 +75,7 @@ export async function TopNav() {
     <header className="topNav">
       <div className="topNavInner">
         <div className="brand">
-          <span className="brandMark" aria-hidden="true" />
+          <Image src="/site-logo.svg" alt="Theatre Budget App logo" className="brandLogo" width={42} height={42} />
           <div>
             <p className="brandTitle">Theatre Budget App</p>
             <p className="brandSubtitle">Siena Production Budgeting</p>
