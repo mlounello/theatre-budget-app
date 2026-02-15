@@ -1186,7 +1186,12 @@ export async function createUserAccessScopeAction(formData: FormData): Promise<v
     if (!access.userId) throw new Error("You must be signed in.");
 
     const userId = String(formData.get("userId") ?? "").trim();
-    const scopeRole = String(formData.get("scopeRole") ?? "").trim() as "admin" | "project_manager" | "buyer" | "viewer";
+    const scopeRole = String(formData.get("scopeRole") ?? "").trim() as
+      | "admin"
+      | "project_manager"
+      | "buyer"
+      | "viewer"
+      | "procurement_tracker";
     const projectId = String(formData.get("projectId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const projectIds = formData
@@ -1201,6 +1206,9 @@ export async function createUserAccessScopeAction(formData: FormData): Promise<v
     const organizationId = String(formData.get("organizationId") ?? "").trim();
 
     if (!userId || !scopeRole) throw new Error("User and role are required.");
+    if (scopeRole === "procurement_tracker" && !organizationId) {
+      throw new Error("Procurement Tracker scope requires an organization.");
+    }
 
     if (access.role !== "admin") {
       if (scopeRole !== "buyer" && scopeRole !== "viewer") {
@@ -1213,8 +1221,16 @@ export async function createUserAccessScopeAction(formData: FormData): Promise<v
       }
     }
 
-    const resolvedProjects = projectIds.length > 0 ? projectIds : projectId ? [projectId] : [""];
-    const resolvedCategories = categoryIds.length > 0 ? categoryIds : productionCategoryId ? [productionCategoryId] : [""];
+    const resolvedProjects =
+      scopeRole === "procurement_tracker" ? [""] : projectIds.length > 0 ? projectIds : projectId ? [projectId] : [""];
+    const resolvedCategories =
+      scopeRole === "procurement_tracker"
+        ? [""]
+        : categoryIds.length > 0
+          ? categoryIds
+          : productionCategoryId
+            ? [productionCategoryId]
+            : [""];
 
     const requestedRows = new Map<string, { projectId: string; categoryId: string }>();
     for (const pid of resolvedProjects) {
@@ -1261,8 +1277,8 @@ export async function createUserAccessScopeAction(formData: FormData): Promise<v
       const { error } = await supabase.from("user_access_scopes").insert({
         user_id: userId,
         scope_role: scopeRole,
-        project_id: row.projectId || null,
-        production_category_id: row.categoryId || null,
+        project_id: scopeRole === "procurement_tracker" ? null : row.projectId || null,
+        production_category_id: scopeRole === "procurement_tracker" ? null : row.categoryId || null,
         fiscal_year_id: fiscalYearId || null,
         organization_id: organizationId || null,
         active: true
@@ -1390,7 +1406,12 @@ export async function updateUserAccessScopeAction(formData: FormData): Promise<v
     if (!access.userId) throw new Error("You must be signed in.");
 
     const id = String(formData.get("id") ?? "").trim();
-    const scopeRole = String(formData.get("scopeRole") ?? "").trim() as "admin" | "project_manager" | "buyer" | "viewer";
+    const scopeRole = String(formData.get("scopeRole") ?? "").trim() as
+      | "admin"
+      | "project_manager"
+      | "buyer"
+      | "viewer"
+      | "procurement_tracker";
     const projectId = String(formData.get("projectId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
@@ -1398,6 +1419,9 @@ export async function updateUserAccessScopeAction(formData: FormData): Promise<v
     const active = String(formData.get("active") ?? "true").trim() === "true";
 
     if (!id || !scopeRole) throw new Error("Scope id and role are required.");
+    if (scopeRole === "procurement_tracker" && !organizationId) {
+      throw new Error("Procurement Tracker scope requires an organization.");
+    }
 
     const { data: existing, error: existingError } = await supabase
       .from("user_access_scopes")
@@ -1422,8 +1446,8 @@ export async function updateUserAccessScopeAction(formData: FormData): Promise<v
       .from("user_access_scopes")
       .update({
         scope_role: scopeRole,
-        project_id: projectId || null,
-        production_category_id: productionCategoryId || null,
+        project_id: scopeRole === "procurement_tracker" ? null : projectId || null,
+        production_category_id: scopeRole === "procurement_tracker" ? null : productionCategoryId || null,
         fiscal_year_id: fiscalYearId || null,
         organization_id: organizationId || null,
         active

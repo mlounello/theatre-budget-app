@@ -28,6 +28,7 @@ export default async function MyBudgetPage({
 }) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
+  if (access.role === "procurement_tracker") redirect("/procurement-tracker");
   if (searchParams) await searchParams;
 
   const { cards } = await getMyBudgetData();

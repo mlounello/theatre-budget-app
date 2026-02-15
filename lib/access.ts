@@ -23,7 +23,13 @@ export type AccessContext = {
 
 function toRole(value: unknown): AppRole | null {
   const normalized = String(value ?? "").trim().toLowerCase();
-  if (normalized === "admin" || normalized === "project_manager" || normalized === "buyer" || normalized === "viewer") {
+  if (
+    normalized === "admin" ||
+    normalized === "project_manager" ||
+    normalized === "buyer" ||
+    normalized === "viewer" ||
+    normalized === "procurement_tracker"
+  ) {
     return normalized as AppRole;
   }
   return null;
@@ -95,6 +101,7 @@ export async function getAccessContext(): Promise<AccessContext> {
   else if (membershipRoles.has("project_manager") || scopedRoles.has("project_manager")) role = "project_manager";
   else if (membershipRoles.has("buyer") || scopedRoles.has("buyer")) role = "buyer";
   else if (membershipRoles.has("viewer") || scopedRoles.has("viewer")) role = "viewer";
+  else if (membershipRoles.has("procurement_tracker") || scopedRoles.has("procurement_tracker")) role = "procurement_tracker";
 
   return {
     userId: user.id,

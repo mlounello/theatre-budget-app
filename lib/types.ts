@@ -1,4 +1,4 @@
-export type AppRole = "admin" | "project_manager" | "buyer" | "viewer";
+export type AppRole = "admin" | "project_manager" | "buyer" | "viewer" | "procurement_tracker";
 
 export type PurchaseStatus =
   | "requested"

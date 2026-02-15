@@ -33,6 +33,9 @@ export default async function DashboardPage({
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const okMessage = resolvedSearchParams?.ok;
   const errorMessage = resolvedSearchParams?.error;
+  if (access.role === "procurement_tracker") {
+    redirect("/procurement-tracker");
+  }
   if (access.role === "buyer" || access.role === "viewer") {
     const { cards, openRequisitions } = await getMyBudgetData();
     return (

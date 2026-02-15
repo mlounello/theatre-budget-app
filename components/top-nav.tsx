@@ -3,6 +3,10 @@ import { signOut } from "@/app/auth/actions";
 import { getAccessContext } from "@/lib/access";
 
 function linksForRole(role: string): Array<{ href: string; label: string }> {
+  if (role === "procurement_tracker") {
+    return [{ href: "/procurement-tracker", label: "Procurement Tracker" }];
+  }
+
   if (role === "viewer") {
     return [
       { href: "/", label: "Dashboard" },

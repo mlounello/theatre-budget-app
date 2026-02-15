@@ -211,6 +211,25 @@ export type ProcurementReceivingDocRow = {
   createdAt: string;
 };
 
+export type ProcurementTrackerRow = {
+  id: string;
+  organizationId: string | null;
+  orgCode: string | null;
+  organizationName: string | null;
+  title: string;
+  requisitionNumber: string | null;
+  poNumber: string | null;
+  invoiceNumber: string | null;
+  receivingDocCodes: string[];
+  vendorName: string | null;
+  orderValue: number;
+  procurementStatus: string;
+  orderedOn: string | null;
+  receivedOn: string | null;
+  paidOn: string | null;
+  notes: string | null;
+};
+
 export type ContractWorkflowStatus =
   | "w9_requested"
   | "contract_sent"
@@ -451,7 +470,7 @@ export type SettingsAccessScopeRow = {
   id: string;
   userId: string;
   userName: string;
-  scopeRole: "admin" | "project_manager" | "buyer" | "viewer";
+  scopeRole: "admin" | "project_manager" | "buyer" | "viewer" | "procurement_tracker";
   fiscalYearId: string | null;
   organizationId: string | null;
   projectId: string | null;
@@ -464,7 +483,7 @@ export type SettingsProjectMembershipRow = {
   projectLabel: string;
   userId: string;
   userName: string;
-  role: "admin" | "project_manager" | "buyer" | "viewer";
+  role: "admin" | "project_manager" | "buyer" | "viewer" | "procurement_tracker";
 };
 
 export async function getDashboardProjects(): Promise<DashboardProject[]> {
@@ -1230,6 +1249,100 @@ export async function getProcurementData(): Promise<{
   };
 }
 
+export async function getProcurementTrackerData(): Promise<{
+  rows: ProcurementTrackerRow[];
+  orgOptions: Array<{ id: string; label: string }>;
+}> {
+  const supabase = await getSupabaseServerClient();
+  const access = await getAccessContext();
+  if (!access.userId) return { rows: [], orgOptions: [] };
+
+  const scopedOrgIds = [
+    ...new Set(
+      access.scopes
+        .filter((scope) => scope.scopeRole === "procurement_tracker")
+        .map((scope) => scope.organizationId)
+        .filter((id): id is string => Boolean(id))
+    )
+  ];
+  if (scopedOrgIds.length === 0) return { rows: [], orgOptions: [] };
+
+  const [purchasesResponse, organizationsResponse, receivingDocsResponse] = await Promise.all([
+    supabase
+      .from("purchases")
+      .select(
+        "id, organization_id, title, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, procurement_status, ordered_on, received_on, paid_on, notes, organizations(name, org_code), vendors(name)"
+      )
+      .in("organization_id", scopedOrgIds)
+      .order("created_at", { ascending: false }),
+    supabase.from("organizations").select("id, name, org_code").in("id", scopedOrgIds).order("org_code", { ascending: true }),
+    supabase
+      .from("purchase_receiving_docs")
+      .select("id, purchase_id, doc_code, created_at")
+      .order("created_at", { ascending: false })
+  ]);
+
+  if (purchasesResponse.error) throw purchasesResponse.error;
+  if (organizationsResponse.error) throw organizationsResponse.error;
+  if (receivingDocsResponse.error) throw receivingDocsResponse.error;
+
+  const docsByPurchaseId = new Map<string, string[]>();
+  for (const row of receivingDocsResponse.data ?? []) {
+    const purchaseId = row.purchase_id as string;
+    const list = docsByPurchaseId.get(purchaseId) ?? [];
+    list.push((row.doc_code as string) ?? "");
+    docsByPurchaseId.set(purchaseId, list);
+  }
+
+  const rows: ProcurementTrackerRow[] = (purchasesResponse.data ?? []).map((row) => {
+    const org = row.organizations as { name?: string; org_code?: string } | null;
+    const vendor = row.vendors as { name?: string } | null;
+    const estimated = asNumber(row.estimated_amount as string | number | null);
+    const requested = asNumber(row.requested_amount as string | number | null);
+    const encumbered = asNumber(row.encumbered_amount as string | number | null);
+    const pendingCc = asNumber(row.pending_cc_amount as string | number | null);
+    const posted = asNumber(row.posted_amount as string | number | null);
+    const budgetStatus = String(row.status ?? "").toLowerCase();
+    const orderValue =
+      budgetStatus === "posted"
+        ? posted
+        : budgetStatus === "pending_cc"
+          ? pendingCc
+          : budgetStatus === "encumbered"
+            ? encumbered
+            : budgetStatus === "requested"
+              ? requested !== 0
+                ? requested
+                : estimated
+              : posted || pendingCc || encumbered || requested || estimated;
+    return {
+      id: row.id as string,
+      organizationId: (row.organization_id as string | null) ?? null,
+      orgCode: (org?.org_code as string | undefined) ?? null,
+      organizationName: (org?.name as string | undefined) ?? null,
+      title: (row.title as string) ?? "",
+      requisitionNumber: (row.requisition_number as string | null) ?? null,
+      poNumber: (row.po_number as string | null) ?? null,
+      invoiceNumber: (row.invoice_number as string | null) ?? null,
+      receivingDocCodes: docsByPurchaseId.get(row.id as string) ?? [],
+      vendorName: (vendor?.name as string | undefined) ?? null,
+      orderValue,
+      procurementStatus: (row.procurement_status as string | null) ?? "requested",
+      orderedOn: (row.ordered_on as string | null) ?? null,
+      receivedOn: (row.received_on as string | null) ?? null,
+      paidOn: (row.paid_on as string | null) ?? null,
+      notes: (row.notes as string | null) ?? null
+    };
+  });
+
+  const orgOptions = (organizationsResponse.data ?? []).map((row) => ({
+    id: row.id as string,
+    label: `${(row.org_code as string) ?? "-"} | ${(row.name as string) ?? "Organization"}`
+  }));
+
+  return { rows, orgOptions };
+}
+
 export async function getContractsData(): Promise<{
   contracts: ContractRow[];
   installments: ContractInstallmentRow[];
@@ -1460,7 +1573,7 @@ export async function getSettingsAccessScopes(): Promise<{
         id: row.id as string,
         userId,
         userName: projectLabel && categoryLabel ? `${userName} | ${projectLabel} | ${categoryLabel}` : userName,
-        scopeRole: (row.scope_role as "admin" | "project_manager" | "buyer" | "viewer") ?? "viewer",
+        scopeRole: (row.scope_role as "admin" | "project_manager" | "buyer" | "viewer" | "procurement_tracker") ?? "viewer",
         fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
         organizationId: (row.organization_id as string | null) ?? null,
         projectId,
@@ -1516,7 +1629,7 @@ export async function getSettingsProjectMemberships(): Promise<{
       projectLabel: projectLabelById.get(row.project_id as string) ?? (row.project_id as string),
       userId: row.user_id as string,
       userName: userNameById.get(row.user_id as string) ?? (row.user_id as string),
-      role: (row.role as "admin" | "project_manager" | "buyer" | "viewer") ?? "viewer"
+      role: (row.role as "admin" | "project_manager" | "buyer" | "viewer" | "procurement_tracker") ?? "viewer"
     }))
     .sort((a, b) => a.projectLabel.localeCompare(b.projectLabel) || a.role.localeCompare(b.role) || a.userName.localeCompare(b.userName));
 
@@ -1984,7 +2097,7 @@ function resolvedPurchaseAmount(row: {
 }
 
 export async function getMyBudgetData(): Promise<{
-  role: "admin" | "project_manager" | "buyer" | "viewer" | "none";
+  role: "admin" | "project_manager" | "buyer" | "viewer" | "procurement_tracker" | "none";
   cards: MyBudgetCard[];
   openRequisitions: DashboardOpenRequisition[];
 }> {

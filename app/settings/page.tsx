@@ -684,6 +684,7 @@ export default async function SettingsPage({
                 {isAdmin ? <option value="project_manager">Project Manager</option> : null}
                 <option value="buyer">Buyer</option>
                 <option value="viewer">Viewer</option>
+                {isAdmin ? <option value="procurement_tracker">Procurement Tracker</option> : null}
               </select>
             </label>
             <label>
@@ -1074,6 +1075,7 @@ export default async function SettingsPage({
                   {isAdmin ? <option value="project_manager">Project Manager</option> : null}
                   <option value="buyer">Buyer</option>
                   <option value="viewer">Viewer</option>
+                  {isAdmin ? <option value="procurement_tracker">Procurement Tracker</option> : null}
                 </select>
               </label>
               <label>

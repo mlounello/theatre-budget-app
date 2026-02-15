@@ -130,6 +130,11 @@ export default async function DebugPage() {
                   <td>Dashboard, My Budget</td>
                   <td>Read-only scoped budget visibility</td>
                 </tr>
+                <tr>
+                  <td>Procurement Tracker</td>
+                  <td>Procurement Tracker</td>
+                  <td>Read-only External Procurement rows for scoped organizations</td>
+                </tr>
               </tbody>
             </table>
           </div>
