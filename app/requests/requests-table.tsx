@@ -15,6 +15,7 @@ import type {
 } from "@/lib/db";
 
 type SortKey =
+  | "createdAt"
   | "projectName"
   | "productionCategoryName"
   | "bannerAccountCode"
@@ -32,6 +33,7 @@ type SortKey =
 
 type SortDirection = "asc" | "desc";
 const SORT_KEYS: SortKey[] = [
+  "createdAt",
   "projectName",
   "productionCategoryName",
   "bannerAccountCode",
@@ -74,6 +76,8 @@ function sortRows(rows: PurchaseRow[], key: SortKey, direction: SortDirection): 
       key === "postedAmount" ||
       key === "receiptTotal"
         ? (a[key] as number) - (b[key] as number)
+        : key === "createdAt"
+          ? asString(a.createdAt).localeCompare(asString(b.createdAt))
         : key === "requestNumber"
           ? asString(aRequestNumber).localeCompare(asString(bRequestNumber))
           : asString(a[key] as string | null).localeCompare(asString(b[key] as string | null));
@@ -125,8 +129,8 @@ export function RequestsTable({
 
   const sortFromUrl = searchParams.get("rq_sort");
   const dirFromUrl = searchParams.get("rq_dir");
-  const initialSortKey: SortKey = sortFromUrl && SORT_KEYS.includes(sortFromUrl as SortKey) ? (sortFromUrl as SortKey) : "projectName";
-  const initialDirection: SortDirection = dirFromUrl === "desc" ? "desc" : "asc";
+  const initialSortKey: SortKey = sortFromUrl && SORT_KEYS.includes(sortFromUrl as SortKey) ? (sortFromUrl as SortKey) : "createdAt";
+  const initialDirection: SortDirection = dirFromUrl === "asc" || dirFromUrl === "desc" ? dirFromUrl : "desc";
   const [sortKey, setSortKey] = useState<SortKey>(initialSortKey);
   const [direction, setDirection] = useState<SortDirection>(initialDirection);
   const [projectFilter, setProjectFilter] = useState(searchParams.get("rq_f_project") ?? "");

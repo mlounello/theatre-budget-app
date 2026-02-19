@@ -1,7 +1,7 @@
 import { createIncomeEntryAction } from "@/app/income/actions";
 import { IncomeTable } from "@/app/income/income-table";
 import { formatCurrency } from "@/lib/format";
-import { getAccountCodeOptions, getIncomeRows, getOrganizationOptions, getProductionCategoryOptions } from "@/lib/db";
+import { getAccountCodeOptions, getFiscalYearOptions, getIncomeRows, getOrganizationOptions, getProductionCategoryOptions } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
 import { redirect } from "next/navigation";
 
@@ -20,27 +20,24 @@ export default async function IncomePage({
   const selectedFiscalYearId = (resolvedSearchParams?.fy ?? "").trim();
   const selectedOrganizationId = (resolvedSearchParams?.org ?? "").trim();
 
-  const [organizations, rows, accountCodeOptions, productionCategoryOptions] = await Promise.all([
+  const [organizations, rows, accountCodeOptions, productionCategoryOptions, fiscalYearOptions] = await Promise.all([
     getOrganizationOptions(),
     getIncomeRows(),
     getAccountCodeOptions(),
-    getProductionCategoryOptions()
+    getProductionCategoryOptions(),
+    getFiscalYearOptions()
   ]);
 
-  const fiscalYearOptions = Array.from(
-    new Map(
-      organizations
-        .filter((organization) => organization.fiscalYearId && organization.fiscalYearName)
-        .map((organization) => [organization.fiscalYearId as string, organization.fiscalYearName as string])
-    ).entries()
-  ).map(([id, name]) => ({ id, name }));
-
   const organizationById = new Map(organizations.map((organization) => [organization.id, organization]));
+  const orgIdsInSelectedFy = new Set(
+    rows
+      .filter((row) => !selectedFiscalYearId || row.fiscalYearId === selectedFiscalYearId)
+      .map((row) => row.organizationId)
+      .filter((id): id is string => Boolean(id))
+  );
 
   const filteredRows = rows.filter((row) => {
-    const org = row.organizationId ? organizationById.get(row.organizationId) : null;
-    const rowFiscalYearId = org?.fiscalYearId ?? "";
-    if (selectedFiscalYearId && rowFiscalYearId !== selectedFiscalYearId) return false;
+    if (selectedFiscalYearId && row.fiscalYearId !== selectedFiscalYearId) return false;
     if (selectedOrganizationId && row.organizationId !== selectedOrganizationId) return false;
     return true;
   });
@@ -58,7 +55,7 @@ export default async function IncomePage({
 
   for (const row of filteredRows) {
     const org = row.organizationId ? organizationById.get(row.organizationId) : null;
-    const fiscalYearName = org?.fiscalYearName ?? "No Fiscal Year";
+    const fiscalYearName = row.fiscalYearName ?? "No Fiscal Year";
     const organizationLabel = org ? `${org.orgCode} | ${org.name}` : row.organizationLabel;
     const bucketKey = `${fiscalYearName}::${organizationLabel}`;
     const bucket = scopeBuckets.get(bucketKey) ?? {
@@ -123,7 +120,7 @@ export default async function IncomePage({
             <select name="org" defaultValue={selectedOrganizationId}>
               <option value="">All organizations</option>
               {organizations
-                .filter((organization) => !selectedFiscalYearId || organization.fiscalYearId === selectedFiscalYearId)
+                .filter((organization) => !selectedFiscalYearId || orgIdsInSelectedFy.has(organization.id))
                 .map((organization) => (
                   <option key={organization.id} value={organization.id}>
                     {organization.label}
