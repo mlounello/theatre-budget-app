@@ -333,6 +333,7 @@ export type AccountCodeOption = {
   code: string;
   category: string;
   name: string;
+  isRevenue: boolean;
   label: string;
 };
 
@@ -341,6 +342,7 @@ export type AccountCodeAdminRow = {
   code: string;
   category: string;
   name: string;
+  isRevenue: boolean;
   active: boolean;
 };
 
@@ -792,8 +794,9 @@ export async function getRequestsData(): Promise<{
 
   const { data: accountCodeData, error: accountCodeError } = await supabase
     .from("account_codes")
-    .select("id, code, category, name")
+    .select("id, code, category, name, is_revenue")
     .eq("active", true)
+    .order("is_revenue", { ascending: false })
     .order("code", { ascending: true });
 
   if (accountCodeError) {
@@ -917,13 +920,14 @@ export async function getRequestsData(): Promise<{
     });
 
   const accountCodeOptions: AccountCodeOption[] = (
-    (accountCodeData as Array<{ id?: unknown; code?: unknown; category?: unknown; name?: unknown }> | null) ?? []
+    (accountCodeData as Array<{ id?: unknown; code?: unknown; category?: unknown; name?: unknown; is_revenue?: unknown }> | null) ?? []
   ).map((row) => ({
     id: row.id as string,
     code: row.code as string,
     category: row.category as string,
     name: row.name as string,
-    label: `${row.code as string} | ${row.category as string} | ${row.name as string}`
+    isRevenue: Boolean(row.is_revenue as boolean | null),
+    label: `${row.code as string} | ${row.category as string} | ${row.name as string}${Boolean(row.is_revenue as boolean | null) ? " | Revenue" : ""}`
   }));
 
   const projectOptions: ProcurementProjectOption[] = Array.from(projectLookup.entries()).map(([id, row]) => ({
@@ -1008,7 +1012,12 @@ export async function getProcurementData(): Promise<{
       .select("id, name, org_code, fiscal_year_id, sort_order, fiscal_years(name)")
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true }),
-    supabase.from("account_codes").select("id, code, category, name").eq("active", true).order("code", { ascending: true }),
+    supabase
+      .from("account_codes")
+      .select("id, code, category, name, is_revenue")
+      .eq("active", true)
+      .order("is_revenue", { ascending: false })
+      .order("code", { ascending: true }),
     supabase
       .from("production_categories")
       .select("id, name, sort_order")
@@ -1204,13 +1213,14 @@ export async function getProcurementData(): Promise<{
   }));
 
   const accountCodeOptions: AccountCodeOption[] = (
-    (accountCodeResponse.data as Array<{ id?: unknown; code?: unknown; category?: unknown; name?: unknown }> | null) ?? []
+    (accountCodeResponse.data as Array<{ id?: unknown; code?: unknown; category?: unknown; name?: unknown; is_revenue?: unknown }> | null) ?? []
   ).map((row) => ({
     id: row.id as string,
     code: row.code as string,
     category: row.category as string,
     name: row.name as string,
-    label: `${row.code as string} | ${row.category as string} | ${row.name as string}`
+    isRevenue: Boolean(row.is_revenue as boolean | null),
+    label: `${row.code as string} | ${row.category as string} | ${row.name as string}${Boolean(row.is_revenue as boolean | null) ? " | Revenue" : ""}`
   }));
 
   const productionCategoryOptions: ProductionCategoryOption[] = (
@@ -1655,8 +1665,9 @@ export async function getAccountCodeOptions(): Promise<AccountCodeOption[]> {
   const supabase = await getSupabaseServerClient();
   const { data, error } = await supabase
     .from("account_codes")
-    .select("id, code, category, name")
+    .select("id, code, category, name, is_revenue")
     .eq("active", true)
+    .order("is_revenue", { ascending: false })
     .order("code", { ascending: true });
 
   if (error) throw error;
@@ -1666,7 +1677,8 @@ export async function getAccountCodeOptions(): Promise<AccountCodeOption[]> {
     code: row.code as string,
     category: row.category as string,
     name: row.name as string,
-    label: `${row.code as string} | ${row.category as string} | ${row.name as string}`
+    isRevenue: Boolean(row.is_revenue as boolean | null),
+    label: `${row.code as string} | ${row.category as string} | ${row.name as string}${Boolean(row.is_revenue as boolean | null) ? " | Revenue" : ""}`
   }));
 }
 
@@ -1674,7 +1686,7 @@ export async function getAccountCodesAdmin(): Promise<AccountCodeAdminRow[]> {
   const supabase = await getSupabaseServerClient();
   const { data, error } = await supabase
     .from("account_codes")
-    .select("id, code, category, name, active")
+    .select("id, code, category, name, is_revenue, active")
     .order("code", { ascending: true });
 
   if (error) throw error;
@@ -1684,6 +1696,7 @@ export async function getAccountCodesAdmin(): Promise<AccountCodeAdminRow[]> {
     code: row.code as string,
     category: row.category as string,
     name: row.name as string,
+    isRevenue: Boolean(row.is_revenue as boolean | null),
     active: Boolean(row.active as boolean | null)
   }));
 }

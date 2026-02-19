@@ -521,6 +521,7 @@ export default async function SettingsPage({
                   <th>Code</th>
                   <th>Category</th>
                   <th>Name</th>
+                  <th>Revenue</th>
                   <th>Active</th>
                   <th>Edit</th>
                   <th>Trash</th>
@@ -532,6 +533,7 @@ export default async function SettingsPage({
                     <td>{ac.code}</td>
                     <td>{ac.category}</td>
                     <td>{ac.name}</td>
+                    <td>{ac.isRevenue ? "Yes" : "No"}</td>
                     <td>{ac.active ? "Yes" : "No"}</td>
                     <td>
                       <a className="tinyButton" href={`/settings?editType=account&editId=${ac.id}`}>
@@ -550,7 +552,7 @@ export default async function SettingsPage({
                 ))}
                 {allAccountCodes.length === 0 ? (
                   <tr>
-                    <td colSpan={6}>(none)</td>
+                    <td colSpan={7}>(none)</td>
                   </tr>
                 ) : null}
               </tbody>
@@ -572,6 +574,10 @@ export default async function SettingsPage({
             <label className="checkboxLabel">
               <input name="active" type="checkbox" defaultChecked />
               Active
+            </label>
+            <label className="checkboxLabel">
+              <input name="isRevenue" type="checkbox" />
+              Revenue Account
             </label>
             <button type="submit" className="buttonLink buttonPrimary">
               Save Account Code
@@ -1017,6 +1023,13 @@ export default async function SettingsPage({
               <label>
                 Active
                 <select name="active" defaultValue={editingAccountCode.active ? "true" : "false"}>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              </label>
+              <label>
+                Revenue Account
+                <select name="isRevenue" defaultValue={editingAccountCode.isRevenue ? "true" : "false"}>
                   <option value="true">Yes</option>
                   <option value="false">No</option>
                 </select>

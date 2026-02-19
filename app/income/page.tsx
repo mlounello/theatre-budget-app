@@ -29,6 +29,8 @@ export default async function IncomePage({
   ]);
 
   const organizationById = new Map(organizations.map((organization) => [organization.id, organization]));
+  const revenueAccountCodes = accountCodeOptions.filter((accountCode) => accountCode.isRevenue);
+  const otherAccountCodes = accountCodeOptions.filter((accountCode) => !accountCode.isRevenue);
   const orgIdsInSelectedFy = new Set(
     rows
       .filter((row) => !selectedFiscalYearId || row.fiscalYearId === selectedFiscalYearId)
@@ -173,11 +175,24 @@ export default async function IncomePage({
             Banner Account Code (optional)
             <select name="bannerAccountCodeId" defaultValue="">
               <option value="">Unassigned</option>
-              {accountCodeOptions.map((accountCode) => (
-                <option key={accountCode.id} value={accountCode.id}>
-                  {accountCode.label}
-                </option>
-              ))}
+              {revenueAccountCodes.length > 0 ? (
+                <optgroup label="Revenue Accounts">
+                  {revenueAccountCodes.map((accountCode) => (
+                    <option key={accountCode.id} value={accountCode.id}>
+                      {accountCode.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
+              {otherAccountCodes.length > 0 ? (
+                <optgroup label="Other Accounts">
+                  {otherAccountCodes.map((accountCode) => (
+                    <option key={accountCode.id} value={accountCode.id}>
+                      {accountCode.label}
+                    </option>
+                  ))}
+                </optgroup>
+              ) : null}
             </select>
           </label>
 

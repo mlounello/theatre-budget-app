@@ -156,6 +156,10 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
             <input name="active" type="checkbox" defaultChecked />
             Active
           </label>
+          <label className="checkboxLabel">
+            <input name="isRevenue" type="checkbox" />
+            Revenue Account
+          </label>
           <button type="submit" className="buttonLink buttonPrimary">
             Save Account Code
           </button>

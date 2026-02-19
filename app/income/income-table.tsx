@@ -119,6 +119,14 @@ export function IncomeTable({
   const sortedRows = useMemo(() => sortRows(filteredRows, sortKey, direction), [filteredRows, sortKey, direction]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const revenueAccountCodes = useMemo(
+    () => accountCodeOptions.filter((accountCode) => accountCode.isRevenue),
+    [accountCodeOptions]
+  );
+  const otherAccountCodes = useMemo(
+    () => accountCodeOptions.filter((accountCode) => !accountCode.isRevenue),
+    [accountCodeOptions]
+  );
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedVisibleCount = useMemo(() => sortedRows.filter((row) => selectedSet.has(row.id)).length, [selectedSet, sortedRows]);
   const allVisibleSelected = sortedRows.length > 0 && selectedVisibleCount === sortedRows.length;
@@ -340,11 +348,24 @@ export function IncomeTable({
                 Banner Account Code
                 <select name="bannerAccountCodeId" defaultValue={editingRow.bannerAccountCodeId ?? ""}>
                   <option value="">Unassigned</option>
-                  {accountCodeOptions.map((accountCode) => (
-                    <option key={accountCode.id} value={accountCode.id}>
-                      {accountCode.label}
-                    </option>
-                  ))}
+                  {revenueAccountCodes.length > 0 ? (
+                    <optgroup label="Revenue Accounts">
+                      {revenueAccountCodes.map((accountCode) => (
+                        <option key={accountCode.id} value={accountCode.id}>
+                          {accountCode.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  {otherAccountCodes.length > 0 ? (
+                    <optgroup label="Other Accounts">
+                      {otherAccountCodes.map((accountCode) => (
+                        <option key={accountCode.id} value={accountCode.id}>
+                          {accountCode.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
                 </select>
               </label>
               <label>
@@ -437,11 +458,24 @@ export function IncomeTable({
                 Banner Code
                 <select name="bannerAccountCodeId">
                   <option value="">Unassigned</option>
-                  {accountCodeOptions.map((accountCode) => (
-                    <option key={accountCode.id} value={accountCode.id}>
-                      {accountCode.label}
-                    </option>
-                  ))}
+                  {revenueAccountCodes.length > 0 ? (
+                    <optgroup label="Revenue Accounts">
+                      {revenueAccountCodes.map((accountCode) => (
+                        <option key={accountCode.id} value={accountCode.id}>
+                          {accountCode.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
+                  {otherAccountCodes.length > 0 ? (
+                    <optgroup label="Other Accounts">
+                      {otherAccountCodes.map((accountCode) => (
+                        <option key={accountCode.id} value={accountCode.id}>
+                          {accountCode.label}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : null}
                 </select>
               </label>
 

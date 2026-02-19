@@ -323,6 +323,7 @@ export async function createAccountCodeAction(formData: FormData): Promise<void>
     const category = String(formData.get("category") ?? "").trim();
     const name = String(formData.get("name") ?? "").trim();
     const active = formData.get("active") === "on";
+    const isRevenue = formData.get("isRevenue") === "on";
 
     if (!code || !category || !name) throw new Error("Code, category, and name are required.");
 
@@ -331,7 +332,8 @@ export async function createAccountCodeAction(formData: FormData): Promise<void>
         code,
         category,
         name,
-        active
+        active,
+        is_revenue: isRevenue
       },
       { onConflict: "code" }
     );
@@ -413,6 +415,7 @@ export async function updateAccountCodeAction(formData: FormData): Promise<void>
     const category = String(formData.get("category") ?? "").trim();
     const name = String(formData.get("name") ?? "").trim();
     const active = String(formData.get("active") ?? "true").trim() === "true";
+    const isRevenue = String(formData.get("isRevenue") ?? "false").trim() === "true";
 
     if (!id || !code || !category || !name) throw new Error("Account code id, code, category, and name are required.");
 
@@ -422,7 +425,8 @@ export async function updateAccountCodeAction(formData: FormData): Promise<void>
         code,
         category,
         name,
-        active
+        active,
+        is_revenue: isRevenue
       })
       .eq("id", id)
       .select("id")
