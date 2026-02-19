@@ -373,6 +373,7 @@ export type OrganizationOverviewRow = {
   organizationId: string;
   organizationName: string;
   orgCode: string;
+  fiscalYearId: string | null;
   fiscalYearName: string | null;
   allocatedTotal: number;
   requestedOpenTotal: number;
@@ -391,6 +392,7 @@ export type OrganizationOverviewRow = {
 };
 
 export type CategoryActualRow = {
+  fiscalYearId: string | null;
   fiscalYearName: string | null;
   orgCode: string | null;
   organizationName: string | null;
@@ -405,6 +407,7 @@ export type CategoryActualRow = {
 };
 
 export type BannerCodeActualRow = {
+  fiscalYearId: string | null;
   fiscalYearName: string | null;
   orgCode: string | null;
   organizationName: string | null;
@@ -1764,7 +1767,7 @@ export async function getOrganizationOverviewRows(): Promise<OrganizationOvervie
   const { data, error } = await supabase
     .from("v_organization_totals")
     .select(
-      "organization_id, organization_name, org_code, fiscal_year_name, allocated_total, requested_open_total, held_total, enc_total, pending_cc_total, ytd_total, obligated_total, remaining_true, remaining_if_requested_approved, starting_budget_total, additional_income_total, funding_pool_total, funding_pool_available, income_total"
+      "organization_id, organization_name, org_code, fiscal_year_id, fiscal_year_name, allocated_total, requested_open_total, held_total, enc_total, pending_cc_total, ytd_total, obligated_total, remaining_true, remaining_if_requested_approved, starting_budget_total, additional_income_total, funding_pool_total, funding_pool_available, income_total"
     )
     .order("fiscal_year_name", { ascending: true })
     .order("org_code", { ascending: true });
@@ -1773,6 +1776,7 @@ export async function getOrganizationOverviewRows(): Promise<OrganizationOvervie
     organizationId: row.organization_id as string,
     organizationName: row.organization_name as string,
     orgCode: row.org_code as string,
+    fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
     fiscalYearName: (row.fiscal_year_name as string | null) ?? null,
     allocatedTotal: asNumber(row.allocated_total as string | number | null),
     requestedOpenTotal: asNumber(row.requested_open_total as string | number | null),
@@ -1796,16 +1800,20 @@ export async function getCategoryActualRows(): Promise<CategoryActualRow[]> {
   const { data, error } = await supabase
     .from("v_actuals_by_category")
     .select(
-      "project_id, production_category, requested_total, held_total, enc_total, pending_cc_total, posted_total, obligated_total, projects(name, organizations(name, org_code, fiscal_years(name)))"
+      "project_id, production_category, requested_total, held_total, enc_total, pending_cc_total, posted_total, obligated_total, projects(name, organizations(name, org_code, fiscal_years(id, name)))"
     )
     .order("production_category", { ascending: true });
   if (error) throw error;
   return (data ?? []).map((row) => {
     const project = row.projects as
-      | { name?: string; organizations?: { name?: string; org_code?: string; fiscal_years?: { name?: string } | null } | null }
+      | {
+          name?: string;
+          organizations?: { name?: string; org_code?: string; fiscal_years?: { id?: string; name?: string } | null } | null;
+        }
       | null;
     const org = project?.organizations ?? null;
     return {
+      fiscalYearId: (org?.fiscal_years?.id as string | undefined) ?? null,
       fiscalYearName: (org?.fiscal_years?.name as string | undefined) ?? null,
       orgCode: (org?.org_code as string | undefined) ?? null,
       organizationName: (org?.name as string | undefined) ?? null,
@@ -1826,7 +1834,7 @@ export async function getBannerCodeActualRows(): Promise<BannerCodeActualRow[]> 
   const { data, error } = await supabase
     .from("v_actuals_by_banner_code")
     .select(
-      "project_id, banner_account_code, banner_category, banner_name, requested_total, held_total, enc_total, pending_cc_total, posted_total, obligated_total, projects(name, organizations(name, org_code, fiscal_years(name)))"
+      "project_id, banner_account_code, banner_category, banner_name, requested_total, held_total, enc_total, pending_cc_total, posted_total, obligated_total, projects(name, organizations(name, org_code, fiscal_years(id, name)))"
     )
     .order("banner_account_code", { ascending: true });
   if (error) throw error;
@@ -1835,20 +1843,25 @@ export async function getBannerCodeActualRows(): Promise<BannerCodeActualRow[]> 
 
   for (const row of data ?? []) {
     const project = row.projects as
-      | { name?: string; organizations?: { name?: string; org_code?: string; fiscal_years?: { name?: string } | null } | null }
+      | {
+          name?: string;
+          organizations?: { name?: string; org_code?: string; fiscal_years?: { id?: string; name?: string } | null } | null;
+        }
       | null;
     const org = project?.organizations ?? null;
+    const fiscalYearId = (org?.fiscal_years?.id as string | undefined) ?? null;
     const fiscalYearName = (org?.fiscal_years?.name as string | undefined) ?? null;
     const orgCode = (org?.org_code as string | undefined) ?? null;
     const organizationName = (org?.name as string | undefined) ?? null;
     const bannerAccountCode = (row.banner_account_code as string) ?? "UNASSIGNED";
     const bannerCategory = (row.banner_category as string) ?? "Unassigned";
     const bannerName = (row.banner_name as string) ?? "Unassigned";
-    const key = `${fiscalYearName ?? ""}|${orgCode ?? ""}|${organizationName ?? ""}|${bannerAccountCode}`;
+    const key = `${fiscalYearId ?? ""}|${fiscalYearName ?? ""}|${orgCode ?? ""}|${organizationName ?? ""}|${bannerAccountCode}`;
 
     const existing = grouped.get(key);
     if (!existing) {
       grouped.set(key, {
+        fiscalYearId,
         fiscalYearName,
         orgCode,
         organizationName,

@@ -1,17 +1,44 @@
-import { getBannerCodeActualRows, getCategoryActualRows, getOrganizationOverviewRows } from "@/lib/db";
+import { getBannerCodeActualRows, getCategoryActualRows, getFiscalYearOptions, getOrganizationOverviewRows } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
 import { getAccessContext } from "@/lib/access";
 import { redirect } from "next/navigation";
 
-export default async function OverviewPage() {
+export default async function OverviewPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ fiscalYearId?: string }>;
+}) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const requestedFiscalYearId = String(resolvedSearchParams?.fiscalYearId ?? "").trim();
 
-  const [rows, categoryActuals, bannerActuals] = await Promise.all([
+  const [rows, categoryActuals, bannerActuals, fiscalYears] = await Promise.all([
     getOrganizationOverviewRows(),
     getCategoryActualRows(),
-    getBannerCodeActualRows()
+    getBannerCodeActualRows(),
+    getFiscalYearOptions()
   ]);
+
+  const today = new Date();
+  const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  const inferredCurrentFiscalYearId =
+    fiscalYears.find((fy) => Boolean(fy.startDate) && Boolean(fy.endDate) && fy.startDate! <= todayYmd && todayYmd <= fy.endDate!)?.id ??
+    fiscalYears.find((fy) => Boolean(fy.startDate) && !fy.endDate && fy.startDate! <= todayYmd)?.id ??
+    fiscalYears.find((fy) => !fy.startDate && Boolean(fy.endDate) && todayYmd <= fy.endDate!)?.id ??
+    "";
+  const selectedFiscalYearId = requestedFiscalYearId || inferredCurrentFiscalYearId;
+  const showAllFiscalYears = selectedFiscalYearId === "all";
+
+  const filteredRows = !showAllFiscalYears && selectedFiscalYearId
+    ? rows.filter((row) => row.fiscalYearId === selectedFiscalYearId)
+    : rows;
+  const filteredCategoryActuals = !showAllFiscalYears && selectedFiscalYearId
+    ? categoryActuals.filter((row) => row.fiscalYearId === selectedFiscalYearId)
+    : categoryActuals;
+  const filteredBannerActuals = !showAllFiscalYears && selectedFiscalYearId
+    ? bannerActuals.filter((row) => row.fiscalYearId === selectedFiscalYearId)
+    : bannerActuals;
 
   return (
     <section>
@@ -20,6 +47,26 @@ export default async function OverviewPage() {
         <h1>Organization Budget Overview</h1>
         <p className="heroSubtitle">Fiscal Year {"->"} Organization {"->"} Project totals rollup.</p>
       </header>
+
+      <article className="panel">
+        <h2>Filter</h2>
+        <form method="get" className="requestForm">
+          <label>
+            Fiscal Year
+            <select name="fiscalYearId" defaultValue={selectedFiscalYearId}>
+              <option value="all">All Fiscal Years</option>
+              {fiscalYears.map((fiscalYear) => (
+                <option key={fiscalYear.id} value={fiscalYear.id}>
+                  {fiscalYear.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" className="buttonLink buttonPrimary">
+            Apply
+          </button>
+        </form>
+      </article>
 
       <div className="tableWrap">
         <table>
@@ -43,12 +90,12 @@ export default async function OverviewPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {filteredRows.length === 0 ? (
               <tr>
                 <td colSpan={15}>No organization totals available yet.</td>
               </tr>
             ) : null}
-            {rows.map((row) => (
+            {filteredRows.map((row) => (
               <tr key={row.organizationId}>
                 <td>{row.fiscalYearName ?? "-"}</td>
                 <td>{row.orgCode}</td>
@@ -94,12 +141,12 @@ export default async function OverviewPage() {
               </tr>
             </thead>
             <tbody>
-              {categoryActuals.length === 0 ? (
+              {filteredCategoryActuals.length === 0 ? (
                 <tr>
                   <td colSpan={10}>No category actuals yet.</td>
                 </tr>
               ) : null}
-              {categoryActuals.map((row, index) => (
+              {filteredCategoryActuals.map((row, index) => (
                 <tr key={`${row.projectName}-${row.productionCategory}-${index}`}>
                   <td>{row.fiscalYearName ?? "-"}</td>
                   <td>{row.orgCode ?? "-"}</td>
@@ -138,12 +185,12 @@ export default async function OverviewPage() {
               </tr>
             </thead>
             <tbody>
-              {bannerActuals.length === 0 ? (
+              {filteredBannerActuals.length === 0 ? (
                 <tr>
                   <td colSpan={11}>No Banner-code actuals yet.</td>
                 </tr>
               ) : null}
-              {bannerActuals.map((row, index) => (
+              {filteredBannerActuals.map((row, index) => (
                 <tr key={`${row.fiscalYearName ?? ""}-${row.orgCode ?? ""}-${row.bannerAccountCode}-${index}`}>
                   <td>{row.fiscalYearName ?? "-"}</td>
                   <td>{row.orgCode ?? "-"}</td>

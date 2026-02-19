@@ -149,6 +149,10 @@ function toBudgetStatus(procurementStatus: ProcurementStatus, isCreditCardPurcha
   return "encumbered";
 }
 
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim().length > 0) return error.message;
   return fallback;
@@ -589,7 +593,7 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
     const { data: existing, error: existingError } = await supabase
       .from("purchases")
       .select(
-        "id, project_id, status, request_type, is_credit_card, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, budget_tracked, budget_line_id"
+        "id, project_id, status, procurement_status, request_type, is_credit_card, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, budget_tracked, budget_line_id, ordered_on, received_on, paid_on"
       )
       .eq("id", id)
       .single();
@@ -603,6 +607,8 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
     const isCreditCardPurchase =
       (existing.request_type as string | null) === "expense" && Boolean(existing.is_credit_card as boolean | null);
     const procurementStatus = parseStatus(formData.get("procurementStatus"), isCreditCardPurchase);
+    const existingProcurementStatus = parseStatus((existing.procurement_status as string | null) ?? "requested", isCreditCardPurchase);
+    const procurementStatusChanged = existingProcurementStatus !== procurementStatus;
     const existingOrderValue = getStatusAmount(existing.status as string, {
       estimated: Number(existing.estimated_amount ?? 0),
       requested: Number(existing.requested_amount ?? 0),
@@ -625,6 +631,16 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
             ? "receipts_uploaded"
             : "requested"
       : null;
+    const existingOrderedOn = (existing.ordered_on as string | null) ?? null;
+    const existingReceivedOn = (existing.received_on as string | null) ?? null;
+    const existingPaidOn = (existing.paid_on as string | null) ?? null;
+    const autoDate = todayIsoDate();
+    const nextOrderedOn =
+      orderedOn || (procurementStatusChanged && procurementStatus === "ordered" && !existingOrderedOn ? autoDate : existingOrderedOn);
+    const nextReceivedOn =
+      receivedOn ||
+      (procurementStatusChanged && procurementStatus === "fully_received" && !existingReceivedOn ? autoDate : existingReceivedOn);
+    const nextPaidOn = paidOn || (procurementStatusChanged && procurementStatus === "paid" && !existingPaidOn ? autoDate : existingPaidOn);
 
     if (budgetTracked && !productionCategoryId) throw new Error("Department is required.");
 
@@ -668,15 +684,15 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
         invoice_number: invoiceNumber || null,
         vendor_id: vendorId || null,
         notes: notes || null,
-        ordered_on: orderedOn || null,
-        received_on: receivedOn || null,
-        paid_on: paidOn || null,
+        ordered_on: nextOrderedOn,
+        received_on: nextReceivedOn,
+        paid_on: nextPaidOn,
         estimated_amount: nextRequested,
         requested_amount: nextRequestedAmount,
         encumbered_amount: nextEncumberedAmount,
         pending_cc_amount: nextPendingCcAmount,
         posted_amount: nextPostedAmount,
-        posted_date: nextBudgetStatus === "posted" ? paidOn || receivedOn || new Date().toISOString().slice(0, 10) : null,
+        posted_date: nextBudgetStatus === "posted" ? nextPaidOn || nextReceivedOn || todayIsoDate() : null,
         cc_workflow_status: nextCcWorkflowStatus
       })
       .eq("id", id)
@@ -1046,6 +1062,8 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
       const nextProcurementStatus = applyProcurementStatus
         ? parseStatus(targetProcurementStatusRaw, isCreditCardPurchase)
         : parseStatus(existing.procurement_status as string, isCreditCardPurchase);
+      const existingProcurementStatus = parseStatus((existing.procurement_status as string | null) ?? "requested", isCreditCardPurchase);
+      const procurementStatusChanged = applyProcurementStatus && existingProcurementStatus !== nextProcurementStatus;
 
       const currentValue = getStatusAmount(existing.status as string, {
         estimated: Number(existing.estimated_amount ?? 0),
@@ -1094,8 +1112,25 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
       const nextBannerAccountCodeId = applyBanner
         ? targetBannerAccountCodeId || null
         : ((existing.banner_account_code_id as string | null) ?? null);
-      const nextReceivedOn = applyReceivedOn ? targetReceivedOn || null : ((existing.received_on as string | null) ?? null);
-      const nextPaidOn = applyPaidOn ? targetPaidOn || null : ((existing.paid_on as string | null) ?? null);
+      const existingOrderedOn = (existing.ordered_on as string | null) ?? null;
+      const existingReceivedOn = (existing.received_on as string | null) ?? null;
+      const existingPaidOn = (existing.paid_on as string | null) ?? null;
+      const autoDate = todayIsoDate();
+      const nextOrderedOn = applyOrderedOn
+        ? targetOrderedOn || null
+        : procurementStatusChanged && nextProcurementStatus === "ordered" && !existingOrderedOn
+          ? autoDate
+          : existingOrderedOn;
+      const nextReceivedOn = applyReceivedOn
+        ? targetReceivedOn || null
+        : procurementStatusChanged && nextProcurementStatus === "fully_received" && !existingReceivedOn
+          ? autoDate
+          : existingReceivedOn;
+      const nextPaidOn = applyPaidOn
+        ? targetPaidOn || null
+        : procurementStatusChanged && nextProcurementStatus === "paid" && !existingPaidOn
+          ? autoDate
+          : existingPaidOn;
 
       const { data: updated, error: updateError } = await supabase
         .from("purchases")
@@ -1114,7 +1149,7 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
           invoice_number: applyInvoice ? targetInvoiceNumber || null : ((existing.invoice_number as string | null) ?? null),
           vendor_id: applyVendor ? targetVendorId || null : ((existing.vendor_id as string | null) ?? null),
           notes: applyNotes ? targetNotes || null : ((existing.notes as string | null) ?? null),
-          ordered_on: applyOrderedOn ? targetOrderedOn || null : ((existing.ordered_on as string | null) ?? null),
+          ordered_on: nextOrderedOn,
           received_on: nextReceivedOn,
           paid_on: nextPaidOn,
           estimated_amount: nextValue,
@@ -1122,7 +1157,7 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
           encumbered_amount: nextEncumberedAmount,
           pending_cc_amount: nextPendingCcAmount,
           posted_amount: nextPostedAmount,
-          posted_date: nextBudgetStatus === "posted" ? nextPaidOn || nextReceivedOn || new Date().toISOString().slice(0, 10) : null,
+          posted_date: nextBudgetStatus === "posted" ? nextPaidOn || nextReceivedOn || todayIsoDate() : null,
           cc_workflow_status: nextCcWorkflowStatus
         })
         .eq("id", rowId)

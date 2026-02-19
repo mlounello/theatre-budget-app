@@ -86,6 +86,14 @@ function asString(value: string | null | undefined): string {
   return (value ?? "").toLowerCase();
 }
 
+function extractSortablePoNumber(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const match = value.match(/\d+/g);
+  if (!match || match.length === 0) return null;
+  const numeric = Number(match.join(""));
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
 function sortRows(rows: ProcurementRow[], receipts: ProcurementReceiptRow[], key: SortKey, direction: SortDirection): ProcurementRow[] {
   const receiptMap = new Map<string, number>();
   for (const purchase of rows) {
@@ -164,6 +172,14 @@ function sortRows(rows: ProcurementRow[], receipts: ProcurementReceiptRow[], key
                         ? asString(b.procurementStatus)
                         : asString(b.budgetStatus);
 
+    if (key === "poNumber") {
+      const aPo = extractSortablePoNumber(a.poNumber);
+      const bPo = extractSortablePoNumber(b.poNumber);
+      if (aPo !== null && bPo !== null) return (aPo - bPo) * dir;
+      if (aPo !== null) return -1 * dir;
+      if (bPo !== null) return 1 * dir;
+    }
+
     if (typeof aVal === "number" && typeof bVal === "number") return (aVal - bVal) * dir;
     return String(aVal).localeCompare(String(bVal)) * dir;
   });
@@ -220,9 +236,11 @@ export function ProcurementTable({
   const sortFromUrl = searchParams.get("pr_sort");
   const dirFromUrl = searchParams.get("pr_dir");
   const [sortKey, setSortKey] = useState<SortKey>(
-    sortFromUrl && SORT_KEYS.includes(sortFromUrl as SortKey) ? (sortFromUrl as SortKey) : "projectName"
+    sortFromUrl && SORT_KEYS.includes(sortFromUrl as SortKey) ? (sortFromUrl as SortKey) : "poNumber"
   );
-  const [direction, setDirection] = useState<SortDirection>(dirFromUrl === "desc" ? "desc" : "asc");
+  const [direction, setDirection] = useState<SortDirection>(
+    dirFromUrl === "asc" || dirFromUrl === "desc" ? dirFromUrl : "desc"
+  );
   const [projectFilter, setProjectFilter] = useState(searchParams.get("pr_f_project") ?? "");
   const [procurementStatusFilter, setProcurementStatusFilter] = useState(searchParams.get("pr_f_proc_status") ?? "");
   const [budgetStatusFilter, setBudgetStatusFilter] = useState(searchParams.get("pr_f_budget_status") ?? "");

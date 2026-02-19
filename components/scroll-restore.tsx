@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 
 const SCROLL_KEY = "tba:scroll-restore";
 
@@ -29,6 +29,8 @@ function readPayload(): ScrollPayload | null {
 
 export function ScrollRestore() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const search = searchParams.toString();
 
   useEffect(() => {
     function onSubmit(event: Event): void {
@@ -63,7 +65,7 @@ export function ScrollRestore() {
       setTimeout(() => window.scrollTo({ top: payload.y, behavior: "auto" }), 0);
       sessionStorage.removeItem(SCROLL_KEY);
     });
-  }, [pathname]);
+  }, [pathname, search]);
 
   return null;
 }

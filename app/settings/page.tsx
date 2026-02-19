@@ -21,6 +21,7 @@ import {
 import { AddEntityPanel } from "@/app/settings/add-entity-panel";
 import { BudgetLineReorder } from "@/app/settings/budget-line-reorder";
 import { FiscalYearReorder } from "@/app/settings/fiscal-year-reorder";
+import { HierarchyTreeControls } from "@/app/settings/hierarchy-tree-controls";
 import { OrganizationReorder } from "@/app/settings/organization-reorder";
 import { ProjectReorder } from "@/app/settings/project-reorder";
 import {
@@ -259,6 +260,7 @@ export default async function SettingsPage({
         <article className="panel panelFull">
           <h2>Hierarchy Manager</h2>
           <p>Expand each level to edit records. Use Reorder sections only when you want to change card/table order.</p>
+          <HierarchyTreeControls containerId="settingsHierarchyTree" />
           {isAdmin ? (
             <FiscalYearReorder
               items={fiscalYearGroups.filter((fy) => fy.id !== noFiscalYearKey).map((fy) => ({ id: fy.id, label: fy.name }))}
@@ -267,8 +269,9 @@ export default async function SettingsPage({
 
           {fiscalYearGroups.length === 0 ? <p>(none)</p> : null}
 
+          <div id="settingsHierarchyTree">
           {fiscalYearGroups.map((fy) => (
-            <details key={fy.id} className="treeNode" open>
+            <details key={fy.id} className="treeNode">
               <summary>
                 <strong>FY:</strong> {fy.name}
               </summary>
@@ -291,7 +294,7 @@ export default async function SettingsPage({
               {Array.from(fy.organizations.values())
                 .sort((a, b) => a.sortOrder - b.sortOrder || a.orgCode.localeCompare(b.orgCode))
                 .map((org) => (
-                  <details key={org.id} className="treeNode childNode" open>
+                  <details key={org.id} className="treeNode childNode">
                     <summary>
                       <strong>Org:</strong> {org.orgCode} - {org.name}
                     </summary>
@@ -322,7 +325,7 @@ export default async function SettingsPage({
                     {Array.from(org.projects.values())
                       .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
                       .map((project) => (
-                        <details key={project.id} className="treeNode childNode" open id={`project-${project.id}`}>
+                        <details key={project.id} className="treeNode childNode" id={`project-${project.id}`}>
                           <summary>
                             <strong>Project:</strong> {project.name} {project.season ? `(${project.season})` : ""}{" "}
                             <em>
@@ -415,6 +418,7 @@ export default async function SettingsPage({
                 ))}
             </details>
           ))}
+          </div>
         </article>
 
         {isAdmin ? (
