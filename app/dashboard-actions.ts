@@ -145,7 +145,7 @@ export async function updateDashboardRequisitionStatusAction(formData: FormData)
     const nextEncumberedAmount = nextBudgetStatus === "encumbered" ? currentValue : 0;
     const nextPostedAmount = nextBudgetStatus === "posted" ? currentValue : 0;
 
-    const { error: updateError } = await supabase
+    const { data: updated, error: updateError } = await supabase
       .from("purchases")
       .update({
         procurement_status: nextProcurementStatus,
@@ -157,9 +157,12 @@ export async function updateDashboardRequisitionStatusAction(formData: FormData)
         posted_amount: nextPostedAmount,
         posted_date: nextBudgetStatus === "posted" ? new Date().toISOString().slice(0, 10) : null
       })
-      .eq("id", purchaseId);
+      .eq("id", purchaseId)
+      .select("id")
+      .maybeSingle();
 
     if (updateError) throw new Error(updateError.message);
+    if (!updated?.id) throw new Error("Requisition update was not applied.");
 
     const { data: allocations, error: allocationsError } = await supabase
       .from("purchase_allocations")
@@ -176,8 +179,14 @@ export async function updateDashboardRequisitionStatusAction(formData: FormData)
       if ((allocations ?? []).length === 1 || currentTotal === 0) {
         const targetId = allocations?.[0]?.id as string;
         if (targetId) {
-          const { error } = await supabase.from("purchase_allocations").update({ amount: nextTotal }).eq("id", targetId);
+          const { data: allocationUpdated, error } = await supabase
+            .from("purchase_allocations")
+            .update({ amount: nextTotal })
+            .eq("id", targetId)
+            .select("id")
+            .maybeSingle();
           if (error) throw new Error(error.message);
+          if (!allocationUpdated?.id) throw new Error("Allocation update was not applied.");
         }
       } else {
         let running = 0;
@@ -192,8 +201,14 @@ export async function updateDashboardRequisitionStatusAction(formData: FormData)
             amount = Number((nextTotal * ratio).toFixed(2));
             running += amount;
           }
-          const { error } = await supabase.from("purchase_allocations").update({ amount }).eq("id", id);
+          const { data: allocationUpdated, error } = await supabase
+            .from("purchase_allocations")
+            .update({ amount })
+            .eq("id", id)
+            .select("id")
+            .maybeSingle();
           if (error) throw new Error(error.message);
+          if (!allocationUpdated?.id) throw new Error("Allocation update was not applied.");
         }
       }
     }

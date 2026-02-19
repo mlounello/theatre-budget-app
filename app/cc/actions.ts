@@ -134,11 +134,14 @@ export async function updateCreditCardAction(formData: FormData): Promise<void> 
     const active = formData.get("active") === "on";
     if (!id || !nickname) throw new Error("Card ID and nickname are required.");
 
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("credit_cards")
       .update({ nickname, masked_number: maskedNumber || null, active })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!updated?.id) throw new Error("Credit card update was not applied.");
 
     revalidatePath("/cc");
     ccSuccess("Credit card updated.");
@@ -239,11 +242,14 @@ export async function updateStatementMonthAction(formData: FormData): Promise<vo
     await requireCcManagerRole(supabase, user.id);
 
     const statementDate = toStatementDate(month);
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("cc_statement_months")
       .update({ credit_card_id: creditCardId, statement_month: statementDate })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!updated?.id) throw new Error("Statement month update was not applied.");
 
     revalidatePath("/cc");
     ccSuccess("Statement month updated.");
@@ -328,14 +334,17 @@ export async function bulkUpdateCreditCardsAction(formData: FormData): Promise<v
     if (!cards || cards.length !== ids.length) throw new Error("Some selected cards were not found.");
 
     for (const card of cards) {
-      const { error: updateError } = await supabase
+      const { data: updated, error: updateError } = await supabase
         .from("credit_cards")
         .update({
           active: applyActive ? nextActive : Boolean(card.active as boolean | null),
           masked_number: applyMaskedNumber ? maskedNumber || null : ((card.masked_number as string | null) ?? null)
         })
-        .eq("id", card.id as string);
+        .eq("id", card.id as string)
+        .select("id")
+        .maybeSingle();
       if (updateError) throw new Error(updateError.message);
+      if (!updated?.id) throw new Error("A bulk credit card update was not applied.");
     }
 
     revalidatePath("/cc");
@@ -403,14 +412,17 @@ export async function bulkUpdateStatementMonthsAction(formData: FormData): Promi
     for (const monthRow of months) {
       if (monthRow.posted_to_banner_at) throw new Error("Cannot bulk edit statement months that are already posted to Banner.");
       if (monthRow.posted_at) throw new Error("Cannot bulk edit submitted statement months.");
-      const { error: updateError } = await supabase
+      const { data: updated, error: updateError } = await supabase
         .from("cc_statement_months")
         .update({
           credit_card_id: applyCreditCard ? creditCardId : (monthRow.credit_card_id as string),
           statement_month: applyMonth ? (statementDate as string) : (monthRow.statement_month as string)
         })
-        .eq("id", monthRow.id as string);
+        .eq("id", monthRow.id as string)
+        .select("id")
+        .maybeSingle();
       if (updateError) throw new Error(updateError.message);
+      if (!updated?.id) throw new Error("A bulk statement month update was not applied.");
     }
 
     revalidatePath("/cc");
@@ -651,11 +663,14 @@ export async function submitStatementMonthAction(formData: FormData): Promise<vo
       if (eventError) throw new Error(eventError.message);
     }
 
-    const { error: monthUpdateError } = await supabase
+    const { data: monthUpdated, error: monthUpdateError } = await supabase
       .from("cc_statement_months")
       .update({ posted_at: new Date().toISOString(), posted_to_banner_at: null })
-      .eq("id", statementMonthId);
+      .eq("id", statementMonthId)
+      .select("id")
+      .maybeSingle();
     if (monthUpdateError) throw new Error(monthUpdateError.message);
+    if (!monthUpdated?.id) throw new Error("Statement month submit update was not applied.");
 
     revalidatePath("/cc");
     revalidatePath("/requests");
@@ -722,11 +737,14 @@ export async function reopenStatementMonthAction(formData: FormData): Promise<vo
       if (purchaseResetError) throw new Error(purchaseResetError.message);
     }
 
-    const { error: monthResetError } = await supabase
+    const { data: monthReset, error: monthResetError } = await supabase
       .from("cc_statement_months")
       .update({ posted_at: null, posted_to_banner_at: null })
-      .eq("id", statementMonthId);
+      .eq("id", statementMonthId)
+      .select("id")
+      .maybeSingle();
     if (monthResetError) throw new Error(monthResetError.message);
+    if (!monthReset?.id) throw new Error("Statement month reopen update was not applied.");
 
     revalidatePath("/cc");
     revalidatePath("/requests");
@@ -816,11 +834,14 @@ export async function postStatementMonthToBannerAction(formData: FormData): Prom
       if (eventError) throw new Error(eventError.message);
     }
 
-    const { error: statementUpdateError } = await supabase
+    const { data: statementUpdated, error: statementUpdateError } = await supabase
       .from("cc_statement_months")
       .update({ posted_to_banner_at: new Date().toISOString() })
-      .eq("id", statementMonthId);
+      .eq("id", statementMonthId)
+      .select("id")
+      .maybeSingle();
     if (statementUpdateError) throw new Error(statementUpdateError.message);
+    if (!statementUpdated?.id) throw new Error("Statement post-to-Banner update was not applied.");
 
     revalidatePath("/cc");
     revalidatePath("/requests");
@@ -910,11 +931,14 @@ export async function unpostStatementMonthFromBannerAction(formData: FormData): 
       if (eventError) throw new Error(eventError.message);
     }
 
-    const { error: statementUpdateError } = await supabase
+    const { data: statementUpdated, error: statementUpdateError } = await supabase
       .from("cc_statement_months")
       .update({ posted_to_banner_at: null })
-      .eq("id", statementMonthId);
+      .eq("id", statementMonthId)
+      .select("id")
+      .maybeSingle();
     if (statementUpdateError) throw new Error(statementUpdateError.message);
+    if (!statementUpdated?.id) throw new Error("Statement unpost update was not applied.");
 
     revalidatePath("/cc");
     revalidatePath("/requests");

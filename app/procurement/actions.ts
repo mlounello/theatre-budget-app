@@ -651,7 +651,7 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
       verifiedBudgetLine = { id: line.id as string, account_code_id: (line.account_code_id as string | null) ?? null };
     }
 
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("purchases")
       .update({
         project_id: nextProjectId,
@@ -679,8 +679,11 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
         posted_date: nextBudgetStatus === "posted" ? paidOn || receivedOn || new Date().toISOString().slice(0, 10) : null,
         cc_workflow_status: nextCcWorkflowStatus
       })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!updated?.id) throw new Error("Procurement row update was not applied.");
 
     if (!budgetTracked) {
       const { error: deleteAllocationsError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", id);
@@ -1094,7 +1097,7 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
       const nextReceivedOn = applyReceivedOn ? targetReceivedOn || null : ((existing.received_on as string | null) ?? null);
       const nextPaidOn = applyPaidOn ? targetPaidOn || null : ((existing.paid_on as string | null) ?? null);
 
-      const { error: updateError } = await supabase
+      const { data: updated, error: updateError } = await supabase
         .from("purchases")
         .update({
           project_id: nextProjectId,
@@ -1122,8 +1125,11 @@ export async function bulkUpdateProcurementAction(formData: FormData): Promise<v
           posted_date: nextBudgetStatus === "posted" ? nextPaidOn || nextReceivedOn || new Date().toISOString().slice(0, 10) : null,
           cc_workflow_status: nextCcWorkflowStatus
         })
-        .eq("id", rowId);
+        .eq("id", rowId)
+        .select("id")
+        .maybeSingle();
       if (updateError) throw new Error(updateError.message);
+      if (!updated?.id) throw new Error("A procurement row update was not applied.");
 
       const { error: deleteAllocError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", rowId);
       if (deleteAllocError) throw new Error(deleteAllocError.message);

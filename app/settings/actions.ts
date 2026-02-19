@@ -152,7 +152,14 @@ async function createProjectViaRpc(
   }
 
   if (params.organizationId) {
-    await supabase.from("projects").update({ organization_id: params.organizationId }).eq("id", fallback.data as string);
+    const { data: fallbackUpdated, error: fallbackUpdateError } = await supabase
+      .from("projects")
+      .update({ organization_id: params.organizationId })
+      .eq("id", fallback.data as string)
+      .select("id")
+      .maybeSingle();
+    if (fallbackUpdateError) throw new Error(fallbackUpdateError.message);
+    if (!fallbackUpdated?.id) throw new Error("Project organization update was not applied.");
   }
 
   return fallback.data as string;
@@ -195,14 +202,18 @@ export async function createProjectAction(formData: FormData): Promise<void> {
       : maxProjectSortQuery.is("organization_id", null);
     const { data: maxProjectSortRows } = await maxProjectSortQuery;
     const nextProjectSort = ((maxProjectSortRows?.[0]?.sort_order as number | null) ?? -1) + 1;
-    await supabase
+    const { data: projectUpdated, error: projectUpdateError } = await supabase
       .from("projects")
       .update({
         sort_order: nextProjectSort,
         planning_requests_enabled: planningRequestsEnabled,
         fiscal_year_id: fiscalYearId || null
       })
-      .eq("id", newProjectId);
+      .eq("id", newProjectId)
+      .select("id")
+      .maybeSingle();
+    if (projectUpdateError) throw new Error(projectUpdateError.message);
+    if (!projectUpdated?.id) throw new Error("New project defaults were not applied.");
 
     const isExternalProject = isExternalProcurementProjectName(projectName);
     if (!isExternalProject) {
@@ -405,7 +416,7 @@ export async function updateAccountCodeAction(formData: FormData): Promise<void>
 
     if (!id || !code || !category || !name) throw new Error("Account code id, code, category, and name are required.");
 
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("account_codes")
       .update({
         code,
@@ -413,8 +424,11 @@ export async function updateAccountCodeAction(formData: FormData): Promise<void>
         name,
         active
       })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!updated?.id) throw new Error("Account code update was not applied.");
 
     revalidatePath("/settings");
     revalidatePath("/requests");
@@ -443,8 +457,14 @@ export async function updateProductionCategoryAction(formData: FormData): Promis
       updateValues.sort_order = parsed;
     }
 
-    const { error } = await supabase.from("production_categories").update(updateValues).eq("id", id);
+    const { data: updated, error } = await supabase
+      .from("production_categories")
+      .update(updateValues)
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!updated?.id) throw new Error("Production category update was not applied.");
 
     revalidatePath("/settings");
     revalidatePath("/requests");
@@ -476,8 +496,14 @@ export async function deleteAccountCodeAction(formData: FormData): Promise<void>
     const hasReferences = (budgetLineCount ?? 0) > 0 || (allocationCount ?? 0) > 0;
 
     if (hasReferences) {
-      const { error: deactivateError } = await supabase.from("account_codes").update({ active: false }).eq("id", id);
+      const { data: deactivated, error: deactivateError } = await supabase
+        .from("account_codes")
+        .update({ active: false })
+        .eq("id", id)
+        .select("id")
+        .maybeSingle();
       if (deactivateError) throw new Error(deactivateError.message);
+      if (!deactivated?.id) throw new Error("Account code deactivation was not applied.");
       revalidatePath("/settings");
       revalidatePath("/requests");
       settingsSuccess("Account code is in use and was deactivated.");
@@ -521,8 +547,14 @@ export async function deleteProductionCategoryAction(formData: FormData): Promis
     const inUse = (pblCount ?? 0) > 0 || (allocationCount ?? 0) > 0 || (purchaseCount ?? 0) > 0 || (incomeCount ?? 0) > 0;
 
     if (inUse) {
-      const { error: deactivateError } = await supabase.from("production_categories").update({ active: false }).eq("id", id);
+      const { data: deactivated, error: deactivateError } = await supabase
+        .from("production_categories")
+        .update({ active: false })
+        .eq("id", id)
+        .select("id")
+        .maybeSingle();
       if (deactivateError) throw new Error(deactivateError.message);
+      if (!deactivated?.id) throw new Error("Category deactivation was not applied.");
       revalidatePath("/settings");
       revalidatePath("/requests");
       revalidatePath("/procurement");
@@ -555,11 +587,14 @@ export async function updateFiscalYearAction(formData: FormData): Promise<void> 
 
     if (!id || !name) throw new Error("Fiscal year id and name are required.");
 
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("fiscal_years")
       .update({ name, start_date: startDate || null, end_date: endDate || null })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!updated?.id) throw new Error("Fiscal year update was not applied.");
 
     revalidatePath("/settings");
     revalidatePath("/overview");
@@ -615,11 +650,14 @@ export async function updateOrganizationAction(formData: FormData): Promise<void
 
     if (!id || !name || !orgCode) throw new Error("Organization id, name, and org code are required.");
 
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("organizations")
       .update({ name, org_code: orgCode, fiscal_year_id: null })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!updated?.id) throw new Error("Organization update was not applied.");
 
     revalidatePath("/settings");
     revalidatePath("/overview");
@@ -678,7 +716,7 @@ export async function updateProjectAction(formData: FormData): Promise<void> {
     if (!id || !name) throw new Error("Project id and name are required.");
     await requireProjectSettingsWrite(supabase, id);
 
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("projects")
       .update({
         name,
@@ -687,8 +725,11 @@ export async function updateProjectAction(formData: FormData): Promise<void> {
         fiscal_year_id: fiscalYearId || null,
         planning_requests_enabled: planningRequestsEnabled
       })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!updated?.id) throw new Error("Project update was not applied.");
 
     revalidatePath("/settings");
     revalidatePath("/");
@@ -749,8 +790,14 @@ export async function updateBudgetLineAction(formData: FormData): Promise<void> 
       }
     }
 
-    const { error } = await supabase.from("project_budget_lines").update(nextValues).eq("id", id);
+    const { data: updated, error } = await supabase
+      .from("project_budget_lines")
+      .update(nextValues)
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!updated?.id) throw new Error("Budget line update was not applied.");
 
     const focusProjectId = targetProjectId || currentProjectId;
 
@@ -1442,7 +1489,7 @@ export async function updateUserAccessScopeAction(formData: FormData): Promise<v
       }
     }
 
-    const { error } = await supabase
+    const { data: updated, error } = await supabase
       .from("user_access_scopes")
       .update({
         scope_role: scopeRole,
@@ -1452,8 +1499,13 @@ export async function updateUserAccessScopeAction(formData: FormData): Promise<v
         organization_id: organizationId || null,
         active
       })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
     if (error) throw new Error(error.message);
+    if (!updated?.id) {
+      throw new Error("Scope update was not applied. You may not have permission for this change.");
+    }
 
     revalidatePath("/settings");
     settingsSuccess("User scope updated.");

@@ -345,7 +345,7 @@ export async function updateContractDetailsAction(formData: FormData): Promise<v
     });
     if (lineError || !reportingBudgetLineId) throw new Error(lineError?.message ?? "Could not resolve reporting line.");
 
-    const { error: contractUpdateError } = await supabase
+    const { data: contractUpdated, error: contractUpdateError } = await supabase
       .from("contracts")
       .update({
         fiscal_year_id: resolvedFiscalYearId,
@@ -359,8 +359,11 @@ export async function updateContractDetailsAction(formData: FormData): Promise<v
         contract_value: contractValue,
         notes: notes || null
       })
-      .eq("id", contractId);
+      .eq("id", contractId)
+      .select("id")
+      .maybeSingle();
     if (contractUpdateError) throw new Error(contractUpdateError.message);
+    if (!contractUpdated?.id) throw new Error("Contract update was not applied.");
 
     const { data: installments, error: installmentsError } = await supabase
       .from("contract_installments")
@@ -377,11 +380,14 @@ export async function updateContractDetailsAction(formData: FormData): Promise<v
       const installmentAmount = parts[index] ?? 0;
       const installmentStatus = ((installment.status as string | null) ?? "planned") as InstallmentStatus;
 
-      const { error: installmentUpdateError } = await supabase
+      const { data: installmentUpdated, error: installmentUpdateError } = await supabase
         .from("contract_installments")
         .update({ installment_amount: installmentAmount })
-        .eq("id", installment.id as string);
+        .eq("id", installment.id as string)
+        .select("id")
+        .maybeSingle();
       if (installmentUpdateError) throw new Error(installmentUpdateError.message);
+      if (!installmentUpdated?.id) throw new Error("Installment amount update was not applied.");
 
       if (!installment.purchase_id) continue;
 
@@ -392,7 +398,7 @@ export async function updateContractDetailsAction(formData: FormData): Promise<v
       const encumberedAmount = nextStatus === "encumbered" ? installmentAmount : 0;
       const postedAmount = nextStatus === "posted" ? installmentAmount : 0;
 
-      const { error: purchaseUpdateError } = await supabase
+      const { data: purchaseUpdated, error: purchaseUpdateError } = await supabase
         .from("purchases")
         .update({
           project_id: projectId,
@@ -410,10 +416,13 @@ export async function updateContractDetailsAction(formData: FormData): Promise<v
           procurement_status: nextStatus === "posted" ? "paid" : nextStatus === "encumbered" ? "ordered" : "requested",
           posted_date: nextStatus === "posted" ? new Date().toISOString().slice(0, 10) : null
         })
-        .eq("id", purchaseId);
+        .eq("id", purchaseId)
+        .select("id")
+        .maybeSingle();
       if (purchaseUpdateError) throw new Error(purchaseUpdateError.message);
+      if (!purchaseUpdated?.id) throw new Error("Linked purchase update was not applied.");
 
-      const { error: allocationUpdateError } = await supabase
+      const { data: allocationUpdated, error: allocationUpdateError } = await supabase
         .from("purchase_allocations")
         .update({
           reporting_budget_line_id: reportingBudgetLineId as string,
@@ -421,8 +430,11 @@ export async function updateContractDetailsAction(formData: FormData): Promise<v
           production_category_id: productionCategoryId,
           amount: installmentAmount
         })
-        .eq("purchase_id", purchaseId);
+        .eq("purchase_id", purchaseId)
+        .select("id")
+        .limit(1);
       if (allocationUpdateError) throw new Error(allocationUpdateError.message);
+      if (!allocationUpdated || allocationUpdated.length === 0) throw new Error("Linked allocation update was not applied.");
     }
 
     revalidatePath("/contracts");
@@ -458,11 +470,14 @@ export async function updateContractWorkflowAction(formData: FormData): Promise<
 
     await ensurePmOrAdmin(projectId, user.id);
 
-    const { error: updateError } = await supabase
+    const { data: updated, error: updateError } = await supabase
       .from("contracts")
       .update({ workflow_status: workflowStatus })
-      .eq("id", contractId);
+      .eq("id", contractId)
+      .select("id")
+      .maybeSingle();
     if (updateError) throw new Error(updateError.message);
+    if (!updated?.id) throw new Error("Contract workflow update was not applied.");
 
     revalidatePath("/contracts");
     redirect("/contracts?ok=Contract%20workflow%20updated.");
@@ -521,7 +536,7 @@ export async function updateContractInstallmentStatusAction(formData: FormData):
     }
 
     if (installment.purchase_id) {
-      const { error: purchaseUpdateError } = await supabase
+      const { data: purchaseUpdated, error: purchaseUpdateError } = await supabase
         .from("purchases")
         .update({
           status: purchaseStatus,
@@ -532,8 +547,11 @@ export async function updateContractInstallmentStatusAction(formData: FormData):
           posted_date: postedDate,
           procurement_status: procurementStatus
         })
-        .eq("id", installment.purchase_id as string);
+        .eq("id", installment.purchase_id as string)
+        .select("id")
+        .maybeSingle();
       if (purchaseUpdateError) throw new Error(purchaseUpdateError.message);
+      if (!purchaseUpdated?.id) throw new Error("Installment purchase status update was not applied.");
 
       const { error: eventError } = await supabase.from("purchase_events").insert({
         purchase_id: installment.purchase_id as string,
@@ -551,15 +569,18 @@ export async function updateContractInstallmentStatusAction(formData: FormData):
     }
 
     const today = new Date().toISOString().slice(0, 10);
-    const { error: installmentUpdateError } = await supabase
+    const { data: installmentUpdated, error: installmentUpdateError } = await supabase
       .from("contract_installments")
       .update({
         status: nextStatus,
         check_request_submitted_on: nextStatus === "check_request_submitted" || nextStatus === "check_paid" ? today : null,
         check_paid_on: nextStatus === "check_paid" ? today : null
       })
-      .eq("id", installmentId);
+      .eq("id", installmentId)
+      .select("id")
+      .maybeSingle();
     if (installmentUpdateError) throw new Error(installmentUpdateError.message);
+    if (!installmentUpdated?.id) throw new Error("Installment status update was not applied.");
 
     revalidatePath("/contracts");
     revalidatePath("/");

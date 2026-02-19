@@ -352,10 +352,18 @@ export async function updatePurchaseStatus(formData: FormData): Promise<void> {
             : null
   };
 
-  const { error: updateError } = await supabase.from("purchases").update(nextValues).eq("id", purchaseId);
+  const { data: updated, error: updateError } = await supabase
+    .from("purchases")
+    .update(nextValues)
+    .eq("id", purchaseId)
+    .select("id")
+    .maybeSingle();
 
   if (updateError) {
     throw new Error(updateError.message);
+  }
+  if (!updated?.id) {
+    throw new Error("Status update was not applied.");
   }
 
   const { error: eventError } = await supabase.from("purchase_events").insert({
@@ -437,11 +445,14 @@ export async function addRequestReceipt(formData: FormData): Promise<void> {
   });
   if (error) throw new Error(error.message);
 
-  const { error: purchaseUpdateError } = await supabase
+  const { data: purchaseUpdated, error: purchaseUpdateError } = await supabase
     .from("purchases")
     .update({ cc_workflow_status: "receipts_uploaded" })
-    .eq("id", purchaseId);
+    .eq("id", purchaseId)
+    .select("id")
+    .maybeSingle();
   if (purchaseUpdateError) throw new Error(purchaseUpdateError.message);
+  if (!purchaseUpdated?.id) throw new Error("Purchase workflow update was not applied.");
 
   revalidatePath("/requests");
   revalidatePath(`/projects/${purchase.project_id as string}`);
@@ -482,7 +493,7 @@ export async function reconcileRequestToPendingCc(formData: FormData): Promise<v
   }, 0);
   if (reconciledTotal === 0) throw new Error("Receipts net to zero. Add a non-zero total before reconciling to Pending CC.");
 
-  const { error: updateError } = await supabase
+  const { data: updated, error: updateError } = await supabase
     .from("purchases")
     .update({
       status: "pending_cc",
@@ -492,8 +503,11 @@ export async function reconcileRequestToPendingCc(formData: FormData): Promise<v
       posted_amount: 0,
       cc_workflow_status: "receipts_uploaded"
     })
-    .eq("id", purchaseId);
+    .eq("id", purchaseId)
+    .select("id")
+    .maybeSingle();
   if (updateError) throw new Error(updateError.message);
+  if (!updated?.id) throw new Error("Pending CC reconciliation update was not applied.");
 
   const { error: eventError } = await supabase.from("purchase_events").insert({
     purchase_id: purchaseId,
@@ -539,7 +553,7 @@ export async function markCcPostedToAccount(formData: FormData): Promise<void> {
   const amount = Number(purchase.pending_cc_amount ?? 0);
   if (amount === 0) throw new Error("Pending CC amount is zero.");
 
-  const { error: updateError } = await supabase
+  const { data: updated, error: updateError } = await supabase
     .from("purchases")
     .update({
       status: "posted",
@@ -548,8 +562,11 @@ export async function markCcPostedToAccount(formData: FormData): Promise<void> {
       posted_date: new Date().toISOString().slice(0, 10),
       cc_workflow_status: "posted_to_account"
     })
-    .eq("id", purchaseId);
+    .eq("id", purchaseId)
+    .select("id")
+    .maybeSingle();
   if (updateError) throw new Error(updateError.message);
+  if (!updated?.id) throw new Error("Posted-to-account update was not applied.");
 
   const { error: eventError } = await supabase.from("purchase_events").insert({
     purchase_id: purchaseId,
@@ -602,15 +619,18 @@ export async function updateRequestReceipt(formData: FormData): Promise<void> {
     throw new Error("This receipt is not attached to a credit-card expense request.");
   }
 
-  const { error: updateError } = await supabase
+  const { data: updated, error: updateError } = await supabase
     .from("purchase_receipts")
     .update({
       amount_received: amount,
       note: note || null,
       attachment_url: receiptUrl || null
     })
-    .eq("id", receiptId);
+    .eq("id", receiptId)
+    .select("id")
+    .maybeSingle();
   if (updateError) throw new Error(updateError.message);
+  if (!updated?.id) throw new Error("Receipt update was not applied.");
 
   revalidatePath("/requests");
   revalidatePath(`/projects/${purchase.project_id as string}`);
@@ -736,8 +756,14 @@ export async function updateRequestInline(formData: FormData): Promise<void> {
     cc_workflow_status: computed.ccWorkflowStatus
   };
 
-  const { error: updateError } = await supabase.from("purchases").update(nextValues).eq("id", purchaseId);
+  const { data: updatedRequest, error: updateError } = await supabase
+    .from("purchases")
+    .update(nextValues)
+    .eq("id", purchaseId)
+    .select("id")
+    .maybeSingle();
   if (updateError) throw new Error(updateError.message);
+  if (!updatedRequest?.id) throw new Error("Request update was not applied.");
 
   const allocationAmount =
     computed.status === "encumbered"
@@ -1010,7 +1036,7 @@ export async function bulkUpdateRequestsAction(formData: FormData): Promise<void
 
   // Second pass: apply updates only after all rows validate.
   for (const plan of plans) {
-    const { error: updateError } = await supabase
+    const { data: updated, error: updateError } = await supabase
       .from("purchases")
       .update({
         project_id: plan.nextProjectId,
@@ -1031,8 +1057,11 @@ export async function bulkUpdateRequestsAction(formData: FormData): Promise<void
         requisition_number: plan.requisitionNumber,
         reference_number: plan.referenceNumber
       })
-      .eq("id", plan.purchaseId);
+      .eq("id", plan.purchaseId)
+      .select("id")
+      .maybeSingle();
     if (updateError) throw new Error(updateError.message);
+    if (!updated?.id) throw new Error("A bulk request update was not applied.");
 
     const { error: deleteAllocError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", plan.purchaseId);
     if (deleteAllocError) throw new Error(deleteAllocError.message);

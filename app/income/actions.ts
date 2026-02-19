@@ -156,7 +156,9 @@ export async function updateIncomeEntryAction(formData: FormData): Promise<void>
         received_on: receivedOn || null,
         income_type: incomeType
       })
-      .eq("id", id);
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
 
     if (withType.error) {
       const fallback = await supabase
@@ -171,9 +173,14 @@ export async function updateIncomeEntryAction(formData: FormData): Promise<void>
           amount,
           received_on: receivedOn || null
         })
-        .eq("id", id);
+        .eq("id", id)
+        .select("id")
+        .maybeSingle();
 
       if (fallback.error) throw new Error(fallback.error.message);
+      if (!fallback.data?.id) throw new Error("Income entry update was not applied.");
+    } else if (!withType.data?.id) {
+      throw new Error("Income entry update was not applied.");
     }
 
     revalidatePath("/");
@@ -296,7 +303,9 @@ export async function bulkUpdateIncomeEntriesAction(formData: FormData): Promise
           amount: nextAmount,
           received_on: applyReceivedOn ? targetReceivedOn || null : ((row.received_on as string | null) ?? null)
         })
-        .eq("id", row.id as string);
+        .eq("id", row.id as string)
+        .select("id")
+        .maybeSingle();
 
       if (withType.error) {
         const fallback = await supabase
@@ -313,8 +322,13 @@ export async function bulkUpdateIncomeEntriesAction(formData: FormData): Promise
             amount: nextAmount,
             received_on: applyReceivedOn ? targetReceivedOn || null : ((row.received_on as string | null) ?? null)
           })
-          .eq("id", row.id as string);
+          .eq("id", row.id as string)
+          .select("id")
+          .maybeSingle();
         if (fallback.error) throw new Error(fallback.error.message);
+        if (!fallback.data?.id) throw new Error("A bulk income update was not applied.");
+      } else if (!withType.data?.id) {
+        throw new Error("A bulk income update was not applied.");
       }
     }
 
