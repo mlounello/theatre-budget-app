@@ -96,7 +96,7 @@ export default async function OverviewPage({
               </tr>
             ) : null}
             {filteredRows.map((row) => (
-              <tr key={row.organizationId}>
+              <tr key={`${row.organizationId}-${row.fiscalYearId ?? "none"}`}>
                 <td>{row.fiscalYearName ?? "-"}</td>
                 <td>{row.orgCode}</td>
                 <td>{row.organizationName}</td>
