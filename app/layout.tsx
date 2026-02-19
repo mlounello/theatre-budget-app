@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import { Suspense, type ReactNode } from "react";
 import "./globals.css";
 import { TopNav } from "@/components/top-nav";
 import { ScrollRestore } from "@/components/scroll-restore";
@@ -18,7 +18,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <ScrollRestore />
+        <Suspense fallback={null}>
+          <ScrollRestore />
+        </Suspense>
         <TopNav />
         <main className="page">{children}</main>
       </body>
