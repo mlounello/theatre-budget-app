@@ -2131,7 +2131,6 @@ export async function getMyBudgetData(): Promise<{
       supabase
         .from("projects")
         .select("id, name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name)")
-        .not("name", "ilike", "external procurement")
         .order("sort_order", { ascending: true })
         .order("name", { ascending: true }),
       supabase
@@ -2180,7 +2179,8 @@ export async function getMyBudgetData(): Promise<{
     return scopeRows.some((scope) => {
       if (scope.projectId && scope.projectId !== projectId) return false;
       if (scope.organizationId && scope.organizationId !== project.organizationId) return false;
-      if (scope.fiscalYearId && scope.fiscalYearId !== project.fiscalYearId) return false;
+      // Treat null project FY as "not tagged" rather than auto-deny.
+      if (scope.fiscalYearId && project.fiscalYearId && scope.fiscalYearId !== project.fiscalYearId) return false;
       if (scope.productionCategoryId) {
         if (productionCategoryId && scope.productionCategoryId === productionCategoryId) {
           // Exact category id match.

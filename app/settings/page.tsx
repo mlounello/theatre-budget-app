@@ -40,6 +40,8 @@ import { formatCurrency } from "@/lib/format";
 import { getAccessContext } from "@/lib/access";
 import { redirect } from "next/navigation";
 
+export const dynamic = "force-dynamic";
+
 type ProjectGroup = {
   id: string;
   name: string;
