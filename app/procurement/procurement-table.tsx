@@ -53,6 +53,7 @@ function procurementLabel(value: string, isCreditCard: boolean, requestType: Pro
 }
 
 type SortKey =
+  | "createdAt"
   | "projectName"
   | "organizationName"
   | "productionCategoryName"
@@ -68,6 +69,7 @@ type SortKey =
 
 type SortDirection = "asc" | "desc";
 const SORT_KEYS: SortKey[] = [
+  "createdAt",
   "projectName",
   "organizationName",
   "productionCategoryName",
@@ -130,6 +132,8 @@ function sortRows(rows: ProcurementRow[], receipts: ProcurementReceiptRow[], key
           ? (receiptMap.get(a.id) ?? 0)
             : key === "projectName"
               ? asString(a.projectName)
+              : key === "createdAt"
+                ? asString(a.createdAt)
               : key === "organizationName"
                 ? asString(a.organizationName)
             : key === "productionCategoryName"
@@ -154,6 +158,8 @@ function sortRows(rows: ProcurementRow[], receipts: ProcurementReceiptRow[], key
           ? (receiptMap.get(b.id) ?? 0)
             : key === "projectName"
               ? asString(b.projectName)
+              : key === "createdAt"
+                ? asString(b.createdAt)
               : key === "organizationName"
                 ? asString(b.organizationName)
               : key === "productionCategoryName"
@@ -236,7 +242,7 @@ export function ProcurementTable({
   const sortFromUrl = searchParams.get("pr_sort");
   const dirFromUrl = searchParams.get("pr_dir");
   const [sortKey, setSortKey] = useState<SortKey>(
-    sortFromUrl && SORT_KEYS.includes(sortFromUrl as SortKey) ? (sortFromUrl as SortKey) : "poNumber"
+    sortFromUrl && SORT_KEYS.includes(sortFromUrl as SortKey) ? (sortFromUrl as SortKey) : "createdAt"
   );
   const [direction, setDirection] = useState<SortDirection>(
     dirFromUrl === "asc" || dirFromUrl === "desc" ? dirFromUrl : "desc"
