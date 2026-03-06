@@ -495,6 +495,17 @@ export type SettingsProjectMembershipRow = {
 
 export async function getDashboardProjects(): Promise<DashboardProject[]> {
   const supabase = await getSupabaseServerClient();
+  const debugAccess = process.env.DEBUG_DASHBOARD_ACCESS === "true";
+  if (debugAccess) {
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    console.info("[dashboard:getDashboardProjects] user", {
+      userId: user?.id ?? null,
+      email: user?.email ?? null,
+      tables: ["projects", "v_portfolio_summary", "v_project_totals"]
+    });
+  }
 
   const { data: projectsData, error: projectsError } = await supabase
     .from("projects")
@@ -502,6 +513,11 @@ export async function getDashboardProjects(): Promise<DashboardProject[]> {
     .not("name", "ilike", "external procurement")
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
+  if (debugAccess) {
+    console.info(
+      `[dashboard:getDashboardProjects] projects error=${projectsError?.message ?? "null"} rows=${projectsData?.length ?? 0}`
+    );
+  }
 
   if (projectsError) {
     throw projectsError;
@@ -520,6 +536,11 @@ export async function getDashboardProjects(): Promise<DashboardProject[]> {
       .from("v_portfolio_summary")
       .select("project_id, allocated_total, obligated_total, remaining_true, remaining_if_requested_approved, income_total")
       .in("project_id", projectIds);
+    if (debugAccess) {
+      console.info(
+        `[dashboard:getDashboardProjects] v_portfolio_summary error=${summaryError?.message ?? "null"} rows=${summaryData?.length ?? 0}`
+      );
+    }
 
     if (summaryError) {
       throw summaryError;
@@ -542,6 +563,11 @@ export async function getDashboardProjects(): Promise<DashboardProject[]> {
       .from("v_project_totals")
       .select("project_id, requested_open_total, held_total, enc_total, pending_cc_total, ytd_total")
       .in("project_id", projectIds);
+    if (debugAccess) {
+      console.info(
+        `[dashboard:getDashboardProjects] v_project_totals error=${totalsError?.message ?? "null"} rows=${totalsData?.length ?? 0}`
+      );
+    }
 
     if (totalsError) {
       throw totalsError;
@@ -2154,6 +2180,7 @@ export async function getMyBudgetData(): Promise<{
 }> {
   const supabase = await getSupabaseServerClient();
   const access = await getAccessContext();
+  const debugAccess = process.env.DEBUG_DASHBOARD_ACCESS === "true";
 
   if (!access.userId) {
     return { role: "none", cards: [], openRequisitions: [] };
@@ -2196,6 +2223,21 @@ export async function getMyBudgetData(): Promise<{
         .neq("procurement_status", "cancelled")
         .order("created_at", { ascending: false })
     ]);
+
+  if (debugAccess) {
+    console.info("[dashboard:getMyBudgetData] access + query counts", {
+      userId: access.userId,
+      email: access.email,
+      role: access.role,
+      membershipRoles: [...access.membershipRoles],
+      scopedRoles: [...access.scopedRoles],
+      scopesCount: access.scopes.length,
+      queriedTables: ["projects", "project_budget_lines", "purchases"],
+      projectsRows: (projectsData ?? []).length,
+      budgetLinesRows: (linesData ?? []).length,
+      purchasesRows: (purchasesData ?? []).length
+    });
+  }
 
   if (projectsError) throw projectsError;
   if (linesError) throw linesError;

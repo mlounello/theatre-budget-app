@@ -1,4 +1,5 @@
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { APP_ID } from "@/lib/supabase-schema";
 import type { AppRole } from "@/lib/types";
 
 export type EffectiveAppRole = AppRole | "none";
@@ -35,12 +36,21 @@ function toRole(value: unknown): AppRole | null {
   return null;
 }
 
+function rolePriority(role: AppRole): number {
+  if (role === "admin") return 5;
+  if (role === "project_manager") return 4;
+  if (role === "buyer") return 3;
+  if (role === "viewer") return 2;
+  return 1;
+}
+
 export function hasRole(context: AccessContext, allowed: AppRole[]): boolean {
   return context.role !== "none" && allowed.includes(context.role);
 }
 
 export async function getAccessContext(): Promise<AccessContext> {
   const supabase = await getSupabaseServerClient();
+  const debugAccess = process.env.DEBUG_DASHBOARD_ACCESS === "true";
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -50,6 +60,39 @@ export async function getAccessContext(): Promise<AccessContext> {
       userId: null,
       email: null,
       role: "none",
+      membershipRoles: new Set<AppRole>(),
+      scopedRoles: new Set<AppRole>(),
+      manageableProjectIds: new Set<string>(),
+      scopes: []
+    };
+  }
+
+  const coreAppId = APP_ID;
+  const { data: coreMembership, error: coreErr } = await supabase
+    .schema("core")
+    .from("app_memberships")
+    .select("role")
+    .eq("user_id", user.id)
+    .eq("app_id", coreAppId)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (debugAccess) {
+    console.log("[access] core membership", { coreAppId, coreMembership, coreErr });
+    if (coreErr) {
+      console.error("[access] core membership error", coreErr);
+    }
+  }
+
+  const coreRole = toRole(coreMembership?.role);
+  if (coreRole) {
+    if (debugAccess) {
+      console.info(`[access] uid=${user.id} email=${user.email ?? ""} role=${coreRole} source=core.app_memberships`);
+    }
+    return {
+      userId: user.id,
+      email: user.email ?? null,
+      role: coreRole,
       membershipRoles: new Set<AppRole>(),
       scopedRoles: new Set<AppRole>(),
       manageableProjectIds: new Set<string>(),
@@ -97,11 +140,22 @@ export async function getAccessContext(): Promise<AccessContext> {
   }
 
   let role: EffectiveAppRole = "none";
-  if (membershipRoles.has("admin") || scopedRoles.has("admin")) role = "admin";
-  else if (membershipRoles.has("project_manager") || scopedRoles.has("project_manager")) role = "project_manager";
-  else if (membershipRoles.has("buyer") || scopedRoles.has("buyer")) role = "buyer";
-  else if (membershipRoles.has("viewer") || scopedRoles.has("viewer")) role = "viewer";
-  else if (membershipRoles.has("procurement_tracker") || scopedRoles.has("procurement_tracker")) role = "procurement_tracker";
+  const allRoles = new Set<AppRole>([...membershipRoles, ...scopedRoles]);
+  const sortedRoles = [...allRoles].sort((a, b) => rolePriority(b) - rolePriority(a));
+  if (sortedRoles.length > 0) {
+    role = sortedRoles[0];
+  }
+
+  if (debugAccess) {
+    let source = "none";
+    if (role !== "none") {
+      const inProjectMemberships = membershipRoles.has(role);
+      const inUserScopes = scopedRoles.has(role);
+      if (inProjectMemberships) source = "project_memberships";
+      else if (inUserScopes) source = "user_access_scopes";
+    }
+    console.info(`[access] uid=${user.id} email=${user.email ?? ""} role=${role} source=${source}`);
+  }
 
   return {
     userId: user.id,

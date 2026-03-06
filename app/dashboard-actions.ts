@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { APP_SCHEMA } from "@/lib/supabase-schema";
 import type { PurchaseStatus } from "@/lib/types";
 
 const REQUISITION_PROCUREMENT_STATUSES = [
@@ -87,11 +88,11 @@ function fail(message: string): never {
 }
 
 async function ensureProjectPmOrAdminAccess(
-  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  db: Awaited<ReturnType<typeof createSupabaseServerClient>>["schema"] extends (schema: string) => infer T ? T : never,
   userId: string,
   projectId: string
 ): Promise<void> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("project_memberships")
     .select("role")
     .eq("project_id", projectId)
@@ -106,7 +107,8 @@ async function ensureProjectPmOrAdminAccess(
 
 export async function updateDashboardRequisitionStatusAction(formData: FormData): Promise<void> {
   try {
-    const supabase = await getSupabaseServerClient();
+    const supabase = await createSupabaseServerClient();
+    const db = supabase.schema(APP_SCHEMA);
     const {
       data: { user }
     } = await supabase.auth.getUser();
@@ -116,7 +118,7 @@ export async function updateDashboardRequisitionStatusAction(formData: FormData)
     const nextProcurementStatus = parseStatus(formData.get("procurementStatus"));
     if (!purchaseId) throw new Error("Purchase id is required.");
 
-    const { data: existing, error: existingError } = await supabase
+    const { data: existing, error: existingError } = await db
       .from("purchases")
       .select(
         "id, project_id, request_type, is_credit_card, status, procurement_status, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, budget_tracked, production_category_id, banner_account_code_id"
@@ -130,7 +132,7 @@ export async function updateDashboardRequisitionStatusAction(formData: FormData)
     }
 
     const projectId = existing.project_id as string;
-    await ensureProjectPmOrAdminAccess(supabase, user.id, projectId);
+    await ensureProjectPmOrAdminAccess(db, user.id, projectId);
 
     const currentValue = getStatusAmount(existing.status as string, {
       estimated: asNumber(existing.estimated_amount as string | number | null),
@@ -145,7 +147,7 @@ export async function updateDashboardRequisitionStatusAction(formData: FormData)
     const nextEncumberedAmount = nextBudgetStatus === "encumbered" ? currentValue : 0;
     const nextPostedAmount = nextBudgetStatus === "posted" ? currentValue : 0;
 
-    const { data: updated, error: updateError } = await supabase
+    const { data: updated, error: updateError } = await db
       .from("purchases")
       .update({
         procurement_status: nextProcurementStatus,
@@ -164,7 +166,7 @@ export async function updateDashboardRequisitionStatusAction(formData: FormData)
     if (updateError) throw new Error(updateError.message);
     if (!updated?.id) throw new Error("Requisition update was not applied.");
 
-    const { data: allocations, error: allocationsError } = await supabase
+    const { data: allocations, error: allocationsError } = await db
       .from("purchase_allocations")
       .select("id, amount")
       .eq("purchase_id", purchaseId)
@@ -179,7 +181,7 @@ export async function updateDashboardRequisitionStatusAction(formData: FormData)
       if ((allocations ?? []).length === 1 || currentTotal === 0) {
         const targetId = allocations?.[0]?.id as string;
         if (targetId) {
-          const { data: allocationUpdated, error } = await supabase
+          const { data: allocationUpdated, error } = await db
             .from("purchase_allocations")
             .update({ amount: nextTotal })
             .eq("id", targetId)
@@ -201,7 +203,7 @@ export async function updateDashboardRequisitionStatusAction(formData: FormData)
             amount = Number((nextTotal * ratio).toFixed(2));
             running += amount;
           }
-          const { data: allocationUpdated, error } = await supabase
+          const { data: allocationUpdated, error } = await db
             .from("purchase_allocations")
             .update({ amount })
             .eq("id", id)
