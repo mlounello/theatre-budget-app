@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-client";
 import { sanitizeNextPath } from "@/lib/sanitize-next";
@@ -14,6 +14,16 @@ export default function LoginPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get("code");
+    if (!code) return;
+
+    const next = sanitizeNextPath(params.get("next"));
+    const callbackUrl = `/auth/callback?code=${encodeURIComponent(code)}&next=${encodeURIComponent(next)}`;
+    router.replace(callbackUrl);
+  }, [router]);
 
   async function upsertCurrentUserProfile(displayName?: string) {
     const supabase = getSupabaseBrowserClient();
