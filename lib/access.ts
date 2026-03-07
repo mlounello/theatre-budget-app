@@ -68,6 +68,27 @@ export async function getAccessContext(): Promise<AccessContext> {
   }
 
   const coreAppId = APP_ID;
+  const { data: rpcRoleValue, error: rpcRoleError } = await supabase.rpc("get_user_role", { p_app_id: coreAppId });
+  const rpcRole = toRole(rpcRoleValue);
+  if (debugAccess) {
+    console.info("[access] rpc get_user_role", { coreAppId, rpcRoleValue, rpcRoleError });
+  }
+  if (rpcRole) {
+    if (debugAccess) {
+      console.info(`[access] uid=${user.id} email=${user.email ?? ""} role=${rpcRole} source=rpc.get_user_role`);
+    }
+    return {
+      userId: user.id,
+      email: user.email ?? null,
+      role: rpcRole,
+      membershipRoles: new Set<AppRole>(),
+      scopedRoles: new Set<AppRole>(),
+      manageableProjectIds: new Set<string>(),
+      scopes: []
+    };
+  }
+
+  // Backward-compatible fallback while get_user_role is being rolled out.
   const { data: coreMembership, error: coreErr } = await supabase
     .schema("core")
     .from("app_memberships")
@@ -76,11 +97,13 @@ export async function getAccessContext(): Promise<AccessContext> {
     .eq("app_id", coreAppId)
     .eq("is_active", true)
     .maybeSingle();
-
   if (debugAccess) {
-    console.log("[access] core membership", { coreAppId, coreMembership, coreErr });
+    console.info("[access] core membership fallback", { coreAppId, coreMembership, coreErr });
     if (coreErr) {
       console.error("[access] core membership error", coreErr);
+    }
+    if (rpcRoleError) {
+      console.error("[access] get_user_role error", rpcRoleError);
     }
   }
 
