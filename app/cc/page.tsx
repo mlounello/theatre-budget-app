@@ -72,7 +72,6 @@ export default async function CreditCardPage({
     cardsResponse,
     monthsResponse,
     receiptsResponse,
-    membershipsResponse,
     accountCodeOptions,
     productionCategoryOptions
   ] = await Promise.all([
@@ -89,7 +88,6 @@ export default async function CreditCardPage({
         "id, purchase_id, amount_received, note, created_at, cc_statement_month_id, purchases!inner(id, title, reference_number, requisition_number, pending_cc_amount, credit_card_id, status, request_type, is_credit_card, projects(name, season), project_budget_lines(budget_code, category, line_name))"
       )
       .order("created_at", { ascending: true }),
-    supabase.from("project_memberships").select("project_id, role"),
     getAccountCodeOptions(),
     getProductionCategoryOptions()
   ]);
@@ -97,15 +95,8 @@ export default async function CreditCardPage({
   if (cardsResponse.error) throw cardsResponse.error;
   if (monthsResponse.error) throw monthsResponse.error;
   if (receiptsResponse.error) throw receiptsResponse.error;
-  if (membershipsResponse.error) throw membershipsResponse.error;
-
-  const membershipRows = membershipsResponse.data ?? [];
-  const hasGlobalAdmin = membershipRows.some((row) => (row.role as string) === "admin");
-  const manageableProjectIds = new Set(
-    membershipRows
-      .filter((row) => (row.role as string) === "project_manager")
-      .map((row) => row.project_id as string)
-  );
+  const hasGlobalAdmin = access.role === "admin";
+  const manageableProjectIds = access.manageableProjectIds;
 
   const manageableProjects = hasGlobalAdmin ? projects : projects.filter((project) => manageableProjectIds.has(project.id));
 

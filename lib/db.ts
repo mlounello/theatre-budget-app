@@ -759,6 +759,7 @@ export async function getRequestsData(): Promise<{
   canManageSplits: boolean;
 }> {
   const supabase = await getSupabaseServerClient();
+  const access = await getAccessContext();
 
   const { data: purchasesData, error: purchasesError } = await supabase
     .from("purchases")
@@ -837,20 +838,7 @@ export async function getRequestsData(): Promise<{
     .order("name", { ascending: true });
   if (productionCategoryError) throw productionCategoryError;
 
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  let canManageSplits = false;
-  if (user) {
-    const { data: elevatedRoles } = await supabase
-      .from("project_memberships")
-      .select("role")
-      .eq("user_id", user.id)
-      .in("role", ["admin", "project_manager"])
-      .limit(1);
-    canManageSplits = (elevatedRoles ?? []).length > 0;
-  }
+  const canManageSplits = access.role === "admin" || access.role === "project_manager";
 
   const purchases: PurchaseRow[] = (purchasesData ?? [])
     .filter((row) => {
@@ -1385,6 +1373,7 @@ export async function getContractsData(): Promise<{
   canManageContracts: boolean;
 }> {
   const supabase = await getSupabaseServerClient();
+  const access = await getAccessContext();
 
   const [contractsResponse, installmentsResponse, fiscalYears, organizations, projects, accountCodes] = await Promise.all([
     supabase
@@ -1408,20 +1397,7 @@ export async function getContractsData(): Promise<{
   if (contractsResponse.error) throw contractsResponse.error;
   if (installmentsResponse.error) throw installmentsResponse.error;
 
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  let canManageContracts = false;
-  if (user) {
-    const { data: elevatedRoles } = await supabase
-      .from("project_memberships")
-      .select("role")
-      .eq("user_id", user.id)
-      .in("role", ["admin", "project_manager"])
-      .limit(1);
-    canManageContracts = (elevatedRoles ?? []).length > 0;
-  }
+  const canManageContracts = access.role === "admin" || access.role === "project_manager";
 
   const projectById = new Map(projects.map((project) => [project.id, project]));
   const fiscalYearById = new Map(fiscalYears.map((fiscalYear) => [fiscalYear.id, fiscalYear.name]));

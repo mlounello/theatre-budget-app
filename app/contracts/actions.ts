@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { getAccessContext } from "@/lib/access";
 import type { PurchaseStatus } from "@/lib/types";
 
 type ContractWorkflowStatus = "w9_requested" | "contract_sent" | "contract_signed_returned" | "siena_signed";
@@ -89,6 +90,10 @@ function parseBulkContractLines(value: FormDataEntryValue | null): BulkContractL
 }
 
 async function ensurePmOrAdmin(projectId: string, userId: string): Promise<void> {
+  const access = await getAccessContext();
+  if (access.role === "admin") return;
+  if (access.role === "project_manager" && access.manageableProjectIds.has(projectId)) return;
+
   const supabase = await getSupabaseServerClient();
   const { data, error } = await supabase
     .from("project_memberships")

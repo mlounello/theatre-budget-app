@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { getAccessContext } from "@/lib/access";
 import type { PurchaseStatus } from "@/lib/types";
 
 function parseMoney(value: FormDataEntryValue | null): number {
@@ -88,6 +89,10 @@ async function requirePmOrAdmin(
   projectId: string,
   userId: string
 ): Promise<void> {
+  const access = await getAccessContext();
+  if (access.role === "admin") return;
+  if (access.role === "project_manager" && access.manageableProjectIds.has(projectId)) return;
+
   const { data, error } = await supabase
     .from("project_memberships")
     .select("role")
@@ -185,16 +190,7 @@ export async function createRequest(formData: FormData): Promise<void> {
   }
 
   if (allocations.length > 0) {
-    const { data: roleRow, error: roleError } = await supabase
-      .from("project_memberships")
-      .select("role")
-      .eq("project_id", budgetLine.project_id)
-      .eq("user_id", user.id)
-      .single();
-
-    if (roleError || !roleRow || (roleRow.role !== "admin" && roleRow.role !== "project_manager")) {
-      throw new Error("Split allocations can only be created by Project Managers or Admins.");
-    }
+    await requirePmOrAdmin(supabase, budgetLine.project_id as string, user.id);
   }
 
   const requestedTotal = allocations.length > 0 ? allocations.reduce((sum, allocation) => sum + allocation.amount, 0) : requestedAmount;
@@ -810,14 +806,8 @@ export async function deleteRequestAction(formData: FormData): Promise<void> {
     .single();
   if (existingError || !existing) throw new Error("Purchase not found.");
 
-  const { data: membership, error: membershipError } = await supabase
-    .from("project_memberships")
-    .select("role")
-    .eq("project_id", existing.project_id as string)
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (membershipError) throw new Error(membershipError.message);
-  if ((membership?.role as string | undefined) !== "admin") {
+  const access = await getAccessContext();
+  if (access.role !== "admin") {
     throw new Error("Only Admin can delete requests.");
   }
 
@@ -892,17 +882,15 @@ export async function bulkUpdateRequestsAction(formData: FormData): Promise<void
     if (!targetProjectId) throw new Error("Project is required when applying project.");
     projectIds.push(targetProjectId);
   }
-  const { data: memberships, error: membershipError } = await supabase
-    .from("project_memberships")
-    .select("project_id, role")
-    .eq("user_id", user.id)
-    .in("project_id", projectIds);
-  if (membershipError) throw new Error(membershipError.message);
-  const membershipByProject = new Map((memberships ?? []).map((row) => [row.project_id as string, row.role as string]));
-  for (const projectId of projectIds) {
-    const role = membershipByProject.get(projectId);
-    if (!role || (role !== "admin" && role !== "project_manager")) {
+  const access = await getAccessContext();
+  if (access.role !== "admin") {
+    if (access.role !== "project_manager") {
       throw new Error("Only Admin or Project Manager can bulk edit selected requests.");
+    }
+    for (const projectId of projectIds) {
+      if (!access.manageableProjectIds.has(projectId)) {
+        throw new Error("Only Admin or Project Manager can bulk edit selected requests.");
+      }
     }
   }
 
@@ -1103,18 +1091,8 @@ export async function bulkDeleteRequestsAction(formData: FormData): Promise<void
   if (!purchases || purchases.length !== purchaseIds.length) throw new Error("Some selected requests were not found.");
 
   const projectIds = [...new Set(purchases.map((row) => row.project_id as string))];
-  const { data: memberships, error: membershipError } = await supabase
-    .from("project_memberships")
-    .select("project_id, role")
-    .eq("user_id", user.id)
-    .in("project_id", projectIds);
-  if (membershipError) throw new Error(membershipError.message);
-
-  const membershipByProject = new Map((memberships ?? []).map((row) => [row.project_id as string, row.role as string]));
-  for (const projectId of projectIds) {
-    const role = membershipByProject.get(projectId);
-    if (role !== "admin") throw new Error("Only Admin can bulk delete selected requests.");
-  }
+  const access = await getAccessContext();
+  if (access.role !== "admin") throw new Error("Only Admin can bulk delete selected requests.");
 
   const { error: deleteError } = await supabase.from("purchases").delete().in("id", purchaseIds);
   if (deleteError) throw new Error(deleteError.message);

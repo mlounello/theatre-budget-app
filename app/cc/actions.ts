@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { getAccessContext } from "@/lib/access";
 import type { PurchaseStatus } from "@/lib/types";
 
 function parseMoney(value: FormDataEntryValue | null): number {
@@ -56,34 +57,16 @@ function rethrowIfRedirect(error: unknown): void {
   }
 }
 
-async function requireCcManagerRole(
-  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
-  userId: string
-): Promise<void> {
-  const { data: roleRows, error: roleError } = await supabase
-    .from("project_memberships")
-    .select("role")
-    .eq("user_id", userId)
-    .in("role", ["admin", "project_manager"]);
-
-  if (roleError) throw new Error(roleError.message);
-  if ((roleRows ?? []).length === 0) {
+async function requireCcManagerRole(): Promise<void> {
+  const access = await getAccessContext();
+  if (access.role !== "admin" && access.role !== "project_manager") {
     throw new Error("You must be an Admin or Project Manager to manage credit card statements.");
   }
 }
 
-async function requireGlobalAdmin(
-  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
-  userId: string
-): Promise<void> {
-  const { data, error } = await supabase
-    .from("project_memberships")
-    .select("role")
-    .eq("user_id", userId)
-    .eq("role", "admin")
-    .limit(1);
-  if (error) throw new Error(error.message);
-  if ((data ?? []).length === 0) {
+async function requireGlobalAdmin(): Promise<void> {
+  const access = await getAccessContext();
+  if (access.role !== "admin") {
     throw new Error("Only Admin can manage credit cards.");
   }
 }
@@ -95,7 +78,7 @@ export async function createCreditCardAction(formData: FormData): Promise<void> 
       data: { user }
     } = await supabase.auth.getUser();
     if (!user) throw new Error("You must be signed in.");
-    await requireGlobalAdmin(supabase, user.id);
+    await requireGlobalAdmin();
 
     const nickname = String(formData.get("nickname") ?? "").trim();
     const maskedNumber = String(formData.get("maskedNumber") ?? "").trim();
@@ -126,7 +109,7 @@ export async function updateCreditCardAction(formData: FormData): Promise<void> 
       data: { user }
     } = await supabase.auth.getUser();
     if (!user) throw new Error("You must be signed in.");
-    await requireGlobalAdmin(supabase, user.id);
+    await requireGlobalAdmin();
 
     const id = String(formData.get("id") ?? "").trim();
     const nickname = String(formData.get("nickname") ?? "").trim();
@@ -158,7 +141,7 @@ export async function deleteCreditCardAction(formData: FormData): Promise<void> 
       data: { user }
     } = await supabase.auth.getUser();
     if (!user) throw new Error("You must be signed in.");
-    await requireGlobalAdmin(supabase, user.id);
+    await requireGlobalAdmin();
 
     const id = String(formData.get("id") ?? "").trim();
     if (!id) throw new Error("Card ID is required.");
@@ -187,7 +170,7 @@ export async function createStatementMonthAction(formData: FormData): Promise<vo
 
     if (!creditCardId || !month) throw new Error("Card and statement month are required.");
     const statementDate = toStatementDate(month);
-    await requireCcManagerRole(supabase, user.id);
+    await requireCcManagerRole();
 
     const { data: existingRows, error: existingError } = await supabase
       .from("cc_statement_months")
@@ -239,7 +222,7 @@ export async function updateStatementMonthAction(formData: FormData): Promise<vo
     if (existingError || !existing) throw new Error("Statement month not found.");
     if (existing.posted_to_banner_at) throw new Error("Cannot edit a statement month that is already posted to Banner.");
     if (existing.posted_at) throw new Error("Reopen this statement month before editing.");
-    await requireCcManagerRole(supabase, user.id);
+    await requireCcManagerRole();
 
     const statementDate = toStatementDate(month);
     const { data: updated, error } = await supabase
@@ -276,7 +259,7 @@ export async function deleteStatementMonthAction(formData: FormData): Promise<vo
       .eq("id", id)
       .single();
     if (existingError || !existing) throw new Error("Statement month not found.");
-    await requireCcManagerRole(supabase, user.id);
+    await requireCcManagerRole();
 
     const { data: linkedPurchases, error: linkedError } = await supabase
       .from("purchases")
@@ -316,7 +299,7 @@ export async function bulkUpdateCreditCardsAction(formData: FormData): Promise<v
       data: { user }
     } = await supabase.auth.getUser();
     if (!user) throw new Error("You must be signed in.");
-    await requireGlobalAdmin(supabase, user.id);
+    await requireGlobalAdmin();
 
     const ids = parseIdsJson(formData.get("selectedIdsJson"));
     if (ids.length === 0) throw new Error("Select at least one credit card.");
@@ -363,7 +346,7 @@ export async function bulkDeleteCreditCardsAction(formData: FormData): Promise<v
       data: { user }
     } = await supabase.auth.getUser();
     if (!user) throw new Error("You must be signed in.");
-    await requireGlobalAdmin(supabase, user.id);
+    await requireGlobalAdmin();
 
     const ids = parseIdsJson(formData.get("selectedIdsJson"));
     if (ids.length === 0) throw new Error("Select at least one credit card.");
@@ -387,7 +370,7 @@ export async function bulkUpdateStatementMonthsAction(formData: FormData): Promi
       data: { user }
     } = await supabase.auth.getUser();
     if (!user) throw new Error("You must be signed in.");
-    await requireCcManagerRole(supabase, user.id);
+    await requireCcManagerRole();
 
     const ids = parseIdsJson(formData.get("selectedIdsJson"));
     if (ids.length === 0) throw new Error("Select at least one statement month.");
@@ -440,7 +423,7 @@ export async function bulkDeleteStatementMonthsAction(formData: FormData): Promi
       data: { user }
     } = await supabase.auth.getUser();
     if (!user) throw new Error("You must be signed in.");
-    await requireCcManagerRole(supabase, user.id);
+    await requireCcManagerRole();
 
     const ids = parseIdsJson(formData.get("selectedIdsJson"));
     if (ids.length === 0) throw new Error("Select at least one statement month.");
@@ -483,7 +466,7 @@ export async function assignReceiptsToStatementAction(formData: FormData): Promi
       data: { user }
     } = await supabase.auth.getUser();
     if (!user) throw new Error("You must be signed in.");
-    await requireCcManagerRole(supabase, user.id);
+    await requireCcManagerRole();
 
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
     const receiptIds = formData
@@ -561,7 +544,7 @@ export async function unassignReceiptFromStatementAction(formData: FormData): Pr
       data: { user }
     } = await supabase.auth.getUser();
     if (!user) throw new Error("You must be signed in.");
-    await requireCcManagerRole(supabase, user.id);
+    await requireCcManagerRole();
 
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
     const receiptId = String(formData.get("receiptId") ?? "").trim();
@@ -597,7 +580,7 @@ export async function submitStatementMonthAction(formData: FormData): Promise<vo
       data: { user }
     } = await supabase.auth.getUser();
     if (!user) throw new Error("You must be signed in.");
-    await requireCcManagerRole(supabase, user.id);
+    await requireCcManagerRole();
 
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
     if (!statementMonthId) throw new Error("Statement month is required.");
@@ -689,7 +672,7 @@ export async function reopenStatementMonthAction(formData: FormData): Promise<vo
       data: { user }
     } = await supabase.auth.getUser();
     if (!user) throw new Error("You must be signed in.");
-    await requireCcManagerRole(supabase, user.id);
+    await requireCcManagerRole();
 
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
     if (!statementMonthId) throw new Error("Statement month is required.");
@@ -762,7 +745,7 @@ export async function postStatementMonthToBannerAction(formData: FormData): Prom
       data: { user }
     } = await supabase.auth.getUser();
     if (!user) throw new Error("You must be signed in.");
-    await requireCcManagerRole(supabase, user.id);
+    await requireCcManagerRole();
 
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
     if (!statementMonthId) throw new Error("Statement month is required.");
@@ -860,7 +843,7 @@ export async function unpostStatementMonthFromBannerAction(formData: FormData): 
       data: { user }
     } = await supabase.auth.getUser();
     if (!user) throw new Error("You must be signed in.");
-    await requireCcManagerRole(supabase, user.id);
+    await requireCcManagerRole();
 
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
     if (!statementMonthId) throw new Error("Statement month is required.");
@@ -1077,7 +1060,7 @@ export async function addStatementLineAction(formData: FormData): Promise<void> 
       data: { user }
     } = await supabase.auth.getUser();
     if (!user) throw new Error("You must be signed in.");
-    await requireCcManagerRole(supabase, user.id);
+    await requireCcManagerRole();
 
     const { error } = await supabase.from("cc_statement_lines").insert({
       statement_month_id: statementMonthId,
@@ -1125,7 +1108,7 @@ export async function confirmStatementLineMatchAction(formData: FormData): Promi
       .eq("id", statementLine.statement_month_id as string)
       .single();
     if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
-    await requireCcManagerRole(supabase, user.id);
+    await requireCcManagerRole();
 
     const { data: purchases, error: purchasesError } = await supabase
       .from("purchases")

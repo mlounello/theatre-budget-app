@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { getAccessContext } from "@/lib/access";
 import { APP_SCHEMA } from "@/lib/supabase-schema";
 import type { PurchaseStatus } from "@/lib/types";
 
@@ -92,6 +93,10 @@ async function ensureProjectPmOrAdminAccess(
   userId: string,
   projectId: string
 ): Promise<void> {
+  const access = await getAccessContext();
+  if (access.role === "admin") return;
+  if (access.role === "project_manager" && access.manageableProjectIds.has(projectId)) return;
+
   const { data, error } = await db
     .from("project_memberships")
     .select("role")

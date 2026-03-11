@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { getAccessContext } from "@/lib/access";
 import type { PurchaseStatus } from "@/lib/types";
 
 const PROCUREMENT_STATUSES = [
@@ -202,6 +203,10 @@ async function ensureProjectCreateAccess(
   userId: string,
   projectId: string
 ): Promise<void> {
+  const access = await getAccessContext();
+  if (access.role === "admin") return;
+  if (access.role === "project_manager" && access.manageableProjectIds.has(projectId)) return;
+
   const { data, error } = await supabase
     .from("project_memberships")
     .select("role")
@@ -232,6 +237,10 @@ async function ensureProjectPmOrAdminAccess(
   userId: string,
   projectId: string
 ): Promise<void> {
+  const access = await getAccessContext();
+  if (access.role === "admin") return;
+  if (access.role === "project_manager" && access.manageableProjectIds.has(projectId)) return;
+
   const { data, error } = await supabase
     .from("project_memberships")
     .select("role")
@@ -250,6 +259,9 @@ async function ensureProjectAdminAccess(
   userId: string,
   projectId: string
 ): Promise<void> {
+  const access = await getAccessContext();
+  if (access.role === "admin") return;
+
   const { data, error } = await supabase
     .from("project_memberships")
     .select("role")
@@ -1210,14 +1222,8 @@ export async function createVendorAction(formData: FormData): Promise<void> {
     } = await supabase.auth.getUser();
     if (!user) throw new Error("You must be signed in.");
 
-    const { data: membership, error: membershipError } = await supabase
-      .from("project_memberships")
-      .select("id")
-      .eq("user_id", user.id)
-      .in("role", ["admin", "project_manager"])
-      .limit(1);
-    if (membershipError) throw new Error(membershipError.message);
-    if ((membership ?? []).length === 0) {
+    const access = await getAccessContext();
+    if (access.role !== "admin" && access.role !== "project_manager") {
       throw new Error("Only Admin or Project Manager can add vendors.");
     }
 
