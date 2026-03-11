@@ -3,6 +3,7 @@ import {
   addBudgetLineAction,
   createAccountCodeAction,
   createUserAccessScopeAction,
+  archiveUserProfileAction,
   deleteFiscalYearAction,
   deleteOrganizationAction,
   deleteProductionCategoryAction,
@@ -794,6 +795,49 @@ export default async function SettingsPage({
             </table>
           </div>
         </article>
+
+        {isAdmin ? (
+          <article className="panel panelFull">
+            <h2>User Profiles</h2>
+            <p className="heroSubtitle">
+              Archive removes this app&apos;s memberships/scopes and hides the user from assignment lists while preserving historical records.
+            </p>
+            <div className="tableWrap" style={{ marginTop: "0.8rem" }}>
+              <table>
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Archive</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {accessUsers.map((userRow) => (
+                    <tr key={`user-archive-${userRow.id}`}>
+                      <td>{userRow.fullName}</td>
+                      <td>
+                        {userRow.id === access.userId ? (
+                          <span>(current account)</span>
+                        ) : (
+                          <form action={archiveUserProfileAction}>
+                            <input type="hidden" name="userId" value={userRow.id} />
+                            <button type="submit" className="tinyButton dangerButton">
+                              Archive User
+                            </button>
+                          </form>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                  {accessUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={2}>(none)</td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </article>
+        ) : null}
       </div>
 
       {isAdmin && editingFiscalYear ? (

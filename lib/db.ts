@@ -1550,7 +1550,7 @@ export async function getSettingsAccessScopes(): Promise<{
   const access = await getAccessContext();
 
   const [usersResponse, scopesResponse, membershipsResponse, projectsResponse, categoriesResponse] = await Promise.all([
-    supabase.from("users").select("id, full_name").order("full_name", { ascending: true }),
+    supabase.from("users").select("id, full_name").is("deleted_at", null).order("full_name", { ascending: true }),
     supabase
       .from("user_access_scopes")
       .select("id, user_id, scope_role, fiscal_year_id, organization_id, project_id, production_category_id, active")
@@ -1638,7 +1638,7 @@ export async function getSettingsProjectMemberships(): Promise<{
       .from("project_memberships")
       .select("project_id, user_id, role")
       .order("project_id", { ascending: true }),
-    supabase.from("users").select("id, full_name").order("full_name", { ascending: true }),
+    supabase.from("users").select("id, full_name").is("deleted_at", null).order("full_name", { ascending: true }),
     supabase.from("projects").select("id, name, season")
   ]);
 

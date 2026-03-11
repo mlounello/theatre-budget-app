@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
+import { APP_ID } from "@/lib/supabase-schema";
 
 function parseMoney(value: FormDataEntryValue | null): number {
   if (typeof value !== "string" || value.trim() === "") return 0;
@@ -1516,5 +1517,46 @@ export async function updateUserAccessScopeAction(formData: FormData): Promise<v
   } catch (error) {
     rethrowIfRedirect(error);
     settingsError(getErrorMessage(error, "Could not update user scope."));
+  }
+}
+
+export async function archiveUserProfileAction(formData: FormData): Promise<void> {
+  try {
+    await requireSettingsAdmin();
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+
+    if (!user) throw new Error("You must be signed in.");
+
+    const targetUserId = String(formData.get("userId") ?? "").trim();
+    if (!targetUserId) throw new Error("User id is required.");
+    if (targetUserId === user.id) throw new Error("You cannot archive your own account.");
+
+    const { data: targetUser, error: targetUserError } = await supabase
+      .from("users")
+      .select("id, deleted_at")
+      .eq("id", targetUserId)
+      .maybeSingle();
+    if (targetUserError) throw new Error(targetUserError.message);
+    if (!targetUser?.id) throw new Error("User was not found.");
+    if (targetUser.deleted_at) throw new Error("User is already archived.");
+
+    const { error: archiveError } = await supabase.rpc("archive_user_profile", {
+      p_user_id: targetUserId,
+      p_app_id: APP_ID
+    });
+    if (archiveError) throw new Error(archiveError.message);
+
+    revalidatePath("/settings");
+    revalidatePath("/");
+    revalidatePath("/overview");
+    revalidatePath("/requests");
+    revalidatePath("/procurement");
+    settingsSuccess("User archived. Access and memberships removed.");
+  } catch (error) {
+    rethrowIfRedirect(error);
+    settingsError(getErrorMessage(error, "Could not archive user."));
   }
 }
