@@ -1536,12 +1536,11 @@ export async function archiveUserProfileAction(formData: FormData): Promise<void
 
     const { data: targetUser, error: targetUserError } = await supabase
       .from("users")
-      .select("id, deleted_at")
+      .select("id")
       .eq("id", targetUserId)
       .maybeSingle();
     if (targetUserError) throw new Error(targetUserError.message);
     if (!targetUser?.id) throw new Error("User was not found.");
-    if (targetUser.deleted_at) throw new Error("User is already archived.");
 
     const { error: archiveError } = await supabase.rpc("archive_user_profile", {
       p_user_id: targetUserId,
