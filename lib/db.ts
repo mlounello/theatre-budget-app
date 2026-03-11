@@ -997,6 +997,7 @@ export async function getProcurementData(): Promise<{
   canManageProcurement: boolean;
 }> {
   const supabase = await getSupabaseServerClient();
+  const access = await getAccessContext();
 
   const [
     purchasesResponse,
@@ -1062,23 +1063,9 @@ export async function getProcurementData(): Promise<{
   if (accountCodeResponse.error) throw accountCodeResponse.error;
   if (categoryResponse.error) throw categoryResponse.error;
 
-  const {
-    data: { user }
-  } = await supabase.auth.getUser();
-
-  let canManageProcurement = false;
-  let manageableProjectIds = new Set<string>();
-  if (user) {
-    const { data: elevatedRoles } = await supabase
-      .from("project_memberships")
-      .select("project_id, role")
-      .eq("user_id", user.id)
-      .in("role", ["admin", "project_manager"]);
-    canManageProcurement = (elevatedRoles ?? []).length > 0;
-    manageableProjectIds = new Set(
-      (elevatedRoles as Array<{ project_id?: unknown }> | null)?.map((row) => row.project_id as string) ?? []
-    );
-  }
+  const isGlobalAdmin = access.role === "admin";
+  const canManageProcurement = isGlobalAdmin || access.role === "project_manager";
+  const manageableProjectIds = access.manageableProjectIds;
 
   const purchases: ProcurementRow[] = (purchasesResponse.data ?? []).map((row) => {
     const project = row.projects as
@@ -1176,7 +1163,9 @@ export async function getProcurementData(): Promise<{
       label: `${project?.name ?? "Unknown"}${project?.season ? ` (${project.season})` : ""} | ${row.budget_code as string} | ${row.category as string} | ${row.line_name as string}`
     };
   });
-  const budgetLineOptions = canManageProcurement
+  const budgetLineOptions = isGlobalAdmin
+    ? budgetLineOptionsRaw
+    : canManageProcurement
     ? budgetLineOptionsRaw.filter((option) => manageableProjectIds.has(option.projectId))
     : budgetLineOptionsRaw;
 
@@ -1192,7 +1181,9 @@ export async function getProcurementData(): Promise<{
       isExternal
     };
   });
-  const projectOptions = canManageProcurement
+  const projectOptions = isGlobalAdmin
+    ? projectOptionsRaw
+    : canManageProcurement
     ? projectOptionsRaw.filter((project) => manageableProjectIds.has(project.id) || project.isExternal)
     : projectOptionsRaw;
 
