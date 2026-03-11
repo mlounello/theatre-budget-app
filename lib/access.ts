@@ -73,20 +73,8 @@ export async function getAccessContext(): Promise<AccessContext> {
   if (debugAccess) {
     console.info("[access] rpc get_user_role", { coreAppId, rpcRoleValue, rpcRoleError });
   }
-  if (rpcRole) {
-    if (debugAccess) {
-      console.info(`[access] uid=${user.id} email=${user.email ?? ""} role=${rpcRole} source=rpc.get_user_role`);
-    }
-    return {
-      userId: user.id,
-      email: user.email ?? null,
-      role: rpcRole,
-      membershipRoles: new Set<AppRole>(),
-      scopedRoles: new Set<AppRole>(),
-      manageableProjectIds: new Set<string>(),
-      scopes: []
-    };
-  }
+  let preferredRole: AppRole | null = rpcRole;
+  let preferredSource: "rpc.get_user_role" | "core.app_memberships" | null = rpcRole ? "rpc.get_user_role" : null;
 
   // Backward-compatible fallback while get_user_role is being rolled out.
   const { data: coreMembership, error: coreErr } = await supabase
@@ -108,19 +96,9 @@ export async function getAccessContext(): Promise<AccessContext> {
   }
 
   const coreRole = toRole(coreMembership?.role);
-  if (coreRole) {
-    if (debugAccess) {
-      console.info(`[access] uid=${user.id} email=${user.email ?? ""} role=${coreRole} source=core.app_memberships`);
-    }
-    return {
-      userId: user.id,
-      email: user.email ?? null,
-      role: coreRole,
-      membershipRoles: new Set<AppRole>(),
-      scopedRoles: new Set<AppRole>(),
-      manageableProjectIds: new Set<string>(),
-      scopes: []
-    };
+  if (!preferredRole && coreRole) {
+    preferredRole = coreRole;
+    preferredSource = "core.app_memberships";
   }
 
   const [membershipResponse, scopeResponse] = await Promise.all([
@@ -168,10 +146,15 @@ export async function getAccessContext(): Promise<AccessContext> {
   if (sortedRoles.length > 0) {
     role = sortedRoles[0];
   }
+  if (preferredRole) {
+    role = preferredRole;
+  }
 
   if (debugAccess) {
     let source = "none";
-    if (role !== "none") {
+    if (preferredSource && role === preferredRole) {
+      source = preferredSource;
+    } else if (role !== "none") {
       const inProjectMemberships = membershipRoles.has(role);
       const inUserScopes = scopedRoles.has(role);
       if (inProjectMemberships) source = "project_memberships";
