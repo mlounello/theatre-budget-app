@@ -30,6 +30,16 @@ type AllocationInput = {
 };
 
 type RequestType = "requisition" | "expense" | "contract" | "request" | "budget_transfer";
+const MAX_RECEIPT_UPLOAD_BYTES = 10 * 1024 * 1024;
+const ALLOWED_RECEIPT_MIME_TYPES = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/heic",
+  "image/heif"
+]);
 
 function parseRequestType(value: FormDataEntryValue | null): RequestType {
   const raw = String(value ?? "requisition").trim().toLowerCase();
@@ -414,6 +424,13 @@ export async function addRequestReceipt(formData: FormData): Promise<void> {
   let attachmentUrl: string | null = receiptUrl || null;
 
   if (receiptFile instanceof File && receiptFile.size > 0) {
+    if (receiptFile.size > MAX_RECEIPT_UPLOAD_BYTES) {
+      throw new Error("Receipt file is too large. Please upload a file under 10 MB.");
+    }
+    if (receiptFile.type && !ALLOWED_RECEIPT_MIME_TYPES.has(receiptFile.type.toLowerCase())) {
+      throw new Error("Unsupported receipt file type. Please upload PDF, PNG, JPG, WEBP, or HEIC.");
+    }
+
     const safeName = receiptFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const path = `${purchase.project_id as string}/${purchaseId}/${Date.now()}-${safeName}`;
     const { error: uploadError } = await supabase.storage.from("purchase-receipts").upload(path, receiptFile, {

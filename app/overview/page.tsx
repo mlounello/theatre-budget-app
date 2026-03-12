@@ -86,13 +86,15 @@ export default async function OverviewPage({
               <th>Pending CC</th>
               <th>YTD</th>
               <th>Remaining (True)</th>
-              <th>Remaining if Requested Approved</th>
+              <th>Remaining (Banner)</th>
+              <th>Remaining (+Requests)</th>
+              <th>Remaining (+Request &amp; Holds)</th>
             </tr>
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={15}>No organization totals available yet.</td>
+                <td colSpan={17}>No organization totals available yet.</td>
               </tr>
             ) : null}
             {filteredRows.map((row) => (
@@ -113,8 +115,10 @@ export default async function OverviewPage({
                 <td>{formatCurrency(row.pendingCcTotal)}</td>
                 <td>{formatCurrency(row.ytdTotal)}</td>
                 <td className={row.remainingTrue < 0 ? "negative" : "positive"}>{formatCurrency(row.remainingTrue)}</td>
-                <td className={row.remainingIfRequestedApproved < 0 ? "negative" : "positive"}>
-                  {formatCurrency(row.remainingIfRequestedApproved)}
+                <td className={row.remainingBanner < 0 ? "negative" : "positive"}>{formatCurrency(row.remainingBanner)}</td>
+                <td className={row.remainingIfRequestedApproved < 0 ? "negative" : "positive"}>{formatCurrency(row.remainingIfRequestedApproved)}</td>
+                <td className={row.remainingIfRequestedAndHeldApproved < 0 ? "negative" : "positive"}>
+                  {formatCurrency(row.remainingIfRequestedAndHeldApproved)}
                 </td>
               </tr>
             ))}

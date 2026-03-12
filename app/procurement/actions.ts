@@ -27,6 +27,7 @@ type ProcurementRequestType =
   | "request"
   | "budget_transfer"
   | "contract_payment";
+const NEW_VENDOR_VALUE = "__new_vendor__";
 
 function parseProcurementRequestType(value: FormDataEntryValue | null): ProcurementRequestType {
   const raw = String(value ?? "requisition").trim().toLowerCase();
@@ -593,6 +594,7 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
     const poNumber = String(formData.get("poNumber") ?? "").trim();
     const invoiceNumber = String(formData.get("invoiceNumber") ?? "").trim();
     const vendorId = String(formData.get("vendorId") ?? "").trim();
+    const newVendorName = String(formData.get("newVendorName") ?? "").trim();
     const notes = String(formData.get("notes") ?? "").trim();
     const orderedOn = String(formData.get("orderedOn") ?? "").trim();
     const receivedOn = String(formData.get("receivedOn") ?? "").trim();
@@ -679,6 +681,18 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
       verifiedBudgetLine = { id: line.id as string, account_code_id: (line.account_code_id as string | null) ?? null };
     }
 
+    let resolvedVendorId: string | null = vendorId || null;
+    if (vendorId === NEW_VENDOR_VALUE) {
+      if (!newVendorName) throw new Error("New vendor name is required.");
+      const { data: vendorRow, error: vendorError } = await supabase
+        .from("vendors")
+        .upsert({ name: newVendorName }, { onConflict: "name" })
+        .select("id")
+        .single();
+      if (vendorError || !vendorRow) throw new Error(vendorError?.message ?? "Could not create vendor.");
+      resolvedVendorId = vendorRow.id as string;
+    }
+
     const { data: updated, error } = await supabase
       .from("purchases")
       .update({
@@ -694,7 +708,7 @@ export async function updateProcurementAction(formData: FormData): Promise<void>
         requisition_number: requisitionNumber || null,
         po_number: poNumber || null,
         invoice_number: invoiceNumber || null,
-        vendor_id: vendorId || null,
+        vendor_id: resolvedVendorId,
         notes: notes || null,
         ordered_on: nextOrderedOn,
         received_on: nextReceivedOn,

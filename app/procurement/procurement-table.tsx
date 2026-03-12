@@ -42,6 +42,7 @@ const CC_PROCUREMENT_STATUSES = [
   { value: "posted_to_account", label: "Posted To Account" },
   { value: "cancelled", label: "Cancelled" }
 ] as const;
+const NEW_VENDOR_VALUE = "__new_vendor__";
 
 function procurementLabel(value: string, isCreditCard: boolean, requestType: ProcurementRow["requestType"]): string {
   if (requestType === "request") return "Budget Hold";
@@ -259,6 +260,8 @@ export function ProcurementTable({
   const [editOrganizationId, setEditOrganizationId] = useState("");
   const [editProductionCategoryId, setEditProductionCategoryId] = useState("");
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState("");
+  const [editVendorId, setEditVendorId] = useState("");
+  const [editNewVendorName, setEditNewVendorName] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const CONTRACT_PAYMENT_PROCUREMENT_STATUSES = [
@@ -296,6 +299,8 @@ export function ProcurementTable({
     setEditOrganizationId(editingPurchase.organizationId ?? "");
     setEditProductionCategoryId(editingPurchase.productionCategoryId ?? "");
     setEditBannerAccountCodeId(editingPurchase.bannerAccountCodeId ?? "");
+    setEditVendorId(editingPurchase.vendorId ?? "");
+    setEditNewVendorName("");
   }, [editingPurchase]);
 
   function onToggle(key: SortKey): void {
@@ -643,8 +648,9 @@ export function ProcurementTable({
               </label>
               <label>
                 Vendor
-                <select name="vendorId" defaultValue={editingPurchase.vendorId ?? ""}>
+                <select name="vendorId" value={editVendorId} onChange={(event) => setEditVendorId(event.target.value)}>
                   <option value="">No vendor</option>
+                  <option value={NEW_VENDOR_VALUE}>+ Add new vendor...</option>
                   {vendors.map((vendor) => (
                     <option key={vendor.id} value={vendor.id}>
                       {vendor.name}
@@ -652,6 +658,18 @@ export function ProcurementTable({
                   ))}
                 </select>
               </label>
+              {editVendorId === NEW_VENDOR_VALUE ? (
+                <label>
+                  New Vendor Name
+                  <input
+                    name="newVendorName"
+                    value={editNewVendorName}
+                    onChange={(event) => setEditNewVendorName(event.target.value)}
+                    placeholder="Ex: Home Depot"
+                    required
+                  />
+                </label>
+              ) : null}
               <label>
                 Order Value
                 <input

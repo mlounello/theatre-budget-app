@@ -385,7 +385,9 @@ export type OrganizationOverviewRow = {
   ytdTotal: number;
   obligatedTotal: number;
   remainingTrue: number;
+  remainingBanner: number;
   remainingIfRequestedApproved: number;
+  remainingIfRequestedAndHeldApproved: number;
   startingBudgetTotal: number;
   additionalIncomeTotal: number;
   fundingPoolTotal: number;
@@ -1780,27 +1782,49 @@ export async function getOrganizationOverviewRows(): Promise<OrganizationOvervie
     .order("fiscal_year_name", { ascending: true })
     .order("org_code", { ascending: true });
   if (error) throw error;
-  return (data ?? []).map((row) => ({
-    organizationId: row.organization_id as string,
-    organizationName: row.organization_name as string,
-    orgCode: row.org_code as string,
-    fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
-    fiscalYearName: (row.fiscal_year_name as string | null) ?? null,
-    allocatedTotal: asNumber(row.allocated_total as string | number | null),
-    requestedOpenTotal: asNumber(row.requested_open_total as string | number | null),
-    heldTotal: asNumber(row.held_total as string | number | null),
-    encTotal: asNumber(row.enc_total as string | number | null),
-    pendingCcTotal: asNumber(row.pending_cc_total as string | number | null),
-    ytdTotal: asNumber(row.ytd_total as string | number | null),
-    obligatedTotal: asNumber(row.obligated_total as string | number | null),
-    remainingTrue: asNumber(row.remaining_true as string | number | null),
-    remainingIfRequestedApproved: asNumber(row.remaining_if_requested_approved as string | number | null),
-    startingBudgetTotal: asNumber(row.starting_budget_total as string | number | null),
-    additionalIncomeTotal: asNumber(row.additional_income_total as string | number | null),
-    fundingPoolTotal: asNumber(row.funding_pool_total as string | number | null),
-    fundingPoolAvailable: asNumber(row.funding_pool_available as string | number | null),
-    incomeTotal: asNumber(row.income_total as string | number | null)
-  }));
+  return (data ?? []).map((row) => {
+    const requestedOpenTotal = asNumber(row.requested_open_total as string | number | null);
+    const heldTotal = asNumber(row.held_total as string | number | null);
+    const encTotal = asNumber(row.enc_total as string | number | null);
+    const pendingCcTotal = asNumber(row.pending_cc_total as string | number | null);
+    const ytdTotal = asNumber(row.ytd_total as string | number | null);
+    const fundingPoolTotal = asNumber(row.funding_pool_total as string | number | null);
+
+    // Canonical remaining formulas for org overview:
+    // True = funding - (ENC + YTD + Pending CC)
+    // Banner = funding - (ENC + YTD)
+    // +Requests = funding - (ENC + Pending CC + YTD + Requested)
+    // +Request & Holds = funding - (ENC + Pending CC + YTD + Requested + Held)
+    const remainingTrue = fundingPoolTotal - (encTotal + pendingCcTotal + ytdTotal);
+    const remainingBanner = fundingPoolTotal - (encTotal + ytdTotal);
+    const remainingIfRequestedApproved = fundingPoolTotal - (encTotal + pendingCcTotal + ytdTotal + requestedOpenTotal);
+    const remainingIfRequestedAndHeldApproved =
+      fundingPoolTotal - (encTotal + pendingCcTotal + ytdTotal + requestedOpenTotal + heldTotal);
+
+    return {
+      organizationId: row.organization_id as string,
+      organizationName: row.organization_name as string,
+      orgCode: row.org_code as string,
+      fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
+      fiscalYearName: (row.fiscal_year_name as string | null) ?? null,
+      allocatedTotal: asNumber(row.allocated_total as string | number | null),
+      requestedOpenTotal,
+      heldTotal,
+      encTotal,
+      pendingCcTotal,
+      ytdTotal,
+      obligatedTotal: asNumber(row.obligated_total as string | number | null),
+      remainingTrue,
+      remainingBanner,
+      remainingIfRequestedApproved,
+      remainingIfRequestedAndHeldApproved,
+      startingBudgetTotal: asNumber(row.starting_budget_total as string | number | null),
+      additionalIncomeTotal: asNumber(row.additional_income_total as string | number | null),
+      fundingPoolTotal,
+      fundingPoolAvailable: asNumber(row.funding_pool_available as string | number | null),
+      incomeTotal: asNumber(row.income_total as string | number | null)
+    };
+  });
 }
 
 export async function getCategoryActualRows(): Promise<CategoryActualRow[]> {
