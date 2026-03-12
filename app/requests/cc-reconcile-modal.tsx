@@ -14,8 +14,15 @@ import type { PurchaseRow, RequestReceiptRow } from "@/lib/db";
 export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow; receipts: RequestReceiptRow[] }) {
   const [open, setOpen] = useState(false);
   const title = useMemo(() => `${purchase.projectName} | ${purchase.title}`, [purchase.projectName, purchase.title]);
+  const safeDateText = (value: string | null | undefined): string => {
+    const normalized = typeof value === "string" ? value : "";
+    return normalized.length >= 10 ? normalized.slice(0, 10) : normalized || "-";
+  };
   const purchaseReceipts = useMemo(
-    () => receipts.filter((receipt) => receipt.purchaseId === purchase.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    () =>
+      receipts
+        .filter((receipt) => receipt.purchaseId === purchase.id)
+        .sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? ""))),
     [receipts, purchase.id]
   );
 
@@ -74,7 +81,7 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
               {purchaseReceipts.map((receipt) => (
                 <details key={receipt.id} className="treeNode">
                   <summary>
-                    {formatCurrency(receipt.amountReceived)} | {receipt.note ?? "Receipt"} | {receipt.createdAt.slice(0, 10)}
+                    {formatCurrency(receipt.amountReceived)} | {receipt.note ?? "Receipt"} | {safeDateText(receipt.createdAt)}
                   </summary>
                   <form action={updateRequestReceipt} className="requestForm">
                     <input type="hidden" name="receiptId" value={receipt.id} />
