@@ -19,6 +19,7 @@ type SyncResult = {
   status: number | null;
   count: number;
   error?: string;
+  responseBody?: string;
 };
 
 const ROLE_PRIORITY: Record<string, number> = {
@@ -212,17 +213,35 @@ export async function syncAppUsers(options?: { fullSync?: boolean; reason?: stri
     clearTimeout(timeout);
   }
 
+  const text = await response.text().catch(() => "");
   if (!response.ok) {
-    const text = await response.text().catch(() => "");
     return {
       ok: false,
       status: response.status,
       count: usersPayload.length,
-      error: text || `Sync failed with status ${response.status}`
+      error: text || `Sync failed with status ${response.status}`,
+      responseBody: text || undefined
     };
   }
 
-  return { ok: true, status: response.status, count: usersPayload.length };
+  if (text) {
+    try {
+      const parsed = JSON.parse(text) as { ok?: boolean; error?: string };
+      if (parsed && parsed.ok === false) {
+        return {
+          ok: false,
+          status: response.status,
+          count: usersPayload.length,
+          error: parsed.error || "Sync rejected by server",
+          responseBody: text
+        };
+      }
+    } catch {
+      // Non-JSON body; treat as success but keep body for diagnostics.
+    }
+  }
+
+  return { ok: true, status: response.status, count: usersPayload.length, responseBody: text || undefined };
 }
 
 export async function syncAppUsersSafe(reason?: string): Promise<void> {
@@ -230,6 +249,8 @@ export async function syncAppUsersSafe(reason?: string): Promise<void> {
     const result = await syncAppUsers({ fullSync: true, reason });
     if (!result.ok) {
       console.error("[sync-app-users] failed", { reason, status: result.status, error: result.error });
+    } else if (result.responseBody) {
+      console.info("[sync-app-users] response", { reason, status: result.status, body: result.responseBody });
     }
   } catch (error) {
     const err = error as Error & { cause?: unknown };
