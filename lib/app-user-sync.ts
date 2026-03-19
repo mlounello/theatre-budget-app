@@ -179,14 +179,24 @@ export async function syncAppUsers(options?: { fullSync?: boolean; reason?: stri
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
 
+  const accessClientId = process.env.CF_ACCESS_CLIENT_ID ?? process.env.CF_ACCESS_CLIENT_ID_HEADER;
+  const accessClientSecret = process.env.CF_ACCESS_CLIENT_SECRET ?? process.env.CF_ACCESS_CLIENT_SECRET_HEADER;
+
+  const headers: Record<string, string> = {
+    "X-App-Sync-Secret": syncSecret,
+    "Content-Type": "application/json"
+  };
+
+  if (accessClientId && accessClientSecret) {
+    headers["CF-Access-Client-Id"] = accessClientId;
+    headers["CF-Access-Client-Secret"] = accessClientSecret;
+  }
+
   let response: Response;
   try {
     response = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "X-App-Sync-Secret": syncSecret,
-        "Content-Type": "application/json"
-      },
+      headers,
       body: JSON.stringify(payload),
       signal: controller.signal
     });
