@@ -175,14 +175,32 @@ export async function syncAppUsers(options?: { fullSync?: boolean; reason?: stri
     users: usersPayload
   };
 
-  const response = await fetch("https://mlounello.com/api/admin/sync/app-users", {
-    method: "POST",
-    headers: {
-      "X-App-Sync-Secret": syncSecret,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-  });
+  const endpoint = "https://mlounello.com/api/admin/sync/app-users";
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+
+  let response: Response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "X-App-Sync-Secret": syncSecret,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+  } catch (error) {
+    const err = error as Error & { cause?: unknown };
+    return {
+      ok: false,
+      status: null,
+      count: usersPayload.length,
+      error: `Fetch failed: ${err.message}${err.cause ? ` | cause=${String(err.cause)}` : ""}`
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
@@ -204,6 +222,11 @@ export async function syncAppUsersSafe(reason?: string): Promise<void> {
       console.error("[sync-app-users] failed", { reason, status: result.status, error: result.error });
     }
   } catch (error) {
-    console.error("[sync-app-users] error", { reason, message: (error as Error).message });
+    const err = error as Error & { cause?: unknown };
+    console.error("[sync-app-users] error", {
+      reason,
+      message: err.message,
+      cause: err.cause ? String(err.cause) : null
+    });
   }
 }
