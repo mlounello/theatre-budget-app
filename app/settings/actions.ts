@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
 import { APP_ID } from "@/lib/supabase-schema";
+import { syncAppUsers, syncAppUsersSafe } from "@/lib/app-user-sync";
 
 function parseMoney(value: FormDataEntryValue | null): number {
   if (typeof value !== "string" || value.trim() === "") return 0;
@@ -1349,6 +1350,7 @@ export async function createUserAccessScopeAction(formData: FormData): Promise<v
     }
 
     revalidatePath("/settings");
+    await syncAppUsersSafe("user_scope_saved");
     settingsSuccess(`User scope saved. Added ${createdCount}, skipped ${skippedCount} existing.`);
   } catch (error) {
     rethrowIfRedirect(error);
@@ -1380,6 +1382,7 @@ export async function addProjectMembershipAction(formData: FormData): Promise<vo
     if (error) throw new Error(error.message);
 
     revalidatePath("/settings");
+    await syncAppUsersSafe("project_membership_saved");
     settingsSuccess("Project membership saved.");
   } catch (error) {
     rethrowIfRedirect(error);
@@ -1408,6 +1411,7 @@ export async function removeProjectMembershipAction(formData: FormData): Promise
     if (error) throw new Error(error.message);
 
     revalidatePath("/settings");
+    await syncAppUsersSafe("project_membership_removed");
     settingsSuccess("Project membership removed.");
   } catch (error) {
     rethrowIfRedirect(error);
@@ -1444,6 +1448,7 @@ export async function deleteUserAccessScopeAction(formData: FormData): Promise<v
     if (error) throw new Error(error.message);
 
     revalidatePath("/settings");
+    await syncAppUsersSafe("user_scope_removed");
     settingsSuccess("User scope removed.");
   } catch (error) {
     rethrowIfRedirect(error);
@@ -1513,6 +1518,7 @@ export async function updateUserAccessScopeAction(formData: FormData): Promise<v
     }
 
     revalidatePath("/settings");
+    await syncAppUsersSafe("user_scope_updated");
     settingsSuccess("User scope updated.");
   } catch (error) {
     rethrowIfRedirect(error);
@@ -1553,9 +1559,23 @@ export async function archiveUserProfileAction(formData: FormData): Promise<void
     revalidatePath("/overview");
     revalidatePath("/requests");
     revalidatePath("/procurement");
+    await syncAppUsersSafe("user_archived");
     settingsSuccess("User archived. Access and memberships removed.");
   } catch (error) {
     rethrowIfRedirect(error);
     settingsError(getErrorMessage(error, "Could not archive user."));
+  }
+}
+
+export async function syncAppUsersAction(): Promise<void> {
+  try {
+    await requireSettingsAdmin();
+    const result = await syncAppUsers({ fullSync: true, reason: "settings_manual" });
+    if (!result.ok) {
+      settingsError(result.error ?? "User sync failed.");
+    }
+    settingsSuccess(`User sync complete (${result.count} users).`);
+  } catch (error) {
+    settingsError((error as Error).message || "User sync failed.");
   }
 }

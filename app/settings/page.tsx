@@ -17,7 +17,8 @@ import {
   updateBudgetLineAction,
   updateFiscalYearAction,
   updateOrganizationAction,
-  updateProjectAction
+  updateProjectAction,
+  syncAppUsersAction
 } from "@/app/settings/actions";
 import { AddEntityPanel } from "@/app/settings/add-entity-panel";
 import { BudgetLineReorder } from "@/app/settings/budget-line-reorder";
@@ -226,6 +227,18 @@ export default async function SettingsPage({
           <p>Step 1: Add or import structure. Step 2: Expand the hierarchy and edit inline. Step 3: Open each Reorder panel only when you need to change display order.</p>
           <p className="heroSubtitle">Hierarchy: Fiscal Year - Organization - Project - Budget Line. Reorder controls are collapsed to reduce clutter.</p>
         </article>
+
+        {isAdmin ? (
+          <article className="panel panelFull">
+            <h2>Admin Sync</h2>
+            <p className="heroSubtitle">Sync all app users to the central control room.</p>
+            <form className="inlineEditForm" action={syncAppUsersAction}>
+              <button type="submit" className="buttonLink buttonPrimary">
+                Sync Users Now
+              </button>
+            </form>
+          </article>
+        ) : null}
 
         {isAdmin ? (
           <AddEntityPanel

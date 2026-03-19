@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { sanitizeNextPath } from "@/lib/sanitize-next";
+import { syncAppUsersSafe } from "@/lib/app-user-sync";
 
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
@@ -43,6 +44,7 @@ export async function GET(request: Request) {
         },
         { onConflict: "id" }
       );
+      await syncAppUsersSafe("auth_callback");
     }
   }
 
