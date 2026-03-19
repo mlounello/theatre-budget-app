@@ -1571,11 +1571,10 @@ export async function syncAppUsersAction(): Promise<void> {
   try {
     await requireSettingsAdmin();
     const result = await syncAppUsers({ fullSync: true, reason: "settings_manual" });
-    if (!result.ok) {
-      settingsError(result.error ?? "User sync failed.");
-    }
+    if (!result.ok) throw new Error(result.error ?? "User sync failed.");
     settingsSuccess(`User sync complete (${result.count} users).`);
   } catch (error) {
+    rethrowIfRedirect(error);
     settingsError((error as Error).message || "User sync failed.");
   }
 }
