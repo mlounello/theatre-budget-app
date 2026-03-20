@@ -95,8 +95,15 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
                     </label>
                     <label>
                       Receipt URL
-                      <input name="receiptUrl" defaultValue={receipt.attachmentUrl ?? ""} />
+                      <input name="receiptUrl" defaultValue={receipt.attachmentStoredValue ?? ""} />
                     </label>
+                    {receipt.attachmentUrl ? (
+                      <p>
+                        <a href={receipt.attachmentUrl} target="_blank" rel="noreferrer">
+                          Open current attachment
+                        </a>
+                      </p>
+                    ) : null}
                     <button type="submit" className="tinyButton">
                       Save Receipt
                     </button>

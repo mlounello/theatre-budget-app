@@ -148,6 +148,7 @@ export type RequestReceiptRow = {
   note: string | null;
   amountReceived: number;
   attachmentUrl: string | null;
+  attachmentStoredValue: string | null;
   createdAt: string;
 };
 
@@ -199,6 +200,7 @@ export type ProcurementReceiptRow = {
   amountReceived: number;
   fullyReceived: boolean;
   attachmentUrl: string | null;
+  attachmentStoredValue: string | null;
   createdAt: string;
 };
 
@@ -210,6 +212,47 @@ export type ProcurementReceivingDocRow = {
   note: string | null;
   createdAt: string;
 };
+
+const STORAGE_REFERENCE_PREFIX = "storage:";
+
+function parseStorageReference(value: string | null | undefined): { bucket: string; path: string } | null {
+  if (!value || !value.startsWith(STORAGE_REFERENCE_PREFIX)) return null;
+  const normalized = value.slice(STORAGE_REFERENCE_PREFIX.length);
+  const slashIndex = normalized.indexOf("/");
+  if (slashIndex <= 0 || slashIndex >= normalized.length - 1) return null;
+  return {
+    bucket: normalized.slice(0, slashIndex),
+    path: normalized.slice(slashIndex + 1)
+  };
+}
+
+async function resolveAttachmentUrls(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  storedValues: Array<string | null | undefined>
+): Promise<Map<string, string | null>> {
+  const uniqueStoredValues = [...new Set(storedValues.filter((value): value is string => Boolean(value)))];
+  const resolved = new Map<string, string | null>();
+
+  await Promise.all(
+    uniqueStoredValues.map(async (storedValue) => {
+      const parsed = parseStorageReference(storedValue);
+      if (!parsed) {
+        resolved.set(storedValue, storedValue);
+        return;
+      }
+
+      const { data, error } = await supabase.storage.from(parsed.bucket).createSignedUrl(parsed.path, 60 * 60);
+      if (error) {
+        resolved.set(storedValue, null);
+        return;
+      }
+
+      resolved.set(storedValue, data.signedUrl);
+    })
+  );
+
+  return resolved;
+}
 
 export type ProcurementTrackerRow = {
   id: string;
@@ -785,17 +828,24 @@ export async function getRequestsData(): Promise<{
       .in("purchase_id", purchaseIds);
     if (receiptsError) throw receiptsError;
 
+    const attachmentUrls = await resolveAttachmentUrls(
+      supabase,
+      (receiptsData ?? []).map((row) => (row.attachment_url as string | null) ?? null)
+    );
+
     for (const row of receiptsData ?? []) {
       const purchaseId = row.purchase_id as string;
       const current = receiptsByPurchase.get(purchaseId) ?? { total: 0, count: 0 };
       const amount = asNumber(row.amount_received as string | number | null);
+      const storedAttachmentValue = (row.attachment_url as string | null) ?? null;
       receiptsByPurchase.set(purchaseId, { total: current.total + amount, count: current.count + 1 });
       requestReceipts.push({
         id: row.id as string,
         purchaseId,
         note: (row.note as string | null) ?? null,
         amountReceived: amount,
-        attachmentUrl: (row.attachment_url as string | null) ?? null,
+        attachmentUrl: storedAttachmentValue ? attachmentUrls.get(storedAttachmentValue) ?? null : null,
+        attachmentStoredValue: storedAttachmentValue,
         createdAt: row.created_at as string
       });
     }
@@ -1053,6 +1103,11 @@ export async function getProcurementData(): Promise<{
   if (accountCodeResponse.error) throw accountCodeResponse.error;
   if (categoryResponse.error) throw categoryResponse.error;
 
+  const procurementAttachmentUrls = await resolveAttachmentUrls(
+    supabase,
+    (receiptsResponse.data ?? []).map((row) => (row.attachment_url as string | null) ?? null)
+  );
+
   const isGlobalAdmin = access.role === "admin";
   const canManageProcurement = isGlobalAdmin || access.role === "project_manager";
   const manageableProjectIds = access.manageableProjectIds;
@@ -1244,7 +1299,10 @@ export async function getProcurementData(): Promise<{
     note: (row.note as string | null) ?? null,
     amountReceived: asNumber(row.amount_received as string | number | null),
     fullyReceived: Boolean(row.fully_received as boolean | null),
-    attachmentUrl: (row.attachment_url as string | null) ?? null,
+    attachmentUrl: ((row.attachment_url as string | null) ?? null)
+      ? procurementAttachmentUrls.get((row.attachment_url as string | null) ?? "") ?? null
+      : null,
+    attachmentStoredValue: (row.attachment_url as string | null) ?? null,
     createdAt: row.created_at as string
   }));
 

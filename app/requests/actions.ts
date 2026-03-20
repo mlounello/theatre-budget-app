@@ -5,6 +5,9 @@ import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
 import type { PurchaseStatus } from "@/lib/types";
 
+const RECEIPT_STORAGE_BUCKET = "purchase-receipts";
+const STORAGE_REFERENCE_PREFIX = "storage:";
+
 function parseMoney(value: FormDataEntryValue | null): number {
   if (typeof value !== "string" || value.trim() === "") return 0;
   const parsed = Number.parseFloat(value);
@@ -40,6 +43,10 @@ const ALLOWED_RECEIPT_MIME_TYPES = new Set([
   "image/heic",
   "image/heif"
 ]);
+
+function toStorageReference(bucket: string, path: string): string {
+  return `${STORAGE_REFERENCE_PREFIX}${bucket}/${path}`;
+}
 
 function parseRequestType(value: FormDataEntryValue | null): RequestType {
   const raw = String(value ?? "requisition").trim().toLowerCase();
@@ -433,19 +440,15 @@ export async function addRequestReceipt(formData: FormData): Promise<void> {
 
     const safeName = receiptFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const path = `${purchase.project_id as string}/${purchaseId}/${Date.now()}-${safeName}`;
-    const { error: uploadError } = await supabase.storage.from("purchase-receipts").upload(path, receiptFile, {
+    const { error: uploadError } = await supabase.storage.from(RECEIPT_STORAGE_BUCKET).upload(path, receiptFile, {
       upsert: false
     });
     if (uploadError) {
       throw new Error(
-        `Receipt upload failed. Ensure storage bucket 'purchase-receipts' exists and policies are applied. ${uploadError.message}`
+        `Receipt upload failed. Ensure storage bucket '${RECEIPT_STORAGE_BUCKET}' exists and policies are applied. ${uploadError.message}`
       );
     }
-
-    const {
-      data: { publicUrl }
-    } = supabase.storage.from("purchase-receipts").getPublicUrl(path);
-    attachmentUrl = publicUrl;
+    attachmentUrl = toStorageReference(RECEIPT_STORAGE_BUCKET, path);
   }
 
   const { error } = await supabase.from("purchase_receipts").insert({

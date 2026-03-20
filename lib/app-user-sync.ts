@@ -19,7 +19,6 @@ type SyncResult = {
   status: number | null;
   count: number;
   error?: string;
-  responseBody?: string;
 };
 
 const ROLE_PRIORITY: Record<string, number> = {
@@ -76,6 +75,10 @@ async function listAllAuthUsers(admin: ReturnType<typeof createSupabaseAdminClie
   }
 
   return users;
+}
+
+function summarizeResponseText(text: string): string {
+  return text.replace(/\s+/g, " ").trim().slice(0, 200);
 }
 
 export async function syncAppUsers(options?: { fullSync?: boolean; reason?: string }): Promise<SyncResult> {
@@ -219,8 +222,7 @@ export async function syncAppUsers(options?: { fullSync?: boolean; reason?: stri
       ok: false,
       status: response.status,
       count: usersPayload.length,
-      error: text || `Sync failed with status ${response.status}`,
-      responseBody: text || undefined
+      error: summarizeResponseText(text) || `Sync failed with status ${response.status}`
     };
   }
 
@@ -232,25 +234,29 @@ export async function syncAppUsers(options?: { fullSync?: boolean; reason?: stri
           ok: false,
           status: response.status,
           count: usersPayload.length,
-          error: parsed.error || "Sync rejected by server",
-          responseBody: text
+          error: summarizeResponseText(parsed.error || text) || "Sync rejected by server"
         };
       }
     } catch {
-      // Non-JSON body; treat as success but keep body for diagnostics.
+      // Non-JSON body; treat as success.
     }
   }
 
-  return { ok: true, status: response.status, count: usersPayload.length, responseBody: text || undefined };
+  return { ok: true, status: response.status, count: usersPayload.length };
 }
 
 export async function syncAppUsersSafe(reason?: string): Promise<void> {
   try {
     const result = await syncAppUsers({ fullSync: true, reason });
     if (!result.ok) {
-      console.error("[sync-app-users] failed", { reason, status: result.status, error: result.error });
-    } else if (result.responseBody) {
-      console.info("[sync-app-users] response", { reason, status: result.status, body: result.responseBody });
+      console.error("[sync-app-users] failed", {
+        reason,
+        status: result.status,
+        count: result.count,
+        error: result.error
+      });
+    } else {
+      console.info("[sync-app-users] ok", { reason, status: result.status, count: result.count });
     }
   } catch (error) {
     const err = error as Error & { cause?: unknown };
