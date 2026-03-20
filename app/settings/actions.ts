@@ -631,6 +631,14 @@ export async function deleteFiscalYearAction(formData: FormData): Promise<void> 
       );
     }
 
+    if ((linkedProjects ?? 0) > 0 && clearProjectAssignments) {
+      const { error: clearAssignmentsError } = await supabase
+        .from("projects")
+        .update({ fiscal_year_id: null })
+        .eq("fiscal_year_id", id);
+      if (clearAssignmentsError) throw new Error(clearAssignmentsError.message);
+    }
+
     const { error } = await supabase.from("fiscal_years").delete().eq("id", id);
     if (error) throw new Error(error.message);
 
@@ -692,6 +700,14 @@ export async function deleteOrganizationAction(formData: FormData): Promise<void
       throw new Error(
         "This organization is assigned to one or more projects. Check 'Clear project organization assignments' to continue."
       );
+    }
+
+    if ((linkedProjects ?? 0) > 0 && clearProjectAssignments) {
+      const { error: clearAssignmentsError } = await supabase
+        .from("projects")
+        .update({ organization_id: null })
+        .eq("organization_id", id);
+      if (clearAssignmentsError) throw new Error(clearAssignmentsError.message);
     }
 
     const { error } = await supabase.from("organizations").delete().eq("id", id);

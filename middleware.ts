@@ -37,7 +37,12 @@ export async function middleware(request: NextRequest) {
       data: { user: resolvedUser }
     } = await supabase.auth.getUser();
     user = resolvedUser;
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message.slice(0, 160) : "unknown";
+    console.warn("[middleware] auth.getUser failed", {
+      pathname: request.nextUrl.pathname,
+      message
+    });
     user = null;
   }
 

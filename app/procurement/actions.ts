@@ -216,7 +216,7 @@ async function ensureProjectCreateAccess(
     .maybeSingle();
   if (error) throw new Error(error.message);
   const role = (data?.role as string | undefined) ?? null;
-  if (role && ["admin", "project_manager", "buyer"].includes(role)) return;
+  if (role && ["admin", "project_manager"].includes(role)) return;
 
   const projectMeta = await getProjectMeta(supabase, projectId);
   if (!projectMeta.isExternal) {
@@ -227,7 +227,7 @@ async function ensureProjectCreateAccess(
     .from("project_memberships")
     .select("project_id")
     .eq("user_id", userId)
-    .in("role", ["admin", "project_manager", "buyer"])
+    .in("role", ["admin", "project_manager"])
     .limit(1);
   if (elevatedError) throw new Error(elevatedError.message);
   if (!elevated || elevated.length === 0) throw new Error("You do not have permission to create purchases for this project.");

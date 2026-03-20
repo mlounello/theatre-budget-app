@@ -463,7 +463,10 @@ export async function addRequestReceipt(formData: FormData): Promise<void> {
 
   const { data: purchaseUpdated, error: purchaseUpdateError } = await supabase
     .from("purchases")
-    .update({ cc_workflow_status: "receipts_uploaded" })
+    .update({
+      cc_workflow_status: "receipts_uploaded",
+      procurement_status: "receipts_uploaded"
+    })
     .eq("id", purchaseId)
     .select("id")
     .maybeSingle();
