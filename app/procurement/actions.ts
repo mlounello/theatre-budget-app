@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
-import { getAccessContext } from "@/lib/access";
+import { getAccessContext, requireProjectRole } from "@/lib/access";
 import type { PurchaseStatus } from "@/lib/types";
 
 const PROCUREMENT_STATUSES = [
@@ -204,33 +204,31 @@ async function ensureProjectCreateAccess(
   userId: string,
   projectId: string
 ): Promise<void> {
-  const access = await getAccessContext();
-  if (access.role === "admin") return;
-  if (access.role === "project_manager" && access.manageableProjectIds.has(projectId)) return;
-
-  const { data, error } = await supabase
-    .from("project_memberships")
-    .select("role")
-    .eq("project_id", projectId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  const role = (data?.role as string | undefined) ?? null;
-  if (role && ["admin", "project_manager"].includes(role)) return;
+  try {
+    await requireProjectRole(projectId, ["admin", "project_manager"], {
+      errorMessage: "You do not have permission to create purchases for this project."
+    });
+    return;
+  } catch {
+    // Keep the legacy External Procurement compatibility path below.
+  }
 
   const projectMeta = await getProjectMeta(supabase, projectId);
   if (!projectMeta.isExternal) {
     throw new Error("You do not have permission to create purchases for this project.");
   }
 
-  const { data: elevated, error: elevatedError } = await supabase
-    .from("project_memberships")
-    .select("project_id")
-    .eq("user_id", userId)
-    .in("role", ["admin", "project_manager"])
-    .limit(1);
-  if (elevatedError) throw new Error(elevatedError.message);
-  if (!elevated || elevated.length === 0) throw new Error("You do not have permission to create purchases for this project.");
+  const access = await getAccessContext();
+  const hasElevatedAccess =
+    access.role === "admin" ||
+    access.role === "project_manager" ||
+    access.membershipRoles.has("admin") ||
+    access.membershipRoles.has("project_manager") ||
+    access.scopedRoles.has("admin") ||
+    access.scopedRoles.has("project_manager");
+  if (!hasElevatedAccess) {
+    throw new Error("You do not have permission to create purchases for this project.");
+  }
 }
 
 async function ensureProjectPmOrAdminAccess(
@@ -238,21 +236,11 @@ async function ensureProjectPmOrAdminAccess(
   userId: string,
   projectId: string
 ): Promise<void> {
-  const access = await getAccessContext();
-  if (access.role === "admin") return;
-  if (access.role === "project_manager" && access.manageableProjectIds.has(projectId)) return;
-
-  const { data, error } = await supabase
-    .from("project_memberships")
-    .select("role")
-    .eq("project_id", projectId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  const role = (data?.role as string | undefined) ?? null;
-  if (!role || !["admin", "project_manager"].includes(role)) {
-    throw new Error("Only Admin or Project Manager can edit procurement rows.");
-  }
+  void supabase;
+  void userId;
+  await requireProjectRole(projectId, ["admin", "project_manager"], {
+    errorMessage: "Only Admin or Project Manager can edit procurement rows."
+  });
 }
 
 async function ensureProjectAdminAccess(
@@ -260,20 +248,11 @@ async function ensureProjectAdminAccess(
   userId: string,
   projectId: string
 ): Promise<void> {
-  const access = await getAccessContext();
-  if (access.role === "admin") return;
-
-  const { data, error } = await supabase
-    .from("project_memberships")
-    .select("role")
-    .eq("project_id", projectId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  const role = (data?.role as string | undefined) ?? null;
-  if (role !== "admin") {
-    throw new Error("Only Admin can delete procurement rows.");
-  }
+  void supabase;
+  void userId;
+  await requireProjectRole(projectId, ["admin"], {
+    errorMessage: "Only Admin can delete procurement rows."
+  });
 }
 
 export async function createProcurementOrderAction(formData: FormData): Promise<void> {

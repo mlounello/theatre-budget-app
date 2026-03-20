@@ -19,7 +19,14 @@ export type AccessContext = {
   membershipRoles: Set<AppRole>;
   scopedRoles: Set<AppRole>;
   manageableProjectIds: Set<string>;
+  projectMembershipRolesByProjectId: Map<string, Set<AppRole>>;
   scopes: AccessScopeRow[];
+};
+
+type ProjectAccessTarget = {
+  id: string;
+  organizationId: string | null;
+  fiscalYearId: string | null;
 };
 
 function toRole(value: unknown): AppRole | null {
@@ -44,8 +51,115 @@ function rolePriority(role: AppRole): number {
   return 1;
 }
 
+function selectHighestRole(roles: Array<AppRole | null | undefined>): AppRole | null {
+  let selected: AppRole | null = null;
+  let best = -1;
+  for (const role of roles) {
+    if (!role) continue;
+    const score = rolePriority(role);
+    if (score > best) {
+      best = score;
+      selected = role;
+    }
+  }
+  return selected;
+}
+
 export function hasRole(context: AccessContext, allowed: AppRole[]): boolean {
   return context.role !== "none" && allowed.includes(context.role);
+}
+
+function addProjectMembershipRole(
+  target: Map<string, Set<AppRole>>,
+  projectId: string,
+  role: AppRole
+): void {
+  const existing = target.get(projectId) ?? new Set<AppRole>();
+  existing.add(role);
+  target.set(projectId, existing);
+}
+
+function scopeMatchesProject(
+  scope: AccessScopeRow,
+  project: ProjectAccessTarget,
+  productionCategoryId?: string | null
+): boolean {
+  if (scope.projectId && scope.projectId !== project.id) return false;
+  if (scope.organizationId && scope.organizationId !== project.organizationId) return false;
+  if (scope.fiscalYearId && scope.fiscalYearId !== project.fiscalYearId) return false;
+  if (scope.productionCategoryId) {
+    if (!productionCategoryId) return false;
+    if (scope.productionCategoryId !== productionCategoryId) return false;
+  }
+
+  // Keep mutation access narrow: category-only scopes without project/org/FY context
+  // are too broad to trust for writes.
+  if (!scope.projectId && !scope.organizationId && !scope.fiscalYearId) {
+    return false;
+  }
+
+  return true;
+}
+
+export async function getProjectScopedRole(
+  projectId: string,
+  options?: { productionCategoryId?: string | null }
+): Promise<{ access: AccessContext; role: AppRole | null }> {
+  const access = await getAccessContext();
+  if (!access.userId) {
+    return { access, role: null };
+  }
+
+  if (access.role === "admin") {
+    return { access, role: "admin" };
+  }
+
+  if (access.manageableProjectIds.has(projectId)) {
+    return { access, role: "project_manager" };
+  }
+
+  const membershipRoles = [...(access.projectMembershipRolesByProjectId.get(projectId) ?? new Set<AppRole>())];
+  let selectedRole = selectHighestRole(membershipRoles);
+
+  const supabase = await getSupabaseServerClient();
+  const { data: project, error } = await supabase
+    .from("projects")
+    .select("id, organization_id, fiscal_year_id")
+    .eq("id", projectId)
+    .single();
+  if (error || !project) {
+    throw error ?? new Error("Project not found.");
+  }
+
+  const projectTarget: ProjectAccessTarget = {
+    id: project.id as string,
+    organizationId: (project.organization_id as string | null) ?? null,
+    fiscalYearId: (project.fiscal_year_id as string | null) ?? null
+  };
+
+  const scopeRoles = access.scopes
+    .filter((scope) => scopeMatchesProject(scope, projectTarget, options?.productionCategoryId ?? null))
+    .map((scope) => scope.scopeRole);
+  const scopedRole = selectHighestRole(scopeRoles);
+
+  selectedRole = selectHighestRole([selectedRole, scopedRole]);
+
+  return {
+    access,
+    role: selectedRole
+  };
+}
+
+export async function requireProjectRole(
+  projectId: string,
+  allowed: AppRole[],
+  options?: { productionCategoryId?: string | null; errorMessage?: string }
+): Promise<AccessContext> {
+  const { access, role } = await getProjectScopedRole(projectId, options);
+  if (role && allowed.includes(role)) {
+    return access;
+  }
+  throw new Error(options?.errorMessage ?? "You do not have permission for this project.");
 }
 
 export async function getAccessContext(): Promise<AccessContext> {
@@ -63,6 +177,7 @@ export async function getAccessContext(): Promise<AccessContext> {
       membershipRoles: new Set<AppRole>(),
       scopedRoles: new Set<AppRole>(),
       manageableProjectIds: new Set<string>(),
+      projectMembershipRolesByProjectId: new Map<string, Set<AppRole>>(),
       scopes: []
     };
   }
@@ -116,12 +231,14 @@ export async function getAccessContext(): Promise<AccessContext> {
   const membershipRoles = new Set<AppRole>();
   const scopedRoles = new Set<AppRole>();
   const manageableProjectIds = new Set<string>();
+  const projectMembershipRolesByProjectId = new Map<string, Set<AppRole>>();
   const scopes: AccessScopeRow[] = [];
 
   for (const row of membershipResponse.data ?? []) {
     const role = toRole(row.role);
     if (!role) continue;
     membershipRoles.add(role);
+    addProjectMembershipRole(projectMembershipRolesByProjectId, row.project_id as string, role);
     if (role === "admin" || role === "project_manager") {
       manageableProjectIds.add(row.project_id as string);
     }
@@ -170,6 +287,7 @@ export async function getAccessContext(): Promise<AccessContext> {
     membershipRoles,
     scopedRoles,
     manageableProjectIds,
+    projectMembershipRolesByProjectId,
     scopes
   };
 }

@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
-import { getAccessContext } from "@/lib/access";
+import { getAccessContext, requireProjectRole } from "@/lib/access";
 import type { PurchaseStatus } from "@/lib/types";
 
 const RECEIPT_STORAGE_BUCKET = "purchase-receipts";
@@ -106,21 +106,11 @@ async function requirePmOrAdmin(
   projectId: string,
   userId: string
 ): Promise<void> {
-  const access = await getAccessContext();
-  if (access.role === "admin") return;
-  if (access.role === "project_manager" && access.manageableProjectIds.has(projectId)) return;
-
-  const { data, error } = await supabase
-    .from("project_memberships")
-    .select("role")
-    .eq("project_id", projectId)
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  const role = (data?.role as string | undefined) ?? null;
-  if (!role || (role !== "admin" && role !== "project_manager")) {
-    throw new Error("Only Admin or Project Manager can reconcile to Pending CC.");
-  }
+  void supabase;
+  void userId;
+  await requireProjectRole(projectId, ["admin", "project_manager"], {
+    errorMessage: "Only Admin or Project Manager can reconcile to Pending CC."
+  });
 }
 
 export async function createRequest(formData: FormData): Promise<void> {

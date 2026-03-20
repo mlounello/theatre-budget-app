@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
-import { getAccessContext } from "@/lib/access";
+import { getAccessContext, requireProjectRole } from "@/lib/access";
 import type { PurchaseStatus } from "@/lib/types";
 
 function parseMoney(value: FormDataEntryValue | null): number {
@@ -953,17 +953,10 @@ export async function createReimbursementRequestAction(formData: FormData): Prom
     }
     if (amount === 0) throw new Error("Amount must be non-zero.");
 
-    const { data: membership, error: membershipError } = await supabase
-      .from("project_memberships")
-      .select("role")
-      .eq("project_id", projectId)
-      .eq("user_id", user.id)
-      .maybeSingle();
-    if (membershipError) throw new Error(membershipError.message);
-    const role = (membership?.role as string | undefined) ?? null;
-    if (!role || !["admin", "project_manager", "buyer"].includes(role)) {
-      throw new Error("You do not have permission to create requests for this project.");
-    }
+    await requireProjectRole(projectId, ["admin", "project_manager", "buyer"], {
+      productionCategoryId,
+      errorMessage: "You do not have permission to create requests for this project."
+    });
 
     const { data: budgetLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {
       p_project_id: projectId,

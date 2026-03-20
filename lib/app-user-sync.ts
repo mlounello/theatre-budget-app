@@ -61,6 +61,14 @@ function isArchivedName(fullName: string): boolean {
   return fullName.toLowerCase().includes("(deleted)");
 }
 
+function pickDisplayName(values: Array<string | null | undefined>): string | null {
+  for (const value of values) {
+    const normalized = String(value ?? "").trim();
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
 async function listAllAuthUsers(admin: ReturnType<typeof createSupabaseAdminClient>) {
   const users: Array<{ id: string; email?: string | null; user_metadata?: Record<string, unknown> }> = [];
   let page = 1;
@@ -107,6 +115,12 @@ export async function syncAppUsers(options?: { fullSync?: boolean; reason?: stri
   if (scopesResponse.error) throw scopesResponse.error;
   if (coreMembershipsResponse.error) throw coreMembershipsResponse.error;
 
+  const localUsersById = new Map(
+    ((usersResponse.data ?? []) as Array<{ id?: unknown; full_name?: unknown }>).map((row) => [
+      String(row.id),
+      String(row.full_name ?? "").trim()
+    ])
+  );
   const authById = new Map(authUsers.map((user) => [user.id, user]));
   const membershipByUser = new Map<string, string[]>();
   for (const row of membershipsResponse.data ?? []) {
@@ -142,10 +156,23 @@ export async function syncAppUsers(options?: { fullSync?: boolean; reason?: stri
     coreByUser.set(id, { role: bestRole ?? role, isActive: existing.isActive || isActive });
   }
 
-  const usersPayload: SyncUserPayload[] = (usersResponse.data ?? []).map((row) => {
-    const id = String(row.id);
-    const fullName = String(row.full_name ?? "").trim() || id;
+  const userIds = new Set<string>([
+    ...localUsersById.keys(),
+    ...membershipByUser.keys(),
+    ...scopeByUser.keys(),
+    ...coreByUser.keys()
+  ]);
+
+  const usersPayload: SyncUserPayload[] = [...userIds].map((id) => {
     const authUser = authById.get(id);
+    const metadata = (authUser?.user_metadata ?? {}) as Record<string, unknown>;
+    const fullName =
+      pickDisplayName([
+        localUsersById.get(id),
+        typeof metadata.full_name === "string" ? metadata.full_name : null,
+        typeof metadata.name === "string" ? metadata.name : null,
+        authUser?.email ?? null
+      ]) ?? id;
     const email = authUser?.email ?? "";
 
     const core = coreByUser.get(id);
