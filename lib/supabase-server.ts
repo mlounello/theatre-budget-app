@@ -1,14 +1,6 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
-import { APP_SCHEMA } from "@/lib/supabase-schema";
-
-function mustGetEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing env var: ${name}`);
-  }
-  return value;
-}
+import { getServerAppSchema } from "@/lib/supabase-schema";
 
 export async function createSupabaseServerClient() {
   const cookieStore = await cookies();
@@ -24,7 +16,7 @@ export async function createSupabaseServerClient() {
 
   return createServerClient(url, anon, {
     db: {
-      schema: APP_SCHEMA
+      schema: getServerAppSchema()
     },
     cookies: {
       getAll() {
@@ -43,7 +35,7 @@ export async function createSupabaseServerClient() {
 
 export async function createTbServerDb() {
   const supabase = await createSupabaseServerClient();
-  return supabase.schema(APP_SCHEMA);
+  return supabase.schema(getServerAppSchema());
 }
 
 // Backwards-compatible export used across the app today.

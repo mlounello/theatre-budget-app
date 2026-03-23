@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { APP_SCHEMA } from "@/lib/supabase-schema";
+import { getServerAppSchema } from "@/lib/supabase-schema";
 
 export function createSupabaseAdminClient() {
   const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -13,7 +13,7 @@ export function createSupabaseAdminClient() {
       autoRefreshToken: false
     },
     db: {
-      schema: APP_SCHEMA
+      schema: getServerAppSchema()
     }
   });
 }

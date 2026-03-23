@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
-import { APP_SCHEMA } from "@/lib/supabase-schema";
+import { getServerAppSchema } from "@/lib/supabase-schema";
 import type { PurchaseStatus } from "@/lib/types";
 
 const REQUISITION_PROCUREMENT_STATUSES = [
@@ -113,7 +113,7 @@ async function ensureProjectPmOrAdminAccess(
 export async function updateDashboardRequisitionStatusAction(formData: FormData): Promise<void> {
   try {
     const supabase = await createSupabaseServerClient();
-    const db = supabase.schema(APP_SCHEMA);
+    const db = supabase.schema(getServerAppSchema());
     const {
       data: { user }
     } = await supabase.auth.getUser();

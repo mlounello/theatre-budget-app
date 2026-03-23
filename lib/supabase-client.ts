@@ -1,13 +1,5 @@
 import { createBrowserClient } from "@supabase/ssr";
-import { APP_SCHEMA } from "@/lib/supabase-schema";
-
-function mustGetEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing env var: ${name}`);
-  }
-  return value;
-}
+import { getBrowserAppSchema } from "@/lib/supabase-schema";
 
 export function createSupabaseBrowserClient() {
   const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -17,13 +9,13 @@ export function createSupabaseBrowserClient() {
 
   return createBrowserClient(url, anon, {
     db: {
-      schema: APP_SCHEMA
+      schema: getBrowserAppSchema()
     }
   });
 }
 
 export function createTbBrowserDb() {
-  return createSupabaseBrowserClient().schema(APP_SCHEMA);
+  return createSupabaseBrowserClient().schema(getBrowserAppSchema());
 }
 
 // Backwards-compatible export used across the app today.
