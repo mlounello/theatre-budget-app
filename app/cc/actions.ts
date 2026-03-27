@@ -524,7 +524,10 @@ export async function assignReceiptsToStatementAction(formData: FormData): Promi
     if (purchaseIds.length > 0) {
       const { error: purchaseUpdateError } = await supabase
         .from("purchases")
-        .update({ credit_card_id: statementMonth.credit_card_id as string })
+        .update({
+          credit_card_id: statementMonth.credit_card_id as string,
+          cc_statement_month_id: statementMonthId
+        })
         .in("id", purchaseIds);
       if (purchaseUpdateError) throw new Error(purchaseUpdateError.message);
     }
@@ -558,12 +561,36 @@ export async function unassignReceiptFromStatementAction(formData: FormData): Pr
     if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
     if (statementMonth.posted_at) throw new Error("Cannot remove purchases from a submitted statement month.");
 
+    const { data: receiptRow, error: receiptRowError } = await supabase
+      .from("purchase_receipts")
+      .select("id, purchase_id")
+      .eq("id", receiptId)
+      .maybeSingle();
+    if (receiptRowError) throw new Error(receiptRowError.message);
+    if (!receiptRow?.purchase_id) throw new Error("Receipt not found.");
+
     const { error: updateError } = await supabase
       .from("purchase_receipts")
       .update({ cc_statement_month_id: null })
       .eq("id", receiptId)
       .eq("cc_statement_month_id", statementMonthId);
     if (updateError) throw new Error(updateError.message);
+
+    const { count: remainingAssignedCount, error: remainingAssignedError } = await supabase
+      .from("purchase_receipts")
+      .select("id", { head: true, count: "exact" })
+      .eq("purchase_id", receiptRow.purchase_id as string)
+      .eq("cc_statement_month_id", statementMonthId);
+    if (remainingAssignedError) throw new Error(remainingAssignedError.message);
+
+    if ((remainingAssignedCount ?? 0) === 0) {
+      const { error: purchaseResetError } = await supabase
+        .from("purchases")
+        .update({ cc_statement_month_id: null })
+        .eq("id", receiptRow.purchase_id as string)
+        .eq("cc_statement_month_id", statementMonthId);
+      if (purchaseResetError) throw new Error(purchaseResetError.message);
+    }
 
     revalidatePath("/cc");
     ccSuccess("Receipt removed from statement month.");

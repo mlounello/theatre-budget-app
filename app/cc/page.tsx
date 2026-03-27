@@ -85,7 +85,7 @@ export default async function CreditCardPage({
     supabase
       .from("purchase_receipts")
       .select(
-        "id, purchase_id, amount_received, note, created_at, cc_statement_month_id, purchases!inner(id, title, reference_number, requisition_number, pending_cc_amount, credit_card_id, status, request_type, is_credit_card, projects(name, season), project_budget_lines(budget_code, category, line_name))"
+        "id, purchase_id, amount_received, note, created_at, cc_statement_month_id, purchases!inner(id, title, reference_number, requisition_number, pending_cc_amount, cc_statement_month_id, credit_card_id, status, request_type, is_credit_card, projects(name, season), project_budget_lines(budget_code, category, line_name))"
       )
       .order("created_at", { ascending: true }),
     getAccountCodeOptions(),
@@ -145,6 +145,7 @@ export default async function CreditCardPage({
           reference_number?: string | null;
           requisition_number?: string | null;
           pending_cc_amount?: number | string | null;
+          cc_statement_month_id?: string | null;
           credit_card_id?: string | null;
           status?: string;
           request_type?: string;
@@ -169,7 +170,8 @@ export default async function CreditCardPage({
       purchaseStatus: (purchase?.status as string | undefined) ?? "",
       purchaseRequestType: (purchase?.request_type as string | undefined) ?? "",
       purchaseIsCreditCard: Boolean(purchase?.is_credit_card as boolean | null | undefined),
-      statementMonthId: (row.cc_statement_month_id as string | null) ?? null,
+      statementMonthId:
+        (row.cc_statement_month_id as string | null) ?? ((purchase?.cc_statement_month_id as string | null | undefined) ?? null),
       projectLabel: `${project?.name ?? "Unknown Project"}${project?.season ? ` (${project.season})` : ""}`,
       budgetLineLabel: `${budgetLine?.budget_code ?? "-"} | ${budgetLine?.category ?? "-"} | ${budgetLine?.line_name ?? "-"}`
     };
