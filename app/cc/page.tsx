@@ -60,6 +60,16 @@ type PendingPurchaseDetailRow = {
   assignmentState: string;
 };
 
+type StatementLineDetailRow = {
+  id: string;
+  statementMonthId: string;
+  amount: number;
+  note: string | null;
+  matchedPurchaseIds: string[];
+  projectLabel: string;
+  budgetLineLabel: string;
+};
+
 export default async function CreditCardPage({
   searchParams
 }: {
@@ -114,7 +124,11 @@ export default async function CreditCardPage({
       )
       .eq("status", "pending_cc")
       .order("created_at", { ascending: false }),
-    supabase.from("cc_statement_lines").select("statement_month_id, matched_purchase_ids"),
+    supabase
+      .from("cc_statement_lines")
+      .select(
+        "id, statement_month_id, amount, note, matched_purchase_ids, project_budget_lines(budget_code, category, line_name, projects(name, season))"
+      ),
     getAccountCodeOptions(),
     getProductionCategoryOptions()
   ]);
@@ -166,16 +180,37 @@ export default async function CreditCardPage({
     return true;
   });
 
+  const statementLineDetails: StatementLineDetailRow[] = (statementLinesResponse.data ?? []).map((row) => {
+    const budgetLine = row.project_budget_lines as
+      | {
+          budget_code?: string;
+          category?: string;
+          line_name?: string;
+          projects?: { name?: string; season?: string | null } | null;
+        }
+      | null;
+    const project = budgetLine?.projects;
+    return {
+      id: row.id as string,
+      statementMonthId: row.statement_month_id as string,
+      amount: Number(row.amount ?? 0),
+      note: (row.note as string | null) ?? null,
+      matchedPurchaseIds: Array.isArray(row.matched_purchase_ids)
+        ? row.matched_purchase_ids.map((value) => String(value ?? "").trim()).filter(Boolean)
+        : [],
+      projectLabel: `${project?.name ?? "Unknown Project"}${project?.season ? ` (${project.season})` : ""}`,
+      budgetLineLabel: `${budgetLine?.budget_code ?? "-"} | ${budgetLine?.category ?? "-"} | ${budgetLine?.line_name ?? "-"}`
+    };
+  });
+
   const statementMonthIdByMatchedPurchaseId = new Map<string, string>();
-  for (const row of statementLinesResponse.data ?? []) {
-    const statementMonthId = String(row.statement_month_id ?? "").trim();
+  for (const row of statementLineDetails) {
+    const statementMonthId = row.statementMonthId;
     if (!statementMonthId) continue;
-    const matchedPurchaseIds = Array.isArray(row.matched_purchase_ids) ? row.matched_purchase_ids : [];
+    const matchedPurchaseIds = row.matchedPurchaseIds;
     for (const purchaseId of matchedPurchaseIds) {
-      const normalizedPurchaseId = String(purchaseId ?? "").trim();
-      if (!normalizedPurchaseId) continue;
-      if (!statementMonthIdByMatchedPurchaseId.has(normalizedPurchaseId)) {
-        statementMonthIdByMatchedPurchaseId.set(normalizedPurchaseId, statementMonthId);
+      if (!statementMonthIdByMatchedPurchaseId.has(purchaseId)) {
+        statementMonthIdByMatchedPurchaseId.set(purchaseId, statementMonthId);
       }
     }
   }
@@ -430,6 +465,31 @@ export default async function CreditCardPage({
 
         {filteredStatementMonths.map((month) => {
           const assignedReceipts = pendingReceipts.filter((receipt) => receipt.statementMonthId === month.id);
+          const statementLineRows = statementLineDetails.filter((line) => line.statementMonthId === month.id);
+          const visibleRows =
+            assignedReceipts.length > 0
+              ? assignedReceipts.map((receipt) => ({
+                  id: `receipt:${receipt.id}`,
+                  projectLabel: receipt.projectLabel,
+                  budgetLineLabel: receipt.budgetLineLabel,
+                  requestNumber: receipt.requestNumber,
+                  requestTitle: receipt.requestTitle,
+                  amount: receipt.amount,
+                  canRemove: true,
+                  receiptId: receipt.id,
+                  sourceLabel: "Receipt"
+                }))
+              : statementLineRows.map((line) => ({
+                  id: `statement-line:${line.id}`,
+                  projectLabel: line.projectLabel,
+                  budgetLineLabel: line.budgetLineLabel,
+                  requestNumber: null,
+                  requestTitle: line.note?.trim() || "Statement line",
+                  amount: line.amount,
+                  canRemove: false,
+                  receiptId: null,
+                  sourceLabel: "Statement line"
+                }));
           const unassignedCandidates = pendingReceipts.filter(
             (receipt) =>
               !receipt.statementMonthId &&
@@ -454,28 +514,30 @@ export default async function CreditCardPage({
                       <th>Budget Line</th>
                       <th>Req/Ref #</th>
                       <th>Title</th>
+                      <th>Source</th>
                       <th>Amount</th>
                       <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {assignedReceipts.length === 0 ? (
+                    {visibleRows.length === 0 ? (
                       <tr>
-                        <td colSpan={6}>No receipts assigned to this statement month.</td>
+                        <td colSpan={7}>No receipts or statement lines assigned to this statement month.</td>
                       </tr>
                     ) : null}
-                    {assignedReceipts.map((receipt) => (
-                      <tr key={receipt.id}>
-                        <td>{receipt.projectLabel}</td>
-                        <td>{receipt.budgetLineLabel}</td>
-                        <td>{receipt.requestNumber ?? "-"}</td>
-                        <td>{receipt.requestTitle}</td>
-                        <td>{formatCurrency(receipt.amount)}</td>
+                    {visibleRows.map((row) => (
+                      <tr key={row.id}>
+                        <td>{row.projectLabel}</td>
+                        <td>{row.budgetLineLabel}</td>
+                        <td>{row.requestNumber ?? "-"}</td>
+                        <td>{row.requestTitle}</td>
+                        <td>{row.sourceLabel}</td>
+                        <td>{formatCurrency(row.amount)}</td>
                         <td>
-                          {!month.postedAt ? (
+                          {!month.postedAt && row.canRemove && row.receiptId ? (
                             <form action={unassignReceiptFromStatementAction} className="inlineEditForm">
                               <input type="hidden" name="statementMonthId" value={month.id} />
-                              <input type="hidden" name="receiptId" value={receipt.id} />
+                              <input type="hidden" name="receiptId" value={row.receiptId} />
                               <button type="submit" className="tinyButton dangerButton">
                                 Remove
                               </button>
