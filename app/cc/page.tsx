@@ -43,6 +43,23 @@ type PendingReceiptRow = {
   budgetLineLabel: string;
 };
 
+type PendingPurchaseDetailRow = {
+  id: string;
+  projectLabel: string;
+  budgetLineLabel: string;
+  requestType: string;
+  isCreditCard: boolean;
+  requestTitle: string;
+  requestNumber: string | null;
+  pendingCcAmount: number;
+  receiptTotal: number;
+  receiptCount: number;
+  creditCardName: string | null;
+  ccWorkflowStatus: string | null;
+  statementMonthLabel: string | null;
+  assignmentState: string;
+};
+
 export default async function CreditCardPage({
   searchParams
 }: {
@@ -72,6 +89,7 @@ export default async function CreditCardPage({
     cardsResponse,
     monthsResponse,
     receiptsResponse,
+    pendingPurchasesResponse,
     statementLinesResponse,
     accountCodeOptions,
     productionCategoryOptions
@@ -89,6 +107,13 @@ export default async function CreditCardPage({
         "id, purchase_id, amount_received, note, created_at, cc_statement_month_id, purchases!inner(id, title, reference_number, requisition_number, pending_cc_amount, cc_statement_month_id, credit_card_id, status, request_type, is_credit_card, projects(name, season), project_budget_lines(budget_code, category, line_name))"
       )
       .order("created_at", { ascending: true }),
+    supabase
+      .from("purchases")
+      .select(
+        "id, title, reference_number, requisition_number, pending_cc_amount, status, request_type, is_credit_card, cc_workflow_status, cc_statement_month_id, credit_card_id, projects(name, season), project_budget_lines(budget_code, category, line_name), credit_cards(nickname)"
+      )
+      .eq("status", "pending_cc")
+      .order("created_at", { ascending: false }),
     supabase.from("cc_statement_lines").select("statement_month_id, matched_purchase_ids"),
     getAccountCodeOptions(),
     getProductionCategoryOptions()
@@ -97,6 +122,7 @@ export default async function CreditCardPage({
   if (cardsResponse.error) throw cardsResponse.error;
   if (monthsResponse.error) throw monthsResponse.error;
   if (receiptsResponse.error) throw receiptsResponse.error;
+  if (pendingPurchasesResponse.error) throw pendingPurchasesResponse.error;
   if (statementLinesResponse.error) throw statementLinesResponse.error;
   const hasGlobalAdmin = access.role === "admin";
   const manageableProjectIds = access.manageableProjectIds;
@@ -193,6 +219,59 @@ export default async function CreditCardPage({
         ((purchase?.cc_statement_month_id as string | null | undefined) ?? statementMonthIdByMatchedPurchaseId.get(purchaseId) ?? null),
       projectLabel: `${project?.name ?? "Unknown Project"}${project?.season ? ` (${project.season})` : ""}`,
       budgetLineLabel: `${budgetLine?.budget_code ?? "-"} | ${budgetLine?.category ?? "-"} | ${budgetLine?.line_name ?? "-"}`
+    };
+  });
+
+  const receiptTotalsByPurchaseId = new Map<string, { total: number; count: number }>();
+  for (const receipt of pendingReceipts) {
+    const current = receiptTotalsByPurchaseId.get(receipt.purchaseId) ?? { total: 0, count: 0 };
+    receiptTotalsByPurchaseId.set(receipt.purchaseId, {
+      total: current.total + receipt.amount,
+      count: current.count + 1
+    });
+  }
+
+  const statementMonthLabelById = new Map(
+    statementMonths.map((month) => [month.id, `${month.statementMonth.slice(0, 7)} | ${month.creditCardName}`])
+  );
+
+  const pendingPurchaseDetails: PendingPurchaseDetailRow[] = (pendingPurchasesResponse.data ?? []).map((row) => {
+    const project = row.projects as { name?: string; season?: string | null } | null;
+    const budgetLine = row.project_budget_lines as { budget_code?: string; category?: string; line_name?: string } | null;
+    const card = row.credit_cards as { nickname?: string } | null;
+    const purchaseId = row.id as string;
+    const receiptSummary = receiptTotalsByPurchaseId.get(purchaseId) ?? { total: 0, count: 0 };
+    const requestType = (row.request_type as string | null) ?? "";
+    const isCreditCard = Boolean(row.is_credit_card as boolean | null);
+    const statementMonthId =
+      (row.cc_statement_month_id as string | null) ?? statementMonthIdByMatchedPurchaseId.get(purchaseId) ?? null;
+
+    let assignmentState = "Ready to assign";
+    if (!isCreditCard || requestType !== "expense") {
+      assignmentState = "Excluded from receipt assignment flow";
+    } else if (receiptSummary.count === 0) {
+      assignmentState = "Missing receipts";
+    } else if (statementMonthId) {
+      assignmentState = "Already linked to statement month";
+    } else if (!row.credit_card_id) {
+      assignmentState = "Unassigned card";
+    }
+
+    return {
+      id: purchaseId,
+      projectLabel: `${project?.name ?? "Unknown Project"}${project?.season ? ` (${project.season})` : ""}`,
+      budgetLineLabel: `${budgetLine?.budget_code ?? "-"} | ${budgetLine?.category ?? "-"} | ${budgetLine?.line_name ?? "-"}`,
+      requestType: requestType || "-",
+      isCreditCard,
+      requestTitle: (row.title as string) ?? "Request",
+      requestNumber: (row.requisition_number as string | null) ?? (row.reference_number as string | null) ?? null,
+      pendingCcAmount: Number(row.pending_cc_amount ?? 0),
+      receiptTotal: receiptSummary.total,
+      receiptCount: receiptSummary.count,
+      creditCardName: card?.nickname ?? null,
+      ccWorkflowStatus: (row.cc_workflow_status as string | null) ?? null,
+      statementMonthLabel: statementMonthId ? statementMonthLabelById.get(statementMonthId) ?? statementMonthId : null,
+      assignmentState
     };
   });
 
@@ -541,6 +620,56 @@ export default async function CreditCardPage({
           </tbody>
         </table>
       </div>
+
+      <article className="panel panelFull" style={{ marginTop: "1rem" }}>
+        <h2>Pending CC Purchase Detail</h2>
+        <p className="heroSubtitle">
+          Raw pending purchase rows behind the budget-line rollups, including whether each row has receipts and a statement link.
+        </p>
+        <div className="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Project</th>
+                <th>Budget Line</th>
+                <th>Req/Ref #</th>
+                <th>Title</th>
+                <th>Type</th>
+                <th>Card</th>
+                <th>Pending CC</th>
+                <th>Receipts</th>
+                <th>Workflow</th>
+                <th>Statement</th>
+                <th>Where It Is</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pendingPurchaseDetails.length === 0 ? (
+                <tr>
+                  <td colSpan={11}>No pending CC purchases found.</td>
+                </tr>
+              ) : null}
+              {pendingPurchaseDetails.map((purchase) => (
+                <tr key={purchase.id}>
+                  <td>{purchase.projectLabel}</td>
+                  <td>{purchase.budgetLineLabel}</td>
+                  <td>{purchase.requestNumber ?? "-"}</td>
+                  <td>{purchase.requestTitle}</td>
+                  <td>{purchase.isCreditCard ? "CC Expense" : purchase.requestType}</td>
+                  <td>{purchase.creditCardName ?? "Unassigned"}</td>
+                  <td>{formatCurrency(purchase.pendingCcAmount)}</td>
+                  <td>
+                    {purchase.receiptCount} | {formatCurrency(purchase.receiptTotal)}
+                  </td>
+                  <td>{purchase.ccWorkflowStatus ?? "-"}</td>
+                  <td>{purchase.statementMonthLabel ?? "-"}</td>
+                  <td>{purchase.assignmentState}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </article>
     </section>
   );
 }
