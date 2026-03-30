@@ -71,6 +71,85 @@ async function requireGlobalAdmin(): Promise<void> {
   }
 }
 
+async function getStatementMonthLinkedPurchaseTotals(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  statementMonthId: string
+): Promise<{ totalsByPurchaseId: Map<string, number>; hasStatementLines: boolean }> {
+  const { data: receiptRows, error: receiptError } = await supabase
+    .from("purchase_receipts")
+    .select("purchase_id, amount_received")
+    .eq("cc_statement_month_id", statementMonthId);
+  if (receiptError) throw new Error(receiptError.message);
+
+  const totalsByPurchaseId = new Map<string, number>();
+  for (const row of receiptRows ?? []) {
+    const purchaseId = String(row.purchase_id ?? "").trim();
+    if (!purchaseId) continue;
+    const amount = Number(row.amount_received ?? 0);
+    totalsByPurchaseId.set(purchaseId, (totalsByPurchaseId.get(purchaseId) ?? 0) + (Number.isFinite(amount) ? amount : 0));
+  }
+  if (totalsByPurchaseId.size > 0) {
+    return { totalsByPurchaseId, hasStatementLines: false };
+  }
+
+  const { data: directlyLinkedPurchases, error: directlyLinkedPurchasesError } = await supabase
+    .from("purchases")
+    .select("id, status, pending_cc_amount, posted_amount")
+    .eq("cc_statement_month_id", statementMonthId);
+  if (directlyLinkedPurchasesError) throw new Error(directlyLinkedPurchasesError.message);
+
+  for (const purchase of directlyLinkedPurchases ?? []) {
+    const purchaseId = String(purchase.id ?? "").trim();
+    if (!purchaseId) continue;
+    const amount =
+      String(purchase.status ?? "") === "posted"
+        ? Number(purchase.posted_amount ?? 0)
+        : Number(purchase.pending_cc_amount ?? 0) || Number(purchase.posted_amount ?? 0);
+    totalsByPurchaseId.set(purchaseId, Number.isFinite(amount) ? amount : 0);
+  }
+  if (totalsByPurchaseId.size > 0) {
+    return { totalsByPurchaseId, hasStatementLines: false };
+  }
+
+  const { data: statementLines, error: statementLinesError } = await supabase
+    .from("cc_statement_lines")
+    .select("matched_purchase_ids")
+    .eq("statement_month_id", statementMonthId);
+  if (statementLinesError) throw new Error(statementLinesError.message);
+
+  const matchedPurchaseIds = Array.from(
+    new Set(
+      (statementLines ?? []).flatMap((row) =>
+        Array.isArray(row.matched_purchase_ids)
+          ? row.matched_purchase_ids.map((value) => String(value ?? "").trim()).filter(Boolean)
+          : []
+      )
+    )
+  );
+  const hasStatementLines = (statementLines ?? []).length > 0;
+  if (matchedPurchaseIds.length === 0) {
+    return { totalsByPurchaseId, hasStatementLines };
+  }
+
+  const { data: matchedPurchases, error: matchedPurchasesError } = await supabase
+    .from("purchases")
+    .select("id, status, pending_cc_amount, posted_amount")
+    .in("id", matchedPurchaseIds);
+  if (matchedPurchasesError) throw new Error(matchedPurchasesError.message);
+
+  for (const purchase of matchedPurchases ?? []) {
+    const purchaseId = String(purchase.id ?? "").trim();
+    if (!purchaseId) continue;
+    const amount =
+      String(purchase.status ?? "") === "posted"
+        ? Number(purchase.posted_amount ?? 0)
+        : Number(purchase.pending_cc_amount ?? 0) || Number(purchase.posted_amount ?? 0);
+    totalsByPurchaseId.set(purchaseId, Number.isFinite(amount) ? amount : 0);
+  }
+
+  return { totalsByPurchaseId, hasStatementLines };
+}
+
 export async function createCreditCardAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();
@@ -786,19 +865,24 @@ export async function postStatementMonthToBannerAction(formData: FormData): Prom
     if (!statementMonth.posted_at) throw new Error("Submit statement as paid before posting to Banner.");
     if (statementMonth.posted_to_banner_at) throw new Error("Statement month is already posted to Banner.");
 
-    const { data: receiptRows, error: receiptError } = await supabase
-      .from("purchase_receipts")
-      .select("purchase_id, amount_received")
-      .eq("cc_statement_month_id", statementMonthId);
-    if (receiptError) throw new Error(receiptError.message);
-    if (!receiptRows || receiptRows.length === 0) throw new Error("No receipts are linked to this statement month.");
+    const { totalsByPurchaseId, hasStatementLines } = await getStatementMonthLinkedPurchaseTotals(supabase, statementMonthId);
+    if (totalsByPurchaseId.size === 0) {
+      if (hasStatementLines) {
+        const { data: statementUpdated, error: statementUpdateError } = await supabase
+          .from("cc_statement_months")
+          .update({ posted_to_banner_at: null })
+          .eq("id", statementMonthId)
+          .select("id")
+          .maybeSingle();
+        if (statementUpdateError) throw new Error(statementUpdateError.message);
+        if (!statementUpdated?.id) throw new Error("Statement unpost update was not applied.");
 
-    const totalsByPurchaseId = new Map<string, number>();
-    for (const row of receiptRows) {
-      const purchaseId = String(row.purchase_id ?? "").trim();
-      if (!purchaseId) continue;
-      const amount = Number(row.amount_received ?? 0);
-      totalsByPurchaseId.set(purchaseId, (totalsByPurchaseId.get(purchaseId) ?? 0) + (Number.isFinite(amount) ? amount : 0));
+        revalidatePath("/cc");
+        revalidatePath("/requests");
+        revalidatePath("/");
+        ccSuccess("Statement month unposted from Banner. Historical statement lines were preserved, but no linked purchases were restored.");
+      }
+      throw new Error("No receipts or linked purchases are connected to this statement month.");
     }
     const purchaseIds = [...totalsByPurchaseId.keys()];
 
