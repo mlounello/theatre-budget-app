@@ -40,3 +40,35 @@ export type Purchase = {
   postedAmount: number;
   status: PurchaseStatus;
 };
+
+export type BudgetPlanRow = {
+  id: string;
+  fiscalYearId: string;
+  organizationId: string;
+  accountCodeId: string;
+  accountCodeLabel: string;
+  annualAmount: number;
+  sourceFiscalYearId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type BudgetPlanMonthRow = {
+  id: string;
+  budgetPlanId: string;
+  monthStart: string;
+  fiscalMonthIndex: number;
+  amount: number;
+  percent: number;
+  source: "historical" | "manual" | "even";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MonthlyActualByOrgAccountRow = {
+  fiscalYearId: string | null;
+  organizationId: string;
+  accountCodeId: string;
+  monthStart: string;
+  postedAmount: number;
+};

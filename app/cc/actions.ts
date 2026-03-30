@@ -865,24 +865,19 @@ export async function postStatementMonthToBannerAction(formData: FormData): Prom
     if (!statementMonth.posted_at) throw new Error("Submit statement as paid before posting to Banner.");
     if (statementMonth.posted_to_banner_at) throw new Error("Statement month is already posted to Banner.");
 
-    const { totalsByPurchaseId, hasStatementLines } = await getStatementMonthLinkedPurchaseTotals(supabase, statementMonthId);
-    if (totalsByPurchaseId.size === 0) {
-      if (hasStatementLines) {
-        const { data: statementUpdated, error: statementUpdateError } = await supabase
-          .from("cc_statement_months")
-          .update({ posted_to_banner_at: null })
-          .eq("id", statementMonthId)
-          .select("id")
-          .maybeSingle();
-        if (statementUpdateError) throw new Error(statementUpdateError.message);
-        if (!statementUpdated?.id) throw new Error("Statement unpost update was not applied.");
+    const { data: receiptRows, error: receiptError } = await supabase
+      .from("purchase_receipts")
+      .select("purchase_id, amount_received")
+      .eq("cc_statement_month_id", statementMonthId);
+    if (receiptError) throw new Error(receiptError.message);
+    if (!receiptRows || receiptRows.length === 0) throw new Error("No receipts are linked to this statement month.");
 
-        revalidatePath("/cc");
-        revalidatePath("/requests");
-        revalidatePath("/");
-        ccSuccess("Statement month unposted from Banner. Historical statement lines were preserved, but no linked purchases were restored.");
-      }
-      throw new Error("No receipts or linked purchases are connected to this statement month.");
+    const totalsByPurchaseId = new Map<string, number>();
+    for (const row of receiptRows) {
+      const purchaseId = String(row.purchase_id ?? "").trim();
+      if (!purchaseId) continue;
+      const amount = Number(row.amount_received ?? 0);
+      totalsByPurchaseId.set(purchaseId, (totalsByPurchaseId.get(purchaseId) ?? 0) + (Number.isFinite(amount) ? amount : 0));
     }
     const purchaseIds = [...totalsByPurchaseId.keys()];
 
@@ -968,19 +963,24 @@ export async function unpostStatementMonthFromBannerAction(formData: FormData): 
     if (!statementMonth.posted_at) throw new Error("Statement month is not submitted.");
     if (!statementMonth.posted_to_banner_at) throw new Error("Statement month is not posted to Banner.");
 
-    const { data: receiptRows, error: receiptError } = await supabase
-      .from("purchase_receipts")
-      .select("purchase_id, amount_received")
-      .eq("cc_statement_month_id", statementMonthId);
-    if (receiptError) throw new Error(receiptError.message);
-    if (!receiptRows || receiptRows.length === 0) throw new Error("No receipts are linked to this statement month.");
+    const { totalsByPurchaseId, hasStatementLines } = await getStatementMonthLinkedPurchaseTotals(supabase, statementMonthId);
+    if (totalsByPurchaseId.size === 0) {
+      if (hasStatementLines) {
+        const { data: statementUpdated, error: statementUpdateError } = await supabase
+          .from("cc_statement_months")
+          .update({ posted_to_banner_at: null })
+          .eq("id", statementMonthId)
+          .select("id")
+          .maybeSingle();
+        if (statementUpdateError) throw new Error(statementUpdateError.message);
+        if (!statementUpdated?.id) throw new Error("Statement unpost update was not applied.");
 
-    const totalsByPurchaseId = new Map<string, number>();
-    for (const row of receiptRows) {
-      const purchaseId = String(row.purchase_id ?? "").trim();
-      if (!purchaseId) continue;
-      const amount = Number(row.amount_received ?? 0);
-      totalsByPurchaseId.set(purchaseId, (totalsByPurchaseId.get(purchaseId) ?? 0) + (Number.isFinite(amount) ? amount : 0));
+        revalidatePath("/cc");
+        revalidatePath("/requests");
+        revalidatePath("/");
+        ccSuccess("Statement month unposted from Banner. Historical statement lines were preserved, but no linked purchases were restored.");
+      }
+      throw new Error("No receipts or linked purchases are connected to this statement month.");
     }
     const purchaseIds = [...totalsByPurchaseId.keys()];
 
