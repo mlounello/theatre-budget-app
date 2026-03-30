@@ -72,6 +72,7 @@ export default async function CreditCardPage({
     cardsResponse,
     monthsResponse,
     receiptsResponse,
+    statementLinesResponse,
     accountCodeOptions,
     productionCategoryOptions
   ] = await Promise.all([
@@ -88,6 +89,7 @@ export default async function CreditCardPage({
         "id, purchase_id, amount_received, note, created_at, cc_statement_month_id, purchases!inner(id, title, reference_number, requisition_number, pending_cc_amount, cc_statement_month_id, credit_card_id, status, request_type, is_credit_card, projects(name, season), project_budget_lines(budget_code, category, line_name))"
       )
       .order("created_at", { ascending: true }),
+    supabase.from("cc_statement_lines").select("statement_month_id, matched_purchase_ids"),
     getAccountCodeOptions(),
     getProductionCategoryOptions()
   ]);
@@ -95,6 +97,7 @@ export default async function CreditCardPage({
   if (cardsResponse.error) throw cardsResponse.error;
   if (monthsResponse.error) throw monthsResponse.error;
   if (receiptsResponse.error) throw receiptsResponse.error;
+  if (statementLinesResponse.error) throw statementLinesResponse.error;
   const hasGlobalAdmin = access.role === "admin";
   const manageableProjectIds = access.manageableProjectIds;
 
@@ -137,6 +140,20 @@ export default async function CreditCardPage({
     return true;
   });
 
+  const statementMonthIdByMatchedPurchaseId = new Map<string, string>();
+  for (const row of statementLinesResponse.data ?? []) {
+    const statementMonthId = String(row.statement_month_id ?? "").trim();
+    if (!statementMonthId) continue;
+    const matchedPurchaseIds = Array.isArray(row.matched_purchase_ids) ? row.matched_purchase_ids : [];
+    for (const purchaseId of matchedPurchaseIds) {
+      const normalizedPurchaseId = String(purchaseId ?? "").trim();
+      if (!normalizedPurchaseId) continue;
+      if (!statementMonthIdByMatchedPurchaseId.has(normalizedPurchaseId)) {
+        statementMonthIdByMatchedPurchaseId.set(normalizedPurchaseId, statementMonthId);
+      }
+    }
+  }
+
   const pendingReceipts: PendingReceiptRow[] = (receiptsResponse.data ?? []).map((row) => {
     const purchase = row.purchases as
       | {
@@ -157,9 +174,10 @@ export default async function CreditCardPage({
     const project = purchase?.projects;
     const budgetLine = purchase?.project_budget_lines;
     const reqOrRef = (purchase?.requisition_number as string | null) ?? (purchase?.reference_number as string | null) ?? null;
+    const purchaseId = (row.purchase_id as string) ?? ((purchase?.id as string | undefined) ?? "");
     return {
       id: row.id as string,
-      purchaseId: (row.purchase_id as string) ?? ((purchase?.id as string | undefined) ?? ""),
+      purchaseId,
       amount: Number(row.amount_received ?? 0),
       note: (row.note as string | null) ?? null,
       receiptDate: (row.created_at as string) ?? "",
@@ -171,7 +189,8 @@ export default async function CreditCardPage({
       purchaseRequestType: (purchase?.request_type as string | undefined) ?? "",
       purchaseIsCreditCard: Boolean(purchase?.is_credit_card as boolean | null | undefined),
       statementMonthId:
-        (row.cc_statement_month_id as string | null) ?? ((purchase?.cc_statement_month_id as string | null | undefined) ?? null),
+        (row.cc_statement_month_id as string | null) ??
+        ((purchase?.cc_statement_month_id as string | null | undefined) ?? statementMonthIdByMatchedPurchaseId.get(purchaseId) ?? null),
       projectLabel: `${project?.name ?? "Unknown Project"}${project?.season ? ` (${project.season})` : ""}`,
       budgetLineLabel: `${budgetLine?.budget_code ?? "-"} | ${budgetLine?.category ?? "-"} | ${budgetLine?.line_name ?? "-"}`
     };
