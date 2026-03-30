@@ -1844,6 +1844,71 @@ export async function getBudgetPlanningOptions(): Promise<{
   return { fiscalYears, organizations, accountCodes };
 }
 
+export async function getBudgetPlanningData(params: {
+  fiscalYearId: string;
+  organizationId: string;
+}): Promise<{
+  fiscalYears: FiscalYearOption[];
+  organizations: OrganizationOption[];
+  accountCodes: AccountCodeOption[];
+  plans: BudgetPlanRow[];
+  months: BudgetPlanMonthRow[];
+  actuals: MonthlyActualByOrgAccountRow[];
+  planByAccountCodeId: Map<string, BudgetPlanRow>;
+  monthsByPlanId: Map<string, BudgetPlanMonthRow[]>;
+  actualsByAccountCodeId: Map<string, MonthlyActualByOrgAccountRow[]>;
+}> {
+  const { fiscalYearId, organizationId } = params;
+  const { fiscalYears, organizations, accountCodes } = await getBudgetPlanningOptions();
+
+  const plans = await getBudgetPlans({ fiscalYearId, organizationId });
+  const planIds = plans.map((plan) => plan.id);
+
+  const [months, actuals] = await Promise.all([
+    getBudgetPlanMonths(planIds),
+    getHistoricalMonthlyActuals({ fiscalYearId, organizationId })
+  ]);
+
+  const planByAccountCodeId = new Map<string, BudgetPlanRow>();
+  for (const plan of plans) {
+    planByAccountCodeId.set(plan.accountCodeId, plan);
+  }
+
+  const monthsByPlanId = new Map<string, BudgetPlanMonthRow[]>();
+  for (const month of months) {
+    const list = monthsByPlanId.get(month.budgetPlanId) ?? [];
+    list.push(month);
+    monthsByPlanId.set(month.budgetPlanId, list);
+  }
+  for (const [planId, list] of monthsByPlanId) {
+    list.sort((a, b) => a.fiscalMonthIndex - b.fiscalMonthIndex);
+    monthsByPlanId.set(planId, list);
+  }
+
+  const actualsByAccountCodeId = new Map<string, MonthlyActualByOrgAccountRow[]>();
+  for (const row of actuals) {
+    const list = actualsByAccountCodeId.get(row.accountCodeId) ?? [];
+    list.push(row);
+    actualsByAccountCodeId.set(row.accountCodeId, list);
+  }
+  for (const [accountCodeId, list] of actualsByAccountCodeId) {
+    list.sort((a, b) => a.monthStart.localeCompare(b.monthStart));
+    actualsByAccountCodeId.set(accountCodeId, list);
+  }
+
+  return {
+    fiscalYears,
+    organizations,
+    accountCodes,
+    plans,
+    months,
+    actuals,
+    planByAccountCodeId,
+    monthsByPlanId,
+    actualsByAccountCodeId
+  };
+}
+
 export async function getBudgetPlans(params: {
   fiscalYearId: string;
   organizationId: string;

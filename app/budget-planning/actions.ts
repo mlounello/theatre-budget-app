@@ -48,12 +48,20 @@ function parseMonthUpdates(value: FormDataEntryValue | null): MonthUpdateInput[]
   }
 }
 
-function planningSuccess(message: string): never {
-  redirect(`/budget-planning?ok=${encodeURIComponent(message)}`);
+function planningSuccess(message: string, params: { fiscalYearId?: string; organizationId?: string } = {}): never {
+  const search = new URLSearchParams();
+  search.set("ok", message);
+  if (params.fiscalYearId) search.set("fiscalYearId", params.fiscalYearId);
+  if (params.organizationId) search.set("organizationId", params.organizationId);
+  redirect(`/budget-planning?${search.toString()}`);
 }
 
-function planningError(message: string): never {
-  redirect(`/budget-planning?error=${encodeURIComponent(message)}`);
+function planningError(message: string, params: { fiscalYearId?: string; organizationId?: string } = {}): never {
+  const search = new URLSearchParams();
+  search.set("error", message);
+  if (params.fiscalYearId) search.set("fiscalYearId", params.fiscalYearId);
+  if (params.organizationId) search.set("organizationId", params.organizationId);
+  redirect(`/budget-planning?${search.toString()}`);
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -255,7 +263,7 @@ async function replaceBudgetPlanMonths(
 async function recomputePercents(
   supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
   planId: string
-): Promise<void> {
+): Promise<{ totalCents: number }> {
   const { data, error } = await supabase
     .from("budget_plan_months")
     .select("id, amount")
@@ -281,6 +289,8 @@ async function recomputePercents(
       .eq("id", update.id);
     if (updateError) throw new Error(updateError.message);
   }
+
+  return { totalCents };
 }
 
 export async function upsertBudgetPlanAnnualAmountAction(formData: FormData): Promise<void> {
@@ -370,10 +380,27 @@ export async function upsertBudgetPlanAnnualAmountAction(formData: FormData): Pr
     await replaceBudgetPlanMonths(supabase, planId, computedMonths);
 
     revalidatePath("/budget-planning");
-    planningSuccess("Budget plan saved.");
+    planningSuccess("Budget plan saved.", { fiscalYearId, organizationId });
   } catch (error) {
     rethrowIfRedirect(error);
-    planningError(getErrorMessage(error, "Unable to save budget plan."));
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
+    planningError(getErrorMessage(error, "Unable to save budget plan."), { fiscalYearId, organizationId });
+  }
+}
+
+async function requireTwelveMonths(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  planId: string,
+  label: string
+): Promise<void> {
+  const { count, error } = await supabase
+    .from("budget_plan_months")
+    .select("id", { count: "exact", head: true })
+    .eq("budget_plan_id", planId);
+  if (error) throw new Error(error.message);
+  if ((count ?? 0) !== 12) {
+    throw new Error(`Expected 12 fiscal months ${label}.`);
   }
 }
 
@@ -383,6 +410,8 @@ export async function updateBudgetPlanMonthsAction(formData: FormData): Promise<
     const { userId } = await requirePlanningAccess();
 
     const planId = String(formData.get("budgetPlanId") ?? "").trim();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
     const updates = parseMonthUpdates(formData.get("monthUpdatesJson"));
 
     if (!planId) throw new Error("Budget plan is required.");
@@ -391,6 +420,8 @@ export async function updateBudgetPlanMonthsAction(formData: FormData): Promise<
     for (const update of updates) {
       if (update.amount < 0) throw new Error("Monthly amount must be non-negative.");
     }
+
+    await requireTwelveMonths(supabase, planId, "before update");
 
     const { data: existingMonths, error: monthsError } = await supabase
       .from("budget_plan_months")
@@ -415,18 +446,24 @@ export async function updateBudgetPlanMonthsAction(formData: FormData): Promise<
       if (updateError) throw new Error(updateError.message);
     }
 
-    await recomputePercents(supabase, planId);
+    const { totalCents } = await recomputePercents(supabase, planId);
+
+    await requireTwelveMonths(supabase, planId, "after update");
+
+    const annualAmount = fromCents(totalCents);
 
     const { error: touchError } = await supabase
       .from("budget_plans")
-      .update({ updated_by_user_id: userId })
+      .update({ annual_amount: annualAmount, updated_by_user_id: userId })
       .eq("id", planId);
     if (touchError) throw new Error(touchError.message);
 
     revalidatePath("/budget-planning");
-    planningSuccess("Monthly plan updated.");
+    planningSuccess("Monthly plan updated.", { fiscalYearId, organizationId });
   } catch (error) {
     rethrowIfRedirect(error);
-    planningError(getErrorMessage(error, "Unable to update monthly plan."));
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
+    planningError(getErrorMessage(error, "Unable to update monthly plan."), { fiscalYearId, organizationId });
   }
 }
