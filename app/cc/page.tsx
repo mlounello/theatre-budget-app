@@ -114,20 +114,20 @@ export default async function CreditCardPage({
     supabase
       .from("purchase_receipts")
       .select(
-        "id, purchase_id, amount_received, note, created_at, cc_statement_month_id, purchases!inner(id, title, reference_number, requisition_number, pending_cc_amount, cc_statement_month_id, credit_card_id, status, request_type, is_credit_card, projects(name, season), project_budget_lines(budget_code, category, line_name))"
+        "id, purchase_id, amount_received, note, created_at, cc_statement_month_id, purchases!inner(id, title, reference_number, requisition_number, pending_cc_amount, cc_statement_month_id, credit_card_id, status, request_type, is_credit_card, projects(name, season), production_categories(name), project_budget_lines(budget_code))"
       )
       .order("created_at", { ascending: true }),
     supabase
       .from("purchases")
       .select(
-        "id, title, reference_number, requisition_number, pending_cc_amount, status, request_type, is_credit_card, cc_workflow_status, cc_statement_month_id, credit_card_id, projects(name, season), project_budget_lines(budget_code, category, line_name), credit_cards(nickname)"
+        "id, title, reference_number, requisition_number, pending_cc_amount, status, request_type, is_credit_card, cc_workflow_status, cc_statement_month_id, credit_card_id, projects(name, season), production_categories(name), project_budget_lines(budget_code), credit_cards(nickname)"
       )
       .eq("status", "pending_cc")
       .order("created_at", { ascending: false }),
     supabase
       .from("cc_statement_lines")
       .select(
-        "id, statement_month_id, amount, note, matched_purchase_ids, project_budget_lines(budget_code, category, line_name, projects(name, season))"
+        "id, statement_month_id, amount, note, matched_purchase_ids, project_budget_lines(budget_code, production_categories(name), projects(name, season))"
       ),
     getAccountCodeOptions(),
     getProductionCategoryOptions()
@@ -184,12 +184,12 @@ export default async function CreditCardPage({
     const budgetLine = row.project_budget_lines as
       | {
           budget_code?: string;
-          category?: string;
-          line_name?: string;
+          production_categories?: { name?: string } | null;
           projects?: { name?: string; season?: string | null } | null;
         }
       | null;
     const project = budgetLine?.projects;
+    const productionCategory = budgetLine?.production_categories;
     return {
       id: row.id as string,
       statementMonthId: row.statement_month_id as string,
@@ -199,7 +199,7 @@ export default async function CreditCardPage({
         ? row.matched_purchase_ids.map((value) => String(value ?? "").trim()).filter(Boolean)
         : [],
       projectLabel: `${project?.name ?? "Unknown Project"}${project?.season ? ` (${project.season})` : ""}`,
-      budgetLineLabel: `${budgetLine?.budget_code ?? "-"} | ${budgetLine?.category ?? "-"} | ${budgetLine?.line_name ?? "-"}`
+      budgetLineLabel: `${budgetLine?.budget_code ?? "-"} | ${productionCategory?.name ?? "-"}`
     };
   });
 
@@ -229,10 +229,12 @@ export default async function CreditCardPage({
           request_type?: string;
           is_credit_card?: boolean | null;
           projects?: { name?: string; season?: string | null } | null;
-          project_budget_lines?: { budget_code?: string; category?: string; line_name?: string } | null;
+          production_categories?: { name?: string } | null;
+          project_budget_lines?: { budget_code?: string } | null;
         }
       | null;
     const project = purchase?.projects;
+    const productionCategory = purchase?.production_categories;
     const budgetLine = purchase?.project_budget_lines;
     const reqOrRef = (purchase?.requisition_number as string | null) ?? (purchase?.reference_number as string | null) ?? null;
     const purchaseId = (row.purchase_id as string) ?? ((purchase?.id as string | undefined) ?? "");
@@ -253,7 +255,7 @@ export default async function CreditCardPage({
         (row.cc_statement_month_id as string | null) ??
         ((purchase?.cc_statement_month_id as string | null | undefined) ?? statementMonthIdByMatchedPurchaseId.get(purchaseId) ?? null),
       projectLabel: `${project?.name ?? "Unknown Project"}${project?.season ? ` (${project.season})` : ""}`,
-      budgetLineLabel: `${budgetLine?.budget_code ?? "-"} | ${budgetLine?.category ?? "-"} | ${budgetLine?.line_name ?? "-"}`
+      budgetLineLabel: `${budgetLine?.budget_code ?? "-"} | ${productionCategory?.name ?? "-"}`
     };
   });
 
@@ -272,7 +274,8 @@ export default async function CreditCardPage({
 
   const pendingPurchaseDetails: PendingPurchaseDetailRow[] = (pendingPurchasesResponse.data ?? []).map((row) => {
     const project = row.projects as { name?: string; season?: string | null } | null;
-    const budgetLine = row.project_budget_lines as { budget_code?: string; category?: string; line_name?: string } | null;
+    const productionCategory = row.production_categories as { name?: string } | null;
+    const budgetLine = row.project_budget_lines as { budget_code?: string } | null;
     const card = row.credit_cards as { nickname?: string } | null;
     const purchaseId = row.id as string;
     const receiptSummary = receiptTotalsByPurchaseId.get(purchaseId) ?? { total: 0, count: 0 };
@@ -295,7 +298,7 @@ export default async function CreditCardPage({
     return {
       id: purchaseId,
       projectLabel: `${project?.name ?? "Unknown Project"}${project?.season ? ` (${project.season})` : ""}`,
-      budgetLineLabel: `${budgetLine?.budget_code ?? "-"} | ${budgetLine?.category ?? "-"} | ${budgetLine?.line_name ?? "-"}`,
+      budgetLineLabel: `${budgetLine?.budget_code ?? "-"} | ${productionCategory?.name ?? "-"}`,
       requestType: requestType || "-",
       isCreditCard,
       requestTitle: (row.title as string) ?? "Request",
