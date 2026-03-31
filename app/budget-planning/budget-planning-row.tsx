@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { AccountCodeOption } from "@/lib/db";
 import type { BudgetPlanMonthRow, BudgetPlanRow, MonthlyActualByOrgAccountRow } from "@/lib/types";
 import { formatCurrency } from "@/lib/format";
@@ -9,7 +9,7 @@ import { updateBudgetPlanMonthsAction, upsertBudgetPlanAnnualAmountAction } from
 type MonthValue = {
   id: string;
   monthStart: string;
-  amount: number;
+  amount: string;
 };
 
 type BudgetPlanningRowProps = {
@@ -53,18 +53,34 @@ export function BudgetPlanningRow({
     return map;
   }, [actuals]);
 
-  const [monthValues, setMonthValues] = useState<MonthValue[]>(
-    months.map((month) => ({
-      id: month.id,
-      monthStart: month.monthStart,
-      amount: month.amount
-    }))
-  );
+  const [monthValues, setMonthValues] = useState<MonthValue[]>([]);
+
+  useEffect(() => {
+    setMonthValues(
+      months.map((month) => ({
+        id: month.id,
+        monthStart: month.monthStart,
+        amount: month.amount.toFixed(2)
+      }))
+    );
+  }, [months]);
 
   const monthUpdatesJson = useMemo(
-    () => JSON.stringify(monthValues.map((month) => ({ id: month.id, monthStart: month.monthStart, amount: month.amount }))),
+    () =>
+      JSON.stringify(
+        monthValues.map((month) => ({
+          id: month.id,
+          monthStart: month.monthStart,
+          amount: Number.isFinite(Number.parseFloat(month.amount)) ? Number.parseFloat(month.amount) : 0
+        }))
+      ),
     [monthValues]
   );
+
+  const plannedTotal = monthValues.reduce((sum, month) => {
+    const value = Number.parseFloat(month.amount);
+    return sum + (Number.isFinite(value) ? value : 0);
+  }, 0);
 
   const annualAmount = plan?.annualAmount ?? 0;
   const monthsReady = months.length === 12;
@@ -129,15 +145,14 @@ export function BudgetPlanningRow({
                               type="number"
                               min="0"
                               step="0.01"
-                              value={month.amount.toFixed(2)}
+                              value={month.amount}
                               onChange={(event) => {
-                                const value = Number.parseFloat(event.target.value);
                                 setMonthValues((prev) =>
                                   prev.map((entry) =>
                                     entry.id === month.id
                                       ? {
                                           ...entry,
-                                          amount: Number.isFinite(value) ? value : 0
+                                          amount: event.target.value
                                         }
                                       : entry
                                   )
@@ -151,6 +166,9 @@ export function BudgetPlanningRow({
                     </tbody>
                   </table>
                 </div>
+                <p className="helperText">
+                  Planned total: {formatCurrency(plannedTotal)}. Saving monthly changes updates the annual plan total.
+                </p>
                 <button className="buttonPrimary" type="submit">
                   Save monthly changes
                 </button>

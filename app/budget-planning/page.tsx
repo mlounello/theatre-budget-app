@@ -1,4 +1,4 @@
-import { getBudgetPlanningData, getBudgetPlanningOptions } from "@/lib/db";
+import { getBudgetPlanMonths, getBudgetPlanningData, getBudgetPlans, getHistoricalMonthlyActuals } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
 import { redirect } from "next/navigation";
 import { BudgetPlanningRow } from "@/app/budget-planning/budget-planning-row";
@@ -21,8 +21,12 @@ export default async function BudgetPlanningPage({
   const okMessage = resolvedSearchParams?.ok;
   const errorMessage = resolvedSearchParams?.error;
 
-  const { fiscalYears, organizations } = await getBudgetPlanningOptions();
-  if (fiscalYears.length === 0 || organizations.length === 0) {
+  const initialPlanningData = await getBudgetPlanningData({
+    fiscalYearId: resolvedSearchParams?.fiscalYearId ?? "",
+    organizationId: resolvedSearchParams?.organizationId ?? ""
+  });
+  const { fiscalYears, organizations, accountCodes } = initialPlanningData;
+  if (fiscalYears.length === 0 || organizations.length === 0 || accountCodes.length === 0) {
     return (
       <section>
         <header className="sectionHeader">
@@ -55,7 +59,54 @@ export default async function BudgetPlanningPage({
     );
   }
 
-  const planningData = await getBudgetPlanningData({ fiscalYearId, organizationId });
+  const rawFiscalYearId = (resolvedSearchParams?.fiscalYearId ?? "").trim();
+  const rawOrganizationId = (resolvedSearchParams?.organizationId ?? "").trim();
+
+  let planningData = initialPlanningData;
+  if (fiscalYearId !== rawFiscalYearId || organizationId !== rawOrganizationId) {
+    const plans = await getBudgetPlans({ fiscalYearId, organizationId });
+    const planIds = plans.map((plan) => plan.id);
+    const [months, actuals] = await Promise.all([
+      getBudgetPlanMonths(planIds),
+      getHistoricalMonthlyActuals({ fiscalYearId, organizationId })
+    ]);
+
+    const planByAccountCodeId = new Map(plans.map((plan) => [plan.accountCodeId, plan]));
+
+    const monthsByPlanId = new Map<string, typeof months>();
+    for (const month of months) {
+      const list = monthsByPlanId.get(month.budgetPlanId) ?? [];
+      list.push(month);
+      monthsByPlanId.set(month.budgetPlanId, list);
+    }
+    for (const [planId, list] of monthsByPlanId) {
+      list.sort((a, b) => a.fiscalMonthIndex - b.fiscalMonthIndex);
+      monthsByPlanId.set(planId, list);
+    }
+
+    const actualsByAccountCodeId = new Map<string, typeof actuals>();
+    for (const row of actuals) {
+      const list = actualsByAccountCodeId.get(row.accountCodeId) ?? [];
+      list.push(row);
+      actualsByAccountCodeId.set(row.accountCodeId, list);
+    }
+    for (const [accountCodeId, list] of actualsByAccountCodeId) {
+      list.sort((a, b) => a.monthStart.localeCompare(b.monthStart));
+      actualsByAccountCodeId.set(accountCodeId, list);
+    }
+
+    planningData = {
+      fiscalYears,
+      organizations,
+      accountCodes,
+      plans,
+      months,
+      actuals,
+      planByAccountCodeId,
+      monthsByPlanId,
+      actualsByAccountCodeId
+    };
+  }
 
   return (
     <section>
@@ -85,7 +136,7 @@ export default async function BudgetPlanningPage({
           <label>
             Organization
             <select name="organizationId" defaultValue={organizationId}>
-              {planningData.organizations.map((org) => (
+              {orgOptions.map((org) => (
                 <option key={org.id} value={org.id}>
                   {org.label}
                 </option>
