@@ -655,6 +655,26 @@ export async function unassignReceiptFromStatementAction(formData: FormData): Pr
       .eq("cc_statement_month_id", statementMonthId);
     if (updateError) throw new Error(updateError.message);
 
+    const { data: statementLines, error: statementLinesError } = await supabase
+      .from("cc_statement_lines")
+      .select("id, matched_purchase_ids")
+      .eq("statement_month_id", statementMonthId);
+    if (statementLinesError) throw new Error(statementLinesError.message);
+
+    for (const line of statementLines ?? []) {
+      const matchedPurchaseIds = Array.isArray(line.matched_purchase_ids)
+        ? line.matched_purchase_ids.map((value) => String(value ?? "").trim()).filter(Boolean)
+        : [];
+      if (!matchedPurchaseIds.includes(receiptRow.purchase_id as string)) continue;
+
+      const nextMatchedPurchaseIds = matchedPurchaseIds.filter((value) => value !== (receiptRow.purchase_id as string));
+      const { error: lineUpdateError } = await supabase
+        .from("cc_statement_lines")
+        .update({ matched_purchase_ids: nextMatchedPurchaseIds })
+        .eq("id", line.id as string);
+      if (lineUpdateError) throw new Error(lineUpdateError.message);
+    }
+
     const { count: remainingAssignedCount, error: remainingAssignedError } = await supabase
       .from("purchase_receipts")
       .select("id", { head: true, count: "exact" })
@@ -662,7 +682,14 @@ export async function unassignReceiptFromStatementAction(formData: FormData): Pr
       .eq("cc_statement_month_id", statementMonthId);
     if (remainingAssignedError) throw new Error(remainingAssignedError.message);
 
-    if ((remainingAssignedCount ?? 0) === 0) {
+    const { data: remainingMatchedLines, error: remainingMatchedLinesError } = await supabase
+      .from("cc_statement_lines")
+      .select("id")
+      .eq("statement_month_id", statementMonthId)
+      .contains("matched_purchase_ids", [receiptRow.purchase_id as string]);
+    if (remainingMatchedLinesError) throw new Error(remainingMatchedLinesError.message);
+
+    if ((remainingAssignedCount ?? 0) === 0 && (remainingMatchedLines ?? []).length === 0) {
       const { error: purchaseResetError } = await supabase
         .from("purchases")
         .update({ cc_statement_month_id: null })
