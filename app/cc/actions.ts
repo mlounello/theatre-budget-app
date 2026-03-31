@@ -965,22 +965,22 @@ export async function unpostStatementMonthFromBannerAction(formData: FormData): 
 
     const { totalsByPurchaseId, hasStatementLines } = await getStatementMonthLinkedPurchaseTotals(supabase, statementMonthId);
     if (totalsByPurchaseId.size === 0) {
-      if (hasStatementLines) {
-        const { data: statementUpdated, error: statementUpdateError } = await supabase
-          .from("cc_statement_months")
-          .update({ posted_to_banner_at: null })
-          .eq("id", statementMonthId)
-          .select("id")
-          .maybeSingle();
-        if (statementUpdateError) throw new Error(statementUpdateError.message);
-        if (!statementUpdated?.id) throw new Error("Statement unpost update was not applied.");
+      const { data: statementUpdated, error: statementUpdateError } = await supabase
+        .from("cc_statement_months")
+        .update({ posted_to_banner_at: null })
+        .eq("id", statementMonthId)
+        .select("id")
+        .maybeSingle();
+      if (statementUpdateError) throw new Error(statementUpdateError.message);
+      if (!statementUpdated?.id) throw new Error("Statement unpost update was not applied.");
 
-        revalidatePath("/cc");
-        revalidatePath("/requests");
-        revalidatePath("/");
+      revalidatePath("/cc");
+      revalidatePath("/requests");
+      revalidatePath("/");
+      if (hasStatementLines) {
         ccSuccess("Statement month unposted from Banner. Historical statement lines were preserved, but no linked purchases were restored.");
       }
-      throw new Error("No receipts or linked purchases are connected to this statement month.");
+      ccSuccess("Statement month unposted from Banner. No linked receipts or purchases were found for this historical month.");
     }
     const purchaseIds = [...totalsByPurchaseId.keys()];
 
