@@ -1861,6 +1861,20 @@ export async function getBudgetPlanningData(params: {
   const { fiscalYearId, organizationId } = params;
   const { fiscalYears, organizations, accountCodes } = await getBudgetPlanningOptions();
 
+  if (!fiscalYearId || !organizationId) {
+    return {
+      fiscalYears,
+      organizations,
+      accountCodes,
+      plans: [],
+      months: [],
+      actuals: [],
+      planByAccountCodeId: new Map<string, BudgetPlanRow>(),
+      monthsByPlanId: new Map<string, BudgetPlanMonthRow[]>(),
+      actualsByAccountCodeId: new Map<string, MonthlyActualByOrgAccountRow[]>()
+    };
+  }
+
   const plans = await getBudgetPlans({ fiscalYearId, organizationId });
   const planIds = plans.map((plan) => plan.id);
 
