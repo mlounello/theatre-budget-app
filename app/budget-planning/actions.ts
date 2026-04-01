@@ -439,16 +439,12 @@ export async function bulkCreateBudgetPlansAction(formData: FormData): Promise<v
     const organizationId = String(formData.get("organizationId") ?? "").trim();
     const sourceFiscalYearId = String(formData.get("sourceFiscalYearId") ?? "").trim() || fiscalYearId;
     const accountCodeIds = parseBulkPlanAccountCodes(formData.get("bulkPlanAccountCodesJson"));
-    const bulkAnnualAmount = parseMoney(formData.get("bulkAnnualAmount"));
-
     if (!fiscalYearId || !organizationId) {
       throw new Error("Fiscal year and organization are required.");
     }
     if (accountCodeIds.length === 0) {
       throw new Error("No visible rows provided.");
     }
-
-    if (bulkAnnualAmount < 0) throw new Error("Annual amount must be non-negative.");
 
     for (const accountCodeId of accountCodeIds) {
       await upsertBudgetPlanAnnualAmount({
@@ -457,7 +453,7 @@ export async function bulkCreateBudgetPlansAction(formData: FormData): Promise<v
         fiscalYearId,
         organizationId,
         accountCodeId,
-        annualAmount: bulkAnnualAmount,
+        annualAmount: 0,
         sourceFiscalYearId
       });
     }

@@ -3,6 +3,7 @@ import { getAccessContext } from "@/lib/access";
 import { redirect } from "next/navigation";
 import { BudgetPlanningRow } from "@/app/budget-planning/budget-planning-row";
 import { bulkCreateBudgetPlansAction } from "@/app/budget-planning/actions";
+import { BudgetPlanningExportButton } from "@/app/budget-planning/budget-planning-export";
 
 export default async function BudgetPlanningPage({
   searchParams
@@ -195,25 +196,96 @@ export default async function BudgetPlanningPage({
           });
           const visibleWithoutPlan = filtered.filter((accountCode) => !planningData.planByAccountCodeId.get(accountCode.id));
           const bulkPlanAccountCodesJson = JSON.stringify(visibleWithoutPlan.map((accountCode) => accountCode.id));
+          const fiscalYear = planningData.fiscalYears.find((fy) => fy.id === fiscalYearId);
+          const orgLabel =
+            planningData.organizations.find((org) => org.id === organizationId)?.label?.replace(/[^a-z0-9]+/gi, "_") ?? "org";
+
+          const monthHeaders: string[] = [];
+          if (fiscalYear?.startDate) {
+            const start = new Date(`${fiscalYear.startDate}T00:00:00Z`);
+            for (let i = 0; i < 12; i += 1) {
+              const monthDate = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + i, 1));
+              const label = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" }).format(monthDate);
+              monthHeaders.push(`Planned ${label}`);
+            }
+          } else {
+            for (let i = 1; i <= 12; i += 1) {
+              monthHeaders.push(`Planned Month ${i}`);
+            }
+          }
+
+          const exportHeaders = [
+            "Account Code",
+            "Prior Year Total",
+            "Annual Plan",
+            "Plan Source",
+            "History Indicator",
+            "Plan Indicator",
+            ...monthHeaders
+          ];
+
+          const exportRows = filtered.map((accountCode) => {
+            const plan = planningData.planByAccountCodeId.get(accountCode.id) ?? null;
+            const months = plan ? planningData.monthsByPlanId.get(plan.id) ?? [] : [];
+            const actuals = planningData.actualsByAccountCodeId.get(accountCode.id) ?? [];
+            const priorTotal = actuals.reduce((sum, row) => sum + row.postedAmount, 0);
+            const hasHistory = actuals.some((row) => row.postedAmount !== 0);
+            const historyIndicator = hasHistory ? "Has history" : "No history";
+            const planIndicator = plan ? "Existing plan" : "No plan";
+            let planSource = "none";
+            if (!plan) {
+              planSource = hasHistory ? "historical" : "none";
+            } else if (months.length > 0) {
+              const sources = new Set(months.map((month) => month.source));
+              if (sources.has("manual")) planSource = "manual";
+              else if (sources.size === 1 && sources.has("even")) planSource = "even";
+              else planSource = "historical";
+            }
+
+            const monthMap = new Map<string, number>();
+            for (const month of months) {
+              const label = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" }).format(
+                new Date(`${month.monthStart}T00:00:00Z`)
+              );
+              monthMap.set(`Planned ${label}`, month.amount);
+            }
+
+            const row: Record<string, string | number> = {
+              "Account Code": accountCode.label,
+              "Prior Year Total": Number(priorTotal.toFixed(2)),
+              "Annual Plan": Number((plan?.annualAmount ?? 0).toFixed(2)),
+              "Plan Source": planSource,
+              "History Indicator": historyIndicator,
+              "Plan Indicator": planIndicator
+            };
+
+            for (const header of monthHeaders) {
+              const value = monthMap.get(header);
+              row[header] = value !== undefined ? Number(value.toFixed(2)) : "";
+            }
+
+            return row;
+          });
 
           return (
             <>
               <p className="helperText">
                 Showing {filtered.length} of {planningData.accountCodes.length} account codes
               </p>
+              <BudgetPlanningExportButton
+                headers={exportHeaders}
+                rows={exportRows}
+                filename={`budget_planning_${fiscalYear?.name ?? "fiscal"}_${orgLabel}.csv`}
+              />
               {filtered.length > 0 && (
                 <form action={bulkCreateBudgetPlansAction} className="panelGrid">
                   <input type="hidden" name="fiscalYearId" value={fiscalYearId} />
                   <input type="hidden" name="organizationId" value={organizationId} />
                   <input type="hidden" name="sourceFiscalYearId" value={fiscalYearId} />
                   <input type="hidden" name="bulkPlanAccountCodesJson" value={bulkPlanAccountCodesJson} />
-                  <label>
-                    Bulk annual amount
-                    <input type="number" name="bulkAnnualAmount" min="0" step="0.01" defaultValue="0.00" />
-                  </label>
                   <div>
                     <button className="buttonPrimary" type="submit" disabled={visibleWithoutPlan.length === 0}>
-                      Create plans for visible rows without a plan
+                      Create empty plans for visible rows without a plan
                     </button>
                     <p className="helperText">
                       Applies to {visibleWithoutPlan.length} rows. Existing plans are not overwritten.
