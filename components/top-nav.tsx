@@ -30,6 +30,7 @@ function linksForRole(role: string): Array<{ href: string; label: string }> {
       { href: "/requests", label: "Requests" },
       { href: "/procurement", label: "Procurement" },
       { href: "/contracts", label: "Contracts" },
+      { href: "/budget-planning", label: "Budget Planning" },
       { href: "/income", label: "Income" },
       { href: "/cc", label: "CC" },
       { href: "/settings", label: "Settings" }
@@ -43,6 +44,7 @@ function linksForRole(role: string): Array<{ href: string; label: string }> {
       { href: "/requests", label: "Requests" },
       { href: "/procurement", label: "Procurement" },
       { href: "/contracts", label: "Contracts" },
+      { href: "/budget-planning", label: "Budget Planning" },
       { href: "/income", label: "Income" },
       { href: "/cc", label: "CC" },
       { href: "/settings", label: "Settings" },
