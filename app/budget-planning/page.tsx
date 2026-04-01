@@ -2,6 +2,7 @@ import { getBudgetPlanMonths, getBudgetPlanningData, getBudgetPlans, getHistoric
 import { getAccessContext } from "@/lib/access";
 import { redirect } from "next/navigation";
 import { BudgetPlanningRow } from "@/app/budget-planning/budget-planning-row";
+import { bulkCreateBudgetPlansAction } from "@/app/budget-planning/actions";
 
 export default async function BudgetPlanningPage({
   searchParams
@@ -164,56 +165,100 @@ export default async function BudgetPlanningPage({
             <button className="buttonPrimary" type="submit">
               Apply
             </button>
+            <a
+              className="buttonLink"
+              href={`/budget-planning?fiscalYearId=${encodeURIComponent(fiscalYearId)}&organizationId=${encodeURIComponent(
+                organizationId
+              )}`}
+              style={{ marginLeft: "0.5rem" }}
+            >
+              Clear filters
+            </a>
           </div>
         </form>
       </article>
 
       <article className="panel">
         <h2>Planning Grid</h2>
-        <div className="tableWrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Account Code</th>
-                <th>Prior Year Total</th>
-                <th>Annual Plan</th>
-                <th>Plan Source</th>
-                <th>Indicators</th>
-              </tr>
-            </thead>
-            <tbody>
-              {planningData.accountCodes
-                .filter((accountCode) => {
-                  if (searchQuery && !accountCode.label.toLowerCase().includes(searchQuery)) return false;
-                  const plan = planningData.planByAccountCodeId.get(accountCode.id) ?? null;
-                  const actuals = planningData.actualsByAccountCodeId.get(accountCode.id) ?? [];
-                  const hasHistory = actuals.some((row) => row.postedAmount !== 0);
-                  const hasPlan = Boolean(plan);
+        {(() => {
+          const filtered = planningData.accountCodes.filter((accountCode) => {
+            if (searchQuery && !accountCode.label.toLowerCase().includes(searchQuery)) return false;
+            const plan = planningData.planByAccountCodeId.get(accountCode.id) ?? null;
+            const actuals = planningData.actualsByAccountCodeId.get(accountCode.id) ?? [];
+            const hasHistory = actuals.some((row) => row.postedAmount !== 0);
+            const hasPlan = Boolean(plan);
 
-                  if (showFilter === "history") return hasHistory;
-                  if (showFilter === "plans") return hasPlan;
-                  if (showFilter === "history_or_plan") return hasHistory || hasPlan;
-                  return true;
-                })
-                .map((accountCode) => {
-                  const plan = planningData.planByAccountCodeId.get(accountCode.id) ?? null;
-                  const months = plan ? planningData.monthsByPlanId.get(plan.id) ?? [] : [];
-                  const actuals = planningData.actualsByAccountCodeId.get(accountCode.id) ?? [];
-                  return (
-                    <BudgetPlanningRow
-                      key={accountCode.id}
-                      accountCode={accountCode}
-                      plan={plan}
-                      months={months}
-                      actuals={actuals}
-                      fiscalYearId={fiscalYearId}
-                      organizationId={organizationId}
-                    />
-                  );
-                })}
-            </tbody>
-          </table>
-        </div>
+            if (showFilter === "history") return hasHistory;
+            if (showFilter === "plans") return hasPlan;
+            if (showFilter === "history_or_plan") return hasHistory || hasPlan;
+            return true;
+          });
+          const visibleWithoutPlan = filtered.filter((accountCode) => !planningData.planByAccountCodeId.get(accountCode.id));
+          const bulkPlanAccountCodesJson = JSON.stringify(visibleWithoutPlan.map((accountCode) => accountCode.id));
+
+          return (
+            <>
+              <p className="helperText">
+                Showing {filtered.length} of {planningData.accountCodes.length} account codes
+              </p>
+              {filtered.length > 0 && (
+                <form action={bulkCreateBudgetPlansAction} className="panelGrid">
+                  <input type="hidden" name="fiscalYearId" value={fiscalYearId} />
+                  <input type="hidden" name="organizationId" value={organizationId} />
+                  <input type="hidden" name="sourceFiscalYearId" value={fiscalYearId} />
+                  <input type="hidden" name="bulkPlanAccountCodesJson" value={bulkPlanAccountCodesJson} />
+                  <label>
+                    Bulk annual amount
+                    <input type="number" name="bulkAnnualAmount" min="0" step="0.01" defaultValue="0.00" />
+                  </label>
+                  <div>
+                    <button className="buttonPrimary" type="submit" disabled={visibleWithoutPlan.length === 0}>
+                      Create plans for visible rows without a plan
+                    </button>
+                    <p className="helperText">
+                      Applies to {visibleWithoutPlan.length} rows. Existing plans are not overwritten.
+                    </p>
+                  </div>
+                </form>
+              )}
+              {filtered.length === 0 ? (
+                <p className="helperText">No account codes match the current filters.</p>
+              ) : (
+                <div className="tableWrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Account Code</th>
+                        <th>Prior Year Total</th>
+                        <th>Annual Plan</th>
+                        <th>Plan Source</th>
+                        <th>Indicators</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((accountCode) => {
+                        const plan = planningData.planByAccountCodeId.get(accountCode.id) ?? null;
+                        const months = plan ? planningData.monthsByPlanId.get(plan.id) ?? [] : [];
+                        const actuals = planningData.actualsByAccountCodeId.get(accountCode.id) ?? [];
+                        return (
+                          <BudgetPlanningRow
+                            key={accountCode.id}
+                            accountCode={accountCode}
+                            plan={plan}
+                            months={months}
+                            actuals={actuals}
+                            fiscalYearId={fiscalYearId}
+                            organizationId={organizationId}
+                          />
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </article>
     </section>
   );

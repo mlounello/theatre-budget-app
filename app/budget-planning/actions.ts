@@ -48,6 +48,17 @@ function parseMonthUpdates(value: FormDataEntryValue | null): MonthUpdateInput[]
   }
 }
 
+function parseBulkPlanAccountCodes(value: FormDataEntryValue | null): string[] {
+  if (typeof value !== "string" || value.trim() === "") return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((entry) => String(entry ?? "").trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 function planningSuccess(message: string, params: { fiscalYearId?: string; organizationId?: string } = {}): never {
   const search = new URLSearchParams();
   search.set("ok", message);
@@ -293,6 +304,94 @@ async function recomputePercents(
   return { totalCents };
 }
 
+async function upsertBudgetPlanAnnualAmount(params: {
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>;
+  userId: string;
+  fiscalYearId: string;
+  organizationId: string;
+  accountCodeId: string;
+  annualAmount: number;
+  sourceFiscalYearId: string;
+}): Promise<void> {
+  const {
+    supabase,
+    userId,
+    fiscalYearId,
+    organizationId,
+    accountCodeId,
+    annualAmount,
+    sourceFiscalYearId
+  } = params;
+
+  const { data: existingPlan, error: existingError } = await supabase
+    .from("budget_plans")
+    .select("id")
+    .eq("fiscal_year_id", fiscalYearId)
+    .eq("organization_id", organizationId)
+    .eq("account_code_id", accountCodeId)
+    .maybeSingle();
+  if (existingError) throw new Error(existingError.message);
+
+  let planId: string;
+  if (existingPlan?.id) {
+    const { data: updatedPlan, error: updateError } = await supabase
+      .from("budget_plans")
+      .update({
+        annual_amount: annualAmount,
+        source_fiscal_year_id: sourceFiscalYearId || null,
+        updated_by_user_id: userId
+      })
+      .eq("id", existingPlan.id)
+      .select("id")
+      .single();
+    if (updateError || !updatedPlan) throw new Error(updateError?.message ?? "Unable to update budget plan.");
+    planId = updatedPlan.id as string;
+  } else {
+    const { data: insertedPlan, error: insertError } = await supabase
+      .from("budget_plans")
+      .insert({
+        fiscal_year_id: fiscalYearId,
+        organization_id: organizationId,
+        account_code_id: accountCodeId,
+        annual_amount: annualAmount,
+        source_fiscal_year_id: sourceFiscalYearId || null,
+        created_by_user_id: userId,
+        updated_by_user_id: userId
+      })
+      .select("id")
+      .single();
+    if (insertError || !insertedPlan) throw new Error(insertError?.message ?? "Unable to create budget plan.");
+    planId = insertedPlan.id as string;
+  }
+
+  const [targetFiscalYearStart, sourceFiscalYearStart] = await Promise.all([
+    fetchFiscalYearStart(fiscalYearId),
+    fetchFiscalYearStart(sourceFiscalYearId)
+  ]);
+
+  const fiscalMonths = computeFiscalMonths(targetFiscalYearStart);
+  const historyRows = await getHistoricalMonthlyActuals({
+    fiscalYearId: sourceFiscalYearId,
+    organizationId,
+    accountCodeIds: [accountCodeId]
+  });
+  const historyByIndex = mapHistoryToFiscalMonths(
+    historyRows.map((row) => ({
+      monthStart: row.monthStart,
+      postedAmount: row.postedAmount
+    })),
+    sourceFiscalYearStart
+  );
+
+  const computedMonths = computePlanMonths({
+    annualAmount,
+    fiscalMonths,
+    historyByIndex
+  });
+
+  await replaceBudgetPlanMonths(supabase, planId, computedMonths);
+}
+
 export async function upsertBudgetPlanAnnualAmountAction(formData: FormData): Promise<void> {
   try {
     const supabase = await getSupabaseServerClient();
@@ -311,73 +410,15 @@ export async function upsertBudgetPlanAnnualAmountAction(formData: FormData): Pr
       throw new Error("Annual amount must be non-negative.");
     }
 
-    const { data: existingPlan, error: existingError } = await supabase
-      .from("budget_plans")
-      .select("id")
-      .eq("fiscal_year_id", fiscalYearId)
-      .eq("organization_id", organizationId)
-      .eq("account_code_id", accountCodeId)
-      .maybeSingle();
-    if (existingError) throw new Error(existingError.message);
-
-    let planId: string;
-    if (existingPlan?.id) {
-      const { data: updatedPlan, error: updateError } = await supabase
-        .from("budget_plans")
-        .update({
-          annual_amount: annualAmount,
-          source_fiscal_year_id: sourceFiscalYearId || null,
-          updated_by_user_id: userId
-        })
-        .eq("id", existingPlan.id)
-        .select("id")
-        .single();
-      if (updateError || !updatedPlan) throw new Error(updateError?.message ?? "Unable to update budget plan.");
-      planId = updatedPlan.id as string;
-    } else {
-      const { data: insertedPlan, error: insertError } = await supabase
-        .from("budget_plans")
-        .insert({
-          fiscal_year_id: fiscalYearId,
-          organization_id: organizationId,
-          account_code_id: accountCodeId,
-          annual_amount: annualAmount,
-          source_fiscal_year_id: sourceFiscalYearId || null,
-          created_by_user_id: userId,
-          updated_by_user_id: userId
-        })
-        .select("id")
-        .single();
-      if (insertError || !insertedPlan) throw new Error(insertError?.message ?? "Unable to create budget plan.");
-      planId = insertedPlan.id as string;
-    }
-
-    const [targetFiscalYearStart, sourceFiscalYearStart] = await Promise.all([
-      fetchFiscalYearStart(fiscalYearId),
-      fetchFiscalYearStart(sourceFiscalYearId)
-    ]);
-
-    const fiscalMonths = computeFiscalMonths(targetFiscalYearStart);
-    const historyRows = await getHistoricalMonthlyActuals({
-      fiscalYearId: sourceFiscalYearId,
+    await upsertBudgetPlanAnnualAmount({
+      supabase,
+      userId,
+      fiscalYearId,
       organizationId,
-      accountCodeIds: [accountCodeId]
-    });
-    const historyByIndex = mapHistoryToFiscalMonths(
-      historyRows.map((row) => ({
-        monthStart: row.monthStart,
-        postedAmount: row.postedAmount
-      })),
-      sourceFiscalYearStart
-    );
-
-    const computedMonths = computePlanMonths({
+      accountCodeId,
       annualAmount,
-      fiscalMonths,
-      historyByIndex
+      sourceFiscalYearId
     });
-
-    await replaceBudgetPlanMonths(supabase, planId, computedMonths);
 
     revalidatePath("/budget-planning");
     planningSuccess("Budget plan saved.", { fiscalYearId, organizationId });
@@ -386,6 +427,48 @@ export async function upsertBudgetPlanAnnualAmountAction(formData: FormData): Pr
     const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
     planningError(getErrorMessage(error, "Unable to save budget plan."), { fiscalYearId, organizationId });
+  }
+}
+
+export async function bulkCreateBudgetPlansAction(formData: FormData): Promise<void> {
+  try {
+    const supabase = await getSupabaseServerClient();
+    const { userId } = await requirePlanningAccess();
+
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
+    const sourceFiscalYearId = String(formData.get("sourceFiscalYearId") ?? "").trim() || fiscalYearId;
+    const accountCodeIds = parseBulkPlanAccountCodes(formData.get("bulkPlanAccountCodesJson"));
+    const bulkAnnualAmount = parseMoney(formData.get("bulkAnnualAmount"));
+
+    if (!fiscalYearId || !organizationId) {
+      throw new Error("Fiscal year and organization are required.");
+    }
+    if (accountCodeIds.length === 0) {
+      throw new Error("No visible rows provided.");
+    }
+
+    if (bulkAnnualAmount < 0) throw new Error("Annual amount must be non-negative.");
+
+    for (const accountCodeId of accountCodeIds) {
+      await upsertBudgetPlanAnnualAmount({
+        supabase,
+        userId,
+        fiscalYearId,
+        organizationId,
+        accountCodeId,
+        annualAmount: bulkAnnualAmount,
+        sourceFiscalYearId
+      });
+    }
+
+    revalidatePath("/budget-planning");
+    planningSuccess("Bulk plans saved.", { fiscalYearId, organizationId });
+  } catch (error) {
+    rethrowIfRedirect(error);
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
+    planningError(getErrorMessage(error, "Unable to save bulk plans."), { fiscalYearId, organizationId });
   }
 }
 
