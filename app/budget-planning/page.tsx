@@ -9,6 +9,8 @@ export default async function BudgetPlanningPage({
   searchParams?: Promise<{
     fiscalYearId?: string;
     organizationId?: string;
+    q?: string;
+    show?: string;
     ok?: string;
     error?: string;
   }>;
@@ -20,6 +22,8 @@ export default async function BudgetPlanningPage({
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const okMessage = resolvedSearchParams?.ok;
   const errorMessage = resolvedSearchParams?.error;
+  const searchQuery = (resolvedSearchParams?.q ?? "").trim().toLowerCase();
+  const showFilter = (resolvedSearchParams?.show ?? "").trim().toLowerCase();
 
   const initialPlanningData = await getBudgetPlanningData({
     fiscalYearId: resolvedSearchParams?.fiscalYearId ?? "",
@@ -143,6 +147,19 @@ export default async function BudgetPlanningPage({
               ))}
             </select>
           </label>
+          <label>
+            Account Code Search
+            <input type="text" name="q" placeholder="Search account codes" defaultValue={resolvedSearchParams?.q ?? ""} />
+          </label>
+          <label>
+            Show
+            <select name="show" defaultValue={showFilter || "all"}>
+              <option value="all">All rows</option>
+              <option value="history">Has history</option>
+              <option value="plans">Has plan</option>
+              <option value="history_or_plan">History or plan</option>
+            </select>
+          </label>
           <div>
             <button className="buttonPrimary" type="submit">
               Apply
@@ -161,26 +178,39 @@ export default async function BudgetPlanningPage({
                 <th>Prior Year Total</th>
                 <th>Annual Plan</th>
                 <th>Plan Source</th>
-                <th>Status</th>
+                <th>Indicators</th>
               </tr>
             </thead>
             <tbody>
-              {planningData.accountCodes.map((accountCode) => {
-                const plan = planningData.planByAccountCodeId.get(accountCode.id) ?? null;
-                const months = plan ? planningData.monthsByPlanId.get(plan.id) ?? [] : [];
-                const actuals = planningData.actualsByAccountCodeId.get(accountCode.id) ?? [];
-                return (
-                  <BudgetPlanningRow
-                    key={accountCode.id}
-                    accountCode={accountCode}
-                    plan={plan}
-                    months={months}
-                    actuals={actuals}
-                    fiscalYearId={fiscalYearId}
-                    organizationId={organizationId}
-                  />
-                );
-              })}
+              {planningData.accountCodes
+                .filter((accountCode) => {
+                  if (searchQuery && !accountCode.label.toLowerCase().includes(searchQuery)) return false;
+                  const plan = planningData.planByAccountCodeId.get(accountCode.id) ?? null;
+                  const actuals = planningData.actualsByAccountCodeId.get(accountCode.id) ?? [];
+                  const hasHistory = actuals.some((row) => row.postedAmount !== 0);
+                  const hasPlan = Boolean(plan);
+
+                  if (showFilter === "history") return hasHistory;
+                  if (showFilter === "plans") return hasPlan;
+                  if (showFilter === "history_or_plan") return hasHistory || hasPlan;
+                  return true;
+                })
+                .map((accountCode) => {
+                  const plan = planningData.planByAccountCodeId.get(accountCode.id) ?? null;
+                  const months = plan ? planningData.monthsByPlanId.get(plan.id) ?? [] : [];
+                  const actuals = planningData.actualsByAccountCodeId.get(accountCode.id) ?? [];
+                  return (
+                    <BudgetPlanningRow
+                      key={accountCode.id}
+                      accountCode={accountCode}
+                      plan={plan}
+                      months={months}
+                      actuals={actuals}
+                      fiscalYearId={fiscalYearId}
+                      organizationId={organizationId}
+                    />
+                  );
+                })}
             </tbody>
           </table>
         </div>

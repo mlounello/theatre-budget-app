@@ -81,6 +81,7 @@ export function BudgetPlanningRow({
     const value = Number.parseFloat(month.amount);
     return sum + (Number.isFinite(value) ? value : 0);
   }, 0);
+  const monthlyHistoryTotal = Array.from(actualsByMonth.values()).reduce((sum, value) => sum + value, 0);
 
   const annualAmount = plan?.annualAmount ?? 0;
   const monthsReady = months.length === 12;
@@ -91,7 +92,7 @@ export function BudgetPlanningRow({
         <td>{accountCode.label}</td>
         <td>{formatCurrency(priorTotal)}</td>
         <td>
-          <form action={upsertBudgetPlanAnnualAmountAction}>
+          <form action={upsertBudgetPlanAnnualAmountAction} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             <input type="hidden" name="fiscalYearId" value={fiscalYearId} />
             <input type="hidden" name="organizationId" value={organizationId} />
             <input type="hidden" name="accountCodeId" value={accountCode.id} />
@@ -110,7 +111,10 @@ export function BudgetPlanningRow({
           </form>
         </td>
         <td>{planSource}</td>
-        <td>{plan ? "Plan active" : "No plan yet"}</td>
+        <td>
+          <div>{priorTotal > 0 ? "Has history" : "No history"}</div>
+          <div>{plan ? "Existing plan" : "No plan"}</div>
+        </td>
       </tr>
       <tr>
         <td colSpan={5}>
@@ -166,9 +170,9 @@ export function BudgetPlanningRow({
                     </tbody>
                   </table>
                 </div>
-                <p className="helperText">
-                  Planned total: {formatCurrency(plannedTotal)}. Saving monthly changes updates the annual plan total.
-                </p>
+                <p className="helperText">Prior-year monthly total: {formatCurrency(monthlyHistoryTotal)}.</p>
+                <p className="helperText">Current planned total: {formatCurrency(plannedTotal)}.</p>
+                <p className="helperText">Saving monthly changes updates the annual plan total.</p>
                 <button className="buttonPrimary" type="submit">
                   Save monthly changes
                 </button>
