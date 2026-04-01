@@ -70,5 +70,5 @@ export type MonthlyActualByOrgAccountRow = {
   organizationId: string;
   accountCodeId: string;
   monthStart: string;
-  postedAmount: number;
+  obligatedAmount: number;
 };

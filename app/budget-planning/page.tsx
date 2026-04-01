@@ -186,7 +186,7 @@ export default async function BudgetPlanningPage({
             if (searchQuery && !accountCode.label.toLowerCase().includes(searchQuery)) return false;
             const plan = planningData.planByAccountCodeId.get(accountCode.id) ?? null;
             const actuals = planningData.actualsByAccountCodeId.get(accountCode.id) ?? [];
-            const hasHistory = actuals.some((row) => row.postedAmount !== 0);
+            const hasHistory = actuals.some((row) => row.obligatedAmount !== 0);
             const hasPlan = Boolean(plan);
 
             if (showFilter === "history") return hasHistory;
@@ -228,8 +228,8 @@ export default async function BudgetPlanningPage({
             const plan = planningData.planByAccountCodeId.get(accountCode.id) ?? null;
             const months = plan ? planningData.monthsByPlanId.get(plan.id) ?? [] : [];
             const actuals = planningData.actualsByAccountCodeId.get(accountCode.id) ?? [];
-            const priorTotal = actuals.reduce((sum, row) => sum + row.postedAmount, 0);
-            const hasHistory = actuals.some((row) => row.postedAmount !== 0);
+            const priorTotal = actuals.reduce((sum, row) => sum + row.obligatedAmount, 0);
+            const hasHistory = actuals.some((row) => row.obligatedAmount !== 0);
             const historyIndicator = hasHistory ? "Has history" : "No history";
             const planIndicator = plan ? "Existing plan" : "No plan";
             let planSource = "none";

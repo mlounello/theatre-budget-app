@@ -149,14 +149,17 @@ function fiscalMonthIndexForDate(monthStart: string, fiscalYearStart: string): n
 }
 
 function mapHistoryToFiscalMonths(
-  rows: Array<{ monthStart: string; postedAmount: number }>,
+  rows: Array<{ monthStart: string; obligatedAmount: number }>,
   fiscalYearStart: string
 ): Map<number, number> {
   const totals = new Map<number, number>();
   for (const row of rows) {
     const index = fiscalMonthIndexForDate(row.monthStart, fiscalYearStart);
     if (!index) continue;
-    totals.set(index, (totals.get(index) ?? 0) + (Number.isFinite(row.postedAmount) ? row.postedAmount : 0));
+    totals.set(
+      index,
+      (totals.get(index) ?? 0) + (Number.isFinite(row.obligatedAmount) ? row.obligatedAmount : 0)
+    );
   }
   return totals;
 }
@@ -378,7 +381,7 @@ async function upsertBudgetPlanAnnualAmount(params: {
   const historyByIndex = mapHistoryToFiscalMonths(
     historyRows.map((row) => ({
       monthStart: row.monthStart,
-      postedAmount: row.postedAmount
+      obligatedAmount: row.obligatedAmount
     })),
     sourceFiscalYearStart
   );

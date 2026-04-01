@@ -43,12 +43,12 @@ export function BudgetPlanningRow({
   fiscalYearId,
   organizationId
 }: BudgetPlanningRowProps) {
-  const priorTotal = actuals.reduce((sum, row) => sum + row.postedAmount, 0);
+  const priorTotal = actuals.reduce((sum, row) => sum + row.obligatedAmount, 0);
   const planSource = resolvePlanSource(plan, months, priorTotal);
   const actualsByMonth = useMemo(() => {
     const map = new Map<string, number>();
     for (const row of actuals) {
-      map.set(row.monthStart, (map.get(row.monthStart) ?? 0) + row.postedAmount);
+      map.set(row.monthStart, (map.get(row.monthStart) ?? 0) + row.obligatedAmount);
     }
     return map;
   }, [actuals]);

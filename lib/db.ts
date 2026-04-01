@@ -1991,7 +1991,7 @@ export async function getHistoricalMonthlyActuals(params: {
 
   let query = supabase
     .from("v_monthly_actuals_by_org_account")
-    .select("fiscal_year_id, organization_id, account_code_id, month_start, posted_amount")
+    .select("fiscal_year_id, organization_id, account_code_id, month_start, obligated_amount")
     .eq("fiscal_year_id", fiscalYearId)
     .eq("organization_id", organizationId);
 
@@ -2007,7 +2007,7 @@ export async function getHistoricalMonthlyActuals(params: {
     organizationId: row.organization_id as string,
     accountCodeId: row.account_code_id as string,
     monthStart: row.month_start as string,
-    postedAmount: asNumber(row.posted_amount as string | number | null)
+    obligatedAmount: asNumber(row.obligated_amount as string | number | null)
   }));
 }
 
