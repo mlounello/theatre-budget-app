@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import {
   bulkDeleteCreditCardsAction,
   bulkDeleteStatementMonthsAction,
@@ -10,7 +10,8 @@ import {
   deleteStatementMonthAction,
   reopenStatementMonthAction,
   updateCreditCardAction,
-  updateStatementMonthAction
+  updateStatementMonthAction,
+  type ActionState
 } from "@/app/cc/actions";
 
 type CardRow = {
@@ -32,6 +33,8 @@ type StatementMonthRow = {
 type MonthSortKey = "statementMonth" | "creditCardName" | "state";
 type MonthSortDirection = "asc" | "desc";
 
+const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
+
 function monthStateValue(month: StatementMonthRow): string {
   if (month.postedToBannerAt) return "posted_to_banner";
   if (month.postedAt) return "statement_paid";
@@ -45,6 +48,16 @@ export function CcAdminTables({
   cards: CardRow[];
   statementMonths: StatementMonthRow[];
 }) {
+  const [bulkCardUpdateState, bulkCardUpdateAction] = useActionState(bulkUpdateCreditCardsAction, initialState);
+  const [bulkCardDeleteState, bulkCardDeleteAction] = useActionState(bulkDeleteCreditCardsAction, initialState);
+  const [bulkMonthUpdateState, bulkMonthUpdateAction] = useActionState(bulkUpdateStatementMonthsAction, initialState);
+  const [bulkMonthDeleteState, bulkMonthDeleteAction] = useActionState(bulkDeleteStatementMonthsAction, initialState);
+  const [updateCardState, updateCardAction] = useActionState(updateCreditCardAction, initialState);
+  const [deleteCardState, deleteCardAction] = useActionState(deleteCreditCardAction, initialState);
+  const [updateMonthState, updateMonthAction] = useActionState(updateStatementMonthAction, initialState);
+  const [deleteMonthState, deleteMonthAction] = useActionState(deleteStatementMonthAction, initialState);
+  const [reopenMonthState, reopenMonthAction] = useActionState(reopenStatementMonthAction, initialState);
+
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [selectedMonthIds, setSelectedMonthIds] = useState<string[]>([]);
   const [monthSortKey, setMonthSortKey] = useState<MonthSortKey>("statementMonth");
@@ -66,6 +79,18 @@ export function CcAdminTables({
 
   const allCardsSelected = cards.length > 0 && cards.every((card) => selectedCardSet.has(card.id));
   const allMonthsSelected = sortedStatementMonths.length > 0 && sortedStatementMonths.every((month) => selectedMonthSet.has(month.id));
+
+  useEffect(() => {
+    if (bulkCardDeleteState.ok && bulkCardDeleteState.message) {
+      setSelectedCardIds([]);
+    }
+  }, [bulkCardDeleteState]);
+
+  useEffect(() => {
+    if (bulkMonthDeleteState.ok && bulkMonthDeleteState.message) {
+      setSelectedMonthIds([]);
+    }
+  }, [bulkMonthDeleteState]);
 
   function toggleMonthSort(key: MonthSortKey): void {
     if (monthSortKey === key) {
@@ -99,10 +124,31 @@ export function CcAdminTables({
 
   return (
     <>
+      {bulkCardUpdateState.message ? (
+        <p className={bulkCardUpdateState.ok ? "successNote" : "errorNote"} key={bulkCardUpdateState.timestamp}>
+          {bulkCardUpdateState.message}
+        </p>
+      ) : null}
+      {bulkCardDeleteState.message ? (
+        <p className={bulkCardDeleteState.ok ? "successNote" : "errorNote"} key={bulkCardDeleteState.timestamp}>
+          {bulkCardDeleteState.message}
+        </p>
+      ) : null}
+      {updateCardState.message ? (
+        <p className={updateCardState.ok ? "successNote" : "errorNote"} key={updateCardState.timestamp}>
+          {updateCardState.message}
+        </p>
+      ) : null}
+      {deleteCardState.message ? (
+        <p className={deleteCardState.ok ? "successNote" : "errorNote"} key={deleteCardState.timestamp}>
+          {deleteCardState.message}
+        </p>
+      ) : null}
+
       <div className="bulkToolbar" style={{ marginTop: "0.65rem" }}>
         <p className="bulkMeta">Selected cards: {selectedCardIds.length}</p>
         <div className="bulkActions">
-          <form action={bulkUpdateCreditCardsAction} className="inlineEditForm">
+          <form action={bulkCardUpdateAction} className="inlineEditForm">
             <input type="hidden" name="selectedIdsJson" value={JSON.stringify(selectedCardIds)} />
             <label className="checkboxLabel">
               <input name="applyActive" type="checkbox" />
@@ -122,7 +168,7 @@ export function CcAdminTables({
             </button>
           </form>
           <form
-            action={bulkDeleteCreditCardsAction}
+            action={bulkCardDeleteAction}
             onSubmit={(event) => {
               if (!window.confirm(`Delete ${selectedCardIds.length} selected card(s)?`)) event.preventDefault();
             }}
@@ -167,7 +213,7 @@ export function CcAdminTables({
                     <summary className="tinyButton" style={{ listStyle: "none", cursor: "pointer" }}>
                       Edit
                     </summary>
-                    <form action={updateCreditCardAction} className="inlineEditForm" style={{ marginTop: "0.4rem" }}>
+                    <form action={updateCardAction} className="inlineEditForm" style={{ marginTop: "0.4rem" }}>
                       <input type="hidden" name="id" value={card.id} />
                       <input name="nickname" defaultValue={card.nickname} required />
                       <input name="maskedNumber" defaultValue={card.maskedNumber ?? ""} placeholder="****1234" />
@@ -180,7 +226,7 @@ export function CcAdminTables({
                       </button>
                     </form>
                   </details>
-                  <form action={deleteCreditCardAction}>
+                  <form action={deleteCardAction}>
                     <input type="hidden" name="id" value={card.id} />
                     <button type="submit" className="tinyButton dangerButton">
                       Trash
@@ -193,10 +239,36 @@ export function CcAdminTables({
         </table>
       </div>
 
+      {bulkMonthUpdateState.message ? (
+        <p className={bulkMonthUpdateState.ok ? "successNote" : "errorNote"} key={bulkMonthUpdateState.timestamp}>
+          {bulkMonthUpdateState.message}
+        </p>
+      ) : null}
+      {bulkMonthDeleteState.message ? (
+        <p className={bulkMonthDeleteState.ok ? "successNote" : "errorNote"} key={bulkMonthDeleteState.timestamp}>
+          {bulkMonthDeleteState.message}
+        </p>
+      ) : null}
+      {updateMonthState.message ? (
+        <p className={updateMonthState.ok ? "successNote" : "errorNote"} key={updateMonthState.timestamp}>
+          {updateMonthState.message}
+        </p>
+      ) : null}
+      {deleteMonthState.message ? (
+        <p className={deleteMonthState.ok ? "successNote" : "errorNote"} key={deleteMonthState.timestamp}>
+          {deleteMonthState.message}
+        </p>
+      ) : null}
+      {reopenMonthState.message ? (
+        <p className={reopenMonthState.ok ? "successNote" : "errorNote"} key={reopenMonthState.timestamp}>
+          {reopenMonthState.message}
+        </p>
+      ) : null}
+
       <div className="bulkToolbar" style={{ marginTop: "1rem" }}>
         <p className="bulkMeta">Selected statement months: {selectedMonthIds.length}</p>
         <div className="bulkActions">
-          <form action={bulkUpdateStatementMonthsAction} className="inlineEditForm">
+          <form action={bulkMonthUpdateAction} className="inlineEditForm">
             <input type="hidden" name="selectedIdsJson" value={JSON.stringify(selectedMonthIds)} />
             <label className="checkboxLabel">
               <input name="applyCreditCard" type="checkbox" />
@@ -220,7 +292,7 @@ export function CcAdminTables({
             </button>
           </form>
           <form
-            action={bulkDeleteStatementMonthsAction}
+            action={bulkMonthDeleteAction}
             onSubmit={(event) => {
               if (!window.confirm(`Delete ${selectedMonthIds.length} selected statement month(s)?`)) event.preventDefault();
             }}
@@ -279,7 +351,7 @@ export function CcAdminTables({
                         <summary className="tinyButton" style={{ listStyle: "none", cursor: "pointer" }}>
                           Edit
                         </summary>
-                        <form action={updateStatementMonthAction} className="inlineEditForm" style={{ marginTop: "0.4rem" }}>
+                        <form action={updateMonthAction} className="inlineEditForm" style={{ marginTop: "0.4rem" }}>
                           <input type="hidden" name="id" value={month.id} />
                           <input type="month" name="statementMonth" defaultValue={month.statementMonth.slice(0, 7)} required />
                           <select name="creditCardId" defaultValue={month.creditCardId} required>
@@ -294,24 +366,22 @@ export function CcAdminTables({
                           </button>
                         </form>
                       </details>
-                      <form action={deleteStatementMonthAction}>
+                      <form action={deleteMonthAction}>
                         <input type="hidden" name="id" value={month.id} />
                         <button type="submit" className="tinyButton dangerButton">
                           Trash
                         </button>
                       </form>
                     </>
+                  ) : month.postedToBannerAt ? (
+                    "-"
                   ) : (
-                    month.postedToBannerAt ? (
-                      "-"
-                    ) : (
-                      <form action={reopenStatementMonthAction}>
-                        <input type="hidden" name="statementMonthId" value={month.id} />
-                        <button type="submit" className="tinyButton">
-                          Reopen
-                        </button>
-                      </form>
-                    )
+                    <form action={reopenMonthAction}>
+                      <input type="hidden" name="statementMonthId" value={month.id} />
+                      <button type="submit" className="tinyButton">
+                        Reopen
+                      </button>
+                    </form>
                   )}
                 </td>
               </tr>

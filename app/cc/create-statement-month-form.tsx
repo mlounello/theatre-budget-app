@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createStatementMonthAction } from "@/app/cc/actions";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { createStatementMonthAction, type ActionState } from "@/app/cc/actions";
 
 type CardOption = {
   id: string;
@@ -10,7 +10,11 @@ type CardOption = {
   active: boolean;
 };
 
+const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
+
 export function CreateStatementMonthForm({ cards }: { cards: CardOption[] }) {
+  const [state, formAction] = useActionState(createStatementMonthAction, initialState);
+  const formRef = useRef<HTMLFormElement | null>(null);
   const [creditCardId, setCreditCardId] = useState("");
 
   useEffect(() => {
@@ -24,8 +28,18 @@ export function CreateStatementMonthForm({ cards }: { cards: CardOption[] }) {
     window.localStorage.setItem("tba_cc_credit_card_id", creditCardId);
   }, [creditCardId]);
 
+  useEffect(() => {
+    if (!state.ok || !state.message || !formRef.current) return;
+    formRef.current.reset();
+  }, [state]);
+
   return (
-    <form action={createStatementMonthAction} className="requestForm">
+    <form action={formAction} className="requestForm" ref={formRef}>
+      {state.message ? (
+        <p className={state.ok ? "successNote" : "errorNote"} key={state.timestamp}>
+          {state.message}
+        </p>
+      ) : null}
       <label>
         Credit Card
         <select name="creditCardId" required value={creditCardId} onChange={(event) => setCreditCardId(event.target.value)}>

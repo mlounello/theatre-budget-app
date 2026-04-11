@@ -1,10 +1,25 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext, requireProjectRole } from "@/lib/access";
 import type { PurchaseStatus } from "@/lib/types";
+
+type ActionState = {
+  ok: boolean;
+  message: string;
+  timestamp: number;
+};
+
+const emptyState: ActionState = { ok: true, message: "", timestamp: 0 };
+
+function ok(message: string): ActionState {
+  return { ok: true, message, timestamp: Date.now() };
+}
+
+function err(message: string): ActionState {
+  return { ok: false, message, timestamp: Date.now() };
+}
 
 function parseMoney(value: FormDataEntryValue | null): number {
   if (typeof value !== "string" || value.trim() === "") return 0;
@@ -29,32 +44,9 @@ function toStatementDate(monthValue: string): string {
   return `${trimmed}-01`;
 }
 
-function ccSuccess(message: string): never {
-  redirect(`/cc?ok=${encodeURIComponent(message)}`);
-}
-
-function ccError(message: string): never {
-  redirect(`/cc?error=${encodeURIComponent(message)}`);
-}
-
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim().length > 0) return error.message;
   return fallback;
-}
-
-function rethrowIfRedirect(error: unknown): void {
-  const message =
-    typeof error === "object" && error !== null && "message" in error
-      ? String((error as { message?: unknown }).message)
-      : "";
-  const digest =
-    typeof error === "object" && error !== null && "digest" in error
-      ? String((error as { digest?: unknown }).digest)
-      : "";
-
-  if (message.includes("NEXT_REDIRECT") || digest.includes("NEXT_REDIRECT")) {
-    throw error;
-  }
 }
 
 async function requireCcManagerRole(): Promise<void> {
@@ -150,51 +142,58 @@ async function getStatementMonthLinkedPurchaseTotals(
   return { totalsByPurchaseId, hasStatementLines };
 }
 
-export async function createCreditCardAction(formData: FormData): Promise<void> {
+export async function createCreditCardAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
     await requireGlobalAdmin();
 
     const nickname = String(formData.get("nickname") ?? "").trim();
     const maskedNumber = String(formData.get("maskedNumber") ?? "").trim();
     const active = formData.get("active") === "on";
 
-    if (!nickname) throw new Error("Card nickname is required.");
+    if (!nickname) return err("Card nickname is required.");
 
     const { error } = await supabase.from("credit_cards").insert({
       nickname,
       masked_number: maskedNumber || null,
       active
     });
-    if (error) throw new Error(error.message);
+    if (error) return err(error.message);
 
     revalidatePath("/cc");
     revalidatePath("/requests");
-    ccSuccess("Credit card saved.");
+    return ok("Credit card saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not save credit card."));
+    return err(getErrorMessage(error, "Could not save credit card."));
   }
 }
 
-export async function updateCreditCardAction(formData: FormData): Promise<void> {
+export async function updateCreditCardAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
     await requireGlobalAdmin();
 
     const id = String(formData.get("id") ?? "").trim();
     const nickname = String(formData.get("nickname") ?? "").trim();
     const maskedNumber = String(formData.get("maskedNumber") ?? "").trim();
     const active = formData.get("active") === "on";
-    if (!id || !nickname) throw new Error("Card ID and nickname are required.");
+    if (!id || !nickname) return err("Card ID and nickname are required.");
 
     const { data: updated, error } = await supabase
       .from("credit_cards")
@@ -202,52 +201,58 @@ export async function updateCreditCardAction(formData: FormData): Promise<void> 
       .eq("id", id)
       .select("id")
       .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!updated?.id) throw new Error("Credit card update was not applied.");
+    if (error) return err(error.message);
+    if (!updated?.id) return err("Credit card update was not applied.");
 
     revalidatePath("/cc");
-    ccSuccess("Credit card updated.");
+    return ok("Credit card updated.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not update credit card."));
+    return err(getErrorMessage(error, "Could not update credit card."));
   }
 }
 
-export async function deleteCreditCardAction(formData: FormData): Promise<void> {
+export async function deleteCreditCardAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
     await requireGlobalAdmin();
 
     const id = String(formData.get("id") ?? "").trim();
-    if (!id) throw new Error("Card ID is required.");
+    if (!id) return err("Card ID is required.");
 
     const { error } = await supabase.from("credit_cards").delete().eq("id", id);
-    if (error) throw new Error(error.message);
+    if (error) return err(error.message);
 
     revalidatePath("/cc");
-    ccSuccess("Credit card deleted.");
+    return ok("Credit card deleted.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not delete credit card."));
+    return err(getErrorMessage(error, "Could not delete credit card."));
   }
 }
 
-export async function createStatementMonthAction(formData: FormData): Promise<void> {
+export async function createStatementMonthAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
 
     const creditCardId = String(formData.get("creditCardId") ?? "").trim();
     const month = String(formData.get("statementMonth") ?? "").trim();
 
-    if (!creditCardId || !month) throw new Error("Card and statement month are required.");
+    if (!creditCardId || !month) return err("Card and statement month are required.");
     const statementDate = toStatementDate(month);
     await requireCcManagerRole();
 
@@ -257,11 +262,11 @@ export async function createStatementMonthAction(formData: FormData): Promise<vo
       .eq("credit_card_id", creditCardId)
       .eq("statement_month", statementDate)
       .limit(1);
-    if (existingError) throw new Error(existingError.message);
+    if (existingError) return err(existingError.message);
 
     if ((existingRows ?? []).length > 0) {
       revalidatePath("/cc");
-      ccSuccess("Statement month already exists.");
+      return ok("Statement month already exists.");
     }
 
     const { error } = await supabase.from("cc_statement_months").insert({
@@ -270,37 +275,40 @@ export async function createStatementMonthAction(formData: FormData): Promise<vo
       statement_month: statementDate,
       created_by_user_id: user.id
     });
-    if (error) throw new Error(error.message);
+    if (error) return err(error.message);
 
     revalidatePath("/cc");
-    ccSuccess("Statement month saved.");
+    return ok("Statement month saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not save statement month."));
+    return err(getErrorMessage(error, "Could not save statement month."));
   }
 }
 
-export async function updateStatementMonthAction(formData: FormData): Promise<void> {
+export async function updateStatementMonthAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
 
     const id = String(formData.get("id") ?? "").trim();
     const creditCardId = String(formData.get("creditCardId") ?? "").trim();
     const month = String(formData.get("statementMonth") ?? "").trim();
-    if (!id || !creditCardId || !month) throw new Error("Statement month, id, and card are required.");
+    if (!id || !creditCardId || !month) return err("Statement month, id, and card are required.");
 
     const { data: existing, error: existingError } = await supabase
       .from("cc_statement_months")
       .select("id, posted_at, posted_to_banner_at")
       .eq("id", id)
       .single();
-    if (existingError || !existing) throw new Error("Statement month not found.");
-    if (existing.posted_to_banner_at) throw new Error("Cannot edit a statement month that is already posted to Banner.");
-    if (existing.posted_at) throw new Error("Reopen this statement month before editing.");
+    if (existingError || !existing) return err("Statement month not found.");
+    if (existing.posted_to_banner_at) return err("Cannot edit a statement month that is already posted to Banner.");
+    if (existing.posted_at) return err("Reopen this statement month before editing.");
     await requireCcManagerRole();
 
     const statementDate = toStatementDate(month);
@@ -310,34 +318,37 @@ export async function updateStatementMonthAction(formData: FormData): Promise<vo
       .eq("id", id)
       .select("id")
       .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!updated?.id) throw new Error("Statement month update was not applied.");
+    if (error) return err(error.message);
+    if (!updated?.id) return err("Statement month update was not applied.");
 
     revalidatePath("/cc");
-    ccSuccess("Statement month updated.");
+    return ok("Statement month updated.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not update statement month."));
+    return err(getErrorMessage(error, "Could not update statement month."));
   }
 }
 
-export async function deleteStatementMonthAction(formData: FormData): Promise<void> {
+export async function deleteStatementMonthAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
 
     const id = String(formData.get("id") ?? "").trim();
-    if (!id) throw new Error("Statement month id is required.");
+    if (!id) return err("Statement month id is required.");
 
     const { data: existing, error: existingError } = await supabase
       .from("cc_statement_months")
       .select("id")
       .eq("id", id)
       .single();
-    if (existingError || !existing) throw new Error("Statement month not found.");
+    if (existingError || !existing) return err("Statement month not found.");
     await requireCcManagerRole();
 
     const { data: linkedPurchases, error: linkedError } = await supabase
@@ -345,9 +356,9 @@ export async function deleteStatementMonthAction(formData: FormData): Promise<vo
       .select("id")
       .eq("cc_statement_month_id", id)
       .limit(1);
-    if (linkedError) throw new Error(linkedError.message);
+    if (linkedError) return err(linkedError.message);
     if ((linkedPurchases ?? []).length > 0) {
-      throw new Error("Cannot delete a statement month that has linked purchases. Remove purchases first.");
+      return err("Cannot delete a statement month that has linked purchases. Remove purchases first.");
     }
 
     const { data: linkedReceipts, error: linkedReceiptsError } = await supabase
@@ -355,45 +366,48 @@ export async function deleteStatementMonthAction(formData: FormData): Promise<vo
       .select("id")
       .eq("cc_statement_month_id", id)
       .limit(1);
-    if (linkedReceiptsError) throw new Error(linkedReceiptsError.message);
+    if (linkedReceiptsError) return err(linkedReceiptsError.message);
     if ((linkedReceipts ?? []).length > 0) {
-      throw new Error("Cannot delete a statement month that has linked receipts. Remove receipts first.");
+      return err("Cannot delete a statement month that has linked receipts. Remove receipts first.");
     }
 
     const { error } = await supabase.from("cc_statement_months").delete().eq("id", id);
-    if (error) throw new Error(error.message);
+    if (error) return err(error.message);
 
     revalidatePath("/cc");
-    ccSuccess("Statement month deleted.");
+    return ok("Statement month deleted.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not delete statement month."));
+    return err(getErrorMessage(error, "Could not delete statement month."));
   }
 }
 
-export async function bulkUpdateCreditCardsAction(formData: FormData): Promise<void> {
+export async function bulkUpdateCreditCardsAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
     await requireGlobalAdmin();
 
     const ids = parseIdsJson(formData.get("selectedIdsJson"));
-    if (ids.length === 0) throw new Error("Select at least one credit card.");
+    if (ids.length === 0) return err("Select at least one credit card.");
 
     const applyActive = formData.get("applyActive") === "on";
     const applyMaskedNumber = formData.get("applyMaskedNumber") === "on";
-    if (!applyActive && !applyMaskedNumber) throw new Error("Choose at least one field to apply.");
+    if (!applyActive && !applyMaskedNumber) return err("Choose at least one field to apply.");
 
     const activeValue = String(formData.get("activeValue") ?? "").trim().toLowerCase();
     const nextActive = activeValue === "true";
     const maskedNumber = String(formData.get("maskedNumber") ?? "").trim();
 
     const { data: cards, error: cardsError } = await supabase.from("credit_cards").select("id, active, masked_number").in("id", ids);
-    if (cardsError) throw new Error(cardsError.message);
-    if (!cards || cards.length !== ids.length) throw new Error("Some selected cards were not found.");
+    if (cardsError) return err(cardsError.message);
+    if (!cards || cards.length !== ids.length) return err("Some selected cards were not found.");
 
     for (const card of cards) {
       const { data: updated, error: updateError } = await supabase
@@ -405,75 +419,81 @@ export async function bulkUpdateCreditCardsAction(formData: FormData): Promise<v
         .eq("id", card.id as string)
         .select("id")
         .maybeSingle();
-      if (updateError) throw new Error(updateError.message);
-      if (!updated?.id) throw new Error("A bulk credit card update was not applied.");
+      if (updateError) return err(updateError.message);
+      if (!updated?.id) return err("A bulk credit card update was not applied.");
     }
 
     revalidatePath("/cc");
     revalidatePath("/requests");
-    ccSuccess("Selected credit cards updated.");
+    return ok("Selected credit cards updated.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not bulk update credit cards."));
+    return err(getErrorMessage(error, "Could not bulk update credit cards."));
   }
 }
 
-export async function bulkDeleteCreditCardsAction(formData: FormData): Promise<void> {
+export async function bulkDeleteCreditCardsAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
     await requireGlobalAdmin();
 
     const ids = parseIdsJson(formData.get("selectedIdsJson"));
-    if (ids.length === 0) throw new Error("Select at least one credit card.");
+    if (ids.length === 0) return err("Select at least one credit card.");
 
     const { error } = await supabase.from("credit_cards").delete().in("id", ids);
-    if (error) throw new Error(error.message);
+    if (error) return err(error.message);
 
     revalidatePath("/cc");
     revalidatePath("/requests");
-    ccSuccess("Selected credit cards deleted.");
+    return ok("Selected credit cards deleted.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not delete selected credit cards."));
+    return err(getErrorMessage(error, "Could not delete selected credit cards."));
   }
 }
 
-export async function bulkUpdateStatementMonthsAction(formData: FormData): Promise<void> {
+export async function bulkUpdateStatementMonthsAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
     await requireCcManagerRole();
 
     const ids = parseIdsJson(formData.get("selectedIdsJson"));
-    if (ids.length === 0) throw new Error("Select at least one statement month.");
+    if (ids.length === 0) return err("Select at least one statement month.");
 
     const applyCreditCard = formData.get("applyCreditCard") === "on";
     const applyMonth = formData.get("applyStatementMonth") === "on";
-    if (!applyCreditCard && !applyMonth) throw new Error("Choose at least one field to apply.");
+    if (!applyCreditCard && !applyMonth) return err("Choose at least one field to apply.");
 
     const creditCardId = String(formData.get("creditCardId") ?? "").trim();
     const month = String(formData.get("statementMonth") ?? "").trim();
     const statementDate = applyMonth ? toStatementDate(month) : null;
-    if (applyCreditCard && !creditCardId) throw new Error("Credit card is required when applying credit card.");
-    if (applyMonth && !month) throw new Error("Statement month is required when applying month.");
+    if (applyCreditCard && !creditCardId) return err("Credit card is required when applying credit card.");
+    if (applyMonth && !month) return err("Statement month is required when applying month.");
 
     const { data: months, error: monthsError } = await supabase
       .from("cc_statement_months")
       .select("id, credit_card_id, statement_month, posted_at, posted_to_banner_at")
       .in("id", ids);
-    if (monthsError) throw new Error(monthsError.message);
-    if (!months || months.length !== ids.length) throw new Error("Some selected statement months were not found.");
+    if (monthsError) return err(monthsError.message);
+    if (!months || months.length !== ids.length) return err("Some selected statement months were not found.");
 
     for (const monthRow of months) {
-      if (monthRow.posted_to_banner_at) throw new Error("Cannot bulk edit statement months that are already posted to Banner.");
-      if (monthRow.posted_at) throw new Error("Cannot bulk edit submitted statement months.");
+      if (monthRow.posted_to_banner_at) return err("Cannot bulk edit statement months that are already posted to Banner.");
+      if (monthRow.posted_at) return err("Cannot bulk edit submitted statement months.");
       const { data: updated, error: updateError } = await supabase
         .from("cc_statement_months")
         .update({
@@ -483,38 +503,41 @@ export async function bulkUpdateStatementMonthsAction(formData: FormData): Promi
         .eq("id", monthRow.id as string)
         .select("id")
         .maybeSingle();
-      if (updateError) throw new Error(updateError.message);
-      if (!updated?.id) throw new Error("A bulk statement month update was not applied.");
+      if (updateError) return err(updateError.message);
+      if (!updated?.id) return err("A bulk statement month update was not applied.");
     }
 
     revalidatePath("/cc");
-    ccSuccess("Selected statement months updated.");
+    return ok("Selected statement months updated.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not bulk update statement months."));
+    return err(getErrorMessage(error, "Could not bulk update statement months."));
   }
 }
 
-export async function bulkDeleteStatementMonthsAction(formData: FormData): Promise<void> {
+export async function bulkDeleteStatementMonthsAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
     await requireCcManagerRole();
 
     const ids = parseIdsJson(formData.get("selectedIdsJson"));
-    if (ids.length === 0) throw new Error("Select at least one statement month.");
+    if (ids.length === 0) return err("Select at least one statement month.");
 
     const { data: linkedPurchases, error: linkedError } = await supabase
       .from("purchases")
       .select("id, cc_statement_month_id")
       .in("cc_statement_month_id", ids)
       .limit(1);
-    if (linkedError) throw new Error(linkedError.message);
+    if (linkedError) return err(linkedError.message);
     if ((linkedPurchases ?? []).length > 0) {
-      throw new Error("Cannot bulk delete statement months that have linked purchases.");
+      return err("Cannot bulk delete statement months that have linked purchases.");
     }
 
     const { data: linkedReceipts, error: linkedReceiptsError } = await supabase
@@ -522,29 +545,32 @@ export async function bulkDeleteStatementMonthsAction(formData: FormData): Promi
       .select("id, cc_statement_month_id")
       .in("cc_statement_month_id", ids)
       .limit(1);
-    if (linkedReceiptsError) throw new Error(linkedReceiptsError.message);
+    if (linkedReceiptsError) return err(linkedReceiptsError.message);
     if ((linkedReceipts ?? []).length > 0) {
-      throw new Error("Cannot bulk delete statement months that have linked receipts.");
+      return err("Cannot bulk delete statement months that have linked receipts.");
     }
 
     const { error } = await supabase.from("cc_statement_months").delete().in("id", ids);
-    if (error) throw new Error(error.message);
+    if (error) return err(error.message);
 
     revalidatePath("/cc");
-    ccSuccess("Selected statement months deleted.");
+    return ok("Selected statement months deleted.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not bulk delete statement months."));
+    return err(getErrorMessage(error, "Could not bulk delete statement months."));
   }
 }
 
-export async function assignReceiptsToStatementAction(formData: FormData): Promise<void> {
+export async function assignReceiptsToStatementAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
     await requireCcManagerRole();
 
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
@@ -553,37 +579,37 @@ export async function assignReceiptsToStatementAction(formData: FormData): Promi
       .map((value) => String(value).trim())
       .filter(Boolean);
 
-    if (!statementMonthId) throw new Error("Statement month is required.");
-    if (receiptIds.length === 0) throw new Error("Select at least one receipt.");
+    if (!statementMonthId) return err("Statement month is required.");
+    if (receiptIds.length === 0) return err("Select at least one receipt.");
 
     const { data: statementMonth, error: statementMonthError } = await supabase
       .from("cc_statement_months")
       .select("id, credit_card_id, posted_at")
       .eq("id", statementMonthId)
       .single();
-    if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
-    if (statementMonth.posted_at) throw new Error("Statement month is already submitted.");
+    if (statementMonthError || !statementMonth) return err("Statement month not found.");
+    if (statementMonth.posted_at) return err("Statement month is already submitted.");
 
     const { data: receipts, error: receiptsError } = await supabase
       .from("purchase_receipts")
       .select("id, purchase_id, cc_statement_month_id, purchases!inner(id, status, request_type, is_credit_card, credit_card_id)")
       .in("id", receiptIds);
-    if (receiptsError) throw new Error(receiptsError.message);
-    if (!receipts || receipts.length !== receiptIds.length) throw new Error("One or more receipts were not found.");
+    if (receiptsError) return err(receiptsError.message);
+    if (!receipts || receipts.length !== receiptIds.length) return err("One or more receipts were not found.");
 
     for (const receipt of receipts) {
       const purchase = receipt.purchases as
         | { id?: string; status?: string; request_type?: string; is_credit_card?: boolean | null; credit_card_id?: string | null }
         | null;
-      if (!purchase) throw new Error("Receipt purchase link is invalid.");
+      if (!purchase) return err("Receipt purchase link is invalid.");
       if ((purchase.request_type as string) !== "expense" || !Boolean(purchase.is_credit_card as boolean | null)) {
-        throw new Error("Only receipts from credit-card expense requests can be assigned.");
+        return err("Only receipts from credit-card expense requests can be assigned.");
       }
       if ((purchase.status as string) !== "pending_cc") {
-        throw new Error("Only receipts from Pending CC purchases can be assigned.");
+        return err("Only receipts from Pending CC purchases can be assigned.");
       }
       if ((receipt.cc_statement_month_id as string | null) && (receipt.cc_statement_month_id as string) !== statementMonthId) {
-        throw new Error("One or more receipts are already assigned to another statement month.");
+        return err("One or more receipts are already assigned to another statement month.");
       }
     }
 
@@ -593,7 +619,7 @@ export async function assignReceiptsToStatementAction(formData: FormData): Promi
         cc_statement_month_id: statementMonthId
       })
       .in("id", receiptIds);
-    if (updateError) throw new Error(updateError.message);
+    if (updateError) return err(updateError.message);
 
     const purchaseIds = Array.from(
       new Set(
@@ -608,58 +634,61 @@ export async function assignReceiptsToStatementAction(formData: FormData): Promi
           cc_statement_month_id: statementMonthId
         })
         .in("id", purchaseIds);
-      if (purchaseUpdateError) throw new Error(purchaseUpdateError.message);
+      if (purchaseUpdateError) return err(purchaseUpdateError.message);
     }
 
     revalidatePath("/cc");
-    ccSuccess("Receipts added to statement month.");
+    return ok("Receipts added to statement month.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not add receipts to statement month."));
+    return err(getErrorMessage(error, "Could not add receipts to statement month."));
   }
 }
 
-export async function unassignReceiptFromStatementAction(formData: FormData): Promise<void> {
+export async function unassignReceiptFromStatementAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
     await requireCcManagerRole();
 
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
     const receiptId = String(formData.get("receiptId") ?? "").trim();
-    if (!statementMonthId || !receiptId) throw new Error("Statement month and receipt are required.");
+    if (!statementMonthId || !receiptId) return err("Statement month and receipt are required.");
 
     const { data: statementMonth, error: statementMonthError } = await supabase
       .from("cc_statement_months")
       .select("id, posted_at")
       .eq("id", statementMonthId)
       .single();
-    if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
-    if (statementMonth.posted_at) throw new Error("Cannot remove purchases from a submitted statement month.");
+    if (statementMonthError || !statementMonth) return err("Statement month not found.");
+    if (statementMonth.posted_at) return err("Cannot remove purchases from a submitted statement month.");
 
     const { data: receiptRow, error: receiptRowError } = await supabase
       .from("purchase_receipts")
       .select("id, purchase_id")
       .eq("id", receiptId)
       .maybeSingle();
-    if (receiptRowError) throw new Error(receiptRowError.message);
-    if (!receiptRow?.purchase_id) throw new Error("Receipt not found.");
+    if (receiptRowError) return err(receiptRowError.message);
+    if (!receiptRow?.purchase_id) return err("Receipt not found.");
 
     const { error: updateError } = await supabase
       .from("purchase_receipts")
       .update({ cc_statement_month_id: null })
       .eq("id", receiptId)
       .eq("cc_statement_month_id", statementMonthId);
-    if (updateError) throw new Error(updateError.message);
+    if (updateError) return err(updateError.message);
 
     const { data: statementLines, error: statementLinesError } = await supabase
       .from("cc_statement_lines")
       .select("id, matched_purchase_ids")
       .eq("statement_month_id", statementMonthId);
-    if (statementLinesError) throw new Error(statementLinesError.message);
+    if (statementLinesError) return err(statementLinesError.message);
 
     for (const line of statementLines ?? []) {
       const matchedPurchaseIds = Array.isArray(line.matched_purchase_ids)
@@ -672,7 +701,7 @@ export async function unassignReceiptFromStatementAction(formData: FormData): Pr
         .from("cc_statement_lines")
         .update({ matched_purchase_ids: nextMatchedPurchaseIds })
         .eq("id", line.id as string);
-      if (lineUpdateError) throw new Error(lineUpdateError.message);
+      if (lineUpdateError) return err(lineUpdateError.message);
     }
 
     const { count: remainingAssignedCount, error: remainingAssignedError } = await supabase
@@ -680,14 +709,14 @@ export async function unassignReceiptFromStatementAction(formData: FormData): Pr
       .select("id", { head: true, count: "exact" })
       .eq("purchase_id", receiptRow.purchase_id as string)
       .eq("cc_statement_month_id", statementMonthId);
-    if (remainingAssignedError) throw new Error(remainingAssignedError.message);
+    if (remainingAssignedError) return err(remainingAssignedError.message);
 
     const { data: remainingMatchedLines, error: remainingMatchedLinesError } = await supabase
       .from("cc_statement_lines")
       .select("id")
       .eq("statement_month_id", statementMonthId)
       .contains("matched_purchase_ids", [receiptRow.purchase_id as string]);
-    if (remainingMatchedLinesError) throw new Error(remainingMatchedLinesError.message);
+    if (remainingMatchedLinesError) return err(remainingMatchedLinesError.message);
 
     if ((remainingAssignedCount ?? 0) === 0 && (remainingMatchedLines ?? []).length === 0) {
       const { error: purchaseResetError } = await supabase
@@ -695,43 +724,46 @@ export async function unassignReceiptFromStatementAction(formData: FormData): Pr
         .update({ cc_statement_month_id: null })
         .eq("id", receiptRow.purchase_id as string)
         .eq("cc_statement_month_id", statementMonthId);
-      if (purchaseResetError) throw new Error(purchaseResetError.message);
+      if (purchaseResetError) return err(purchaseResetError.message);
     }
 
     revalidatePath("/cc");
-    ccSuccess("Receipt removed from statement month.");
+    return ok("Receipt removed from statement month.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not remove receipt from statement month."));
+    return err(getErrorMessage(error, "Could not remove receipt from statement month."));
   }
 }
 
-export async function submitStatementMonthAction(formData: FormData): Promise<void> {
+export async function submitStatementMonthAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
     await requireCcManagerRole();
 
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
-    if (!statementMonthId) throw new Error("Statement month is required.");
+    if (!statementMonthId) return err("Statement month is required.");
 
     const { data: statementMonth, error: statementMonthError } = await supabase
       .from("cc_statement_months")
       .select("id, statement_month, posted_at")
       .eq("id", statementMonthId)
       .single();
-    if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
-    if (statementMonth.posted_at) throw new Error("Statement month is already submitted.");
+    if (statementMonthError || !statementMonth) return err("Statement month not found.");
+    if (statementMonth.posted_at) return err("Statement month is already submitted.");
 
     const { data: receipts, error: receiptsError } = await supabase
       .from("purchase_receipts")
       .select("id, amount_received, purchase_id, purchases!inner(id, project_id, status, estimated_amount, requested_amount, pending_cc_amount, request_type, is_credit_card)")
       .eq("cc_statement_month_id", statementMonthId);
-    if (receiptsError) throw new Error(receiptsError.message);
-    if (!receipts || receipts.length === 0) throw new Error("No receipts assigned to this statement month.");
+    if (receiptsError) return err(receiptsError.message);
+    if (!receipts || receipts.length === 0) return err("No receipts assigned to this statement month.");
 
     const purchaseIds = Array.from(
       new Set(
@@ -748,8 +780,8 @@ export async function submitStatementMonthAction(formData: FormData): Promise<vo
       .from("purchases")
       .select("id, status, estimated_amount, requested_amount, pending_cc_amount, request_type, is_credit_card")
       .in("id", purchaseIds);
-    if (purchasesError) throw new Error(purchasesError.message);
-    if (!purchases || purchases.length === 0) throw new Error("No purchases found for assigned receipts.");
+    if (purchasesError) return err(purchasesError.message);
+    if (!purchases || purchases.length === 0) return err("No purchases found for assigned receipts.");
 
     for (const purchase of purchases) {
       if ((purchase.request_type as string) !== "expense" || !Boolean(purchase.is_credit_card as boolean | null)) continue;
@@ -762,7 +794,7 @@ export async function submitStatementMonthAction(formData: FormData): Promise<vo
           procurement_status: "statement_paid"
         })
         .eq("id", purchase.id as string);
-      if (updateError) throw new Error(updateError.message);
+      if (updateError) return err(updateError.message);
 
       const { error: eventError } = await supabase.from("purchase_events").insert({
         purchase_id: purchase.id as string,
@@ -776,7 +808,7 @@ export async function submitStatementMonthAction(formData: FormData): Promise<vo
         changed_by_user_id: user.id,
         note: `Statement paid ${(statementMonth.statement_month as string).slice(0, 7)}; awaiting accounts posting`
       });
-      if (eventError) throw new Error(eventError.message);
+      if (eventError) return err(eventError.message);
     }
 
     const { data: monthUpdated, error: monthUpdateError } = await supabase
@@ -785,47 +817,50 @@ export async function submitStatementMonthAction(formData: FormData): Promise<vo
       .eq("id", statementMonthId)
       .select("id")
       .maybeSingle();
-    if (monthUpdateError) throw new Error(monthUpdateError.message);
-    if (!monthUpdated?.id) throw new Error("Statement month submit update was not applied.");
+    if (monthUpdateError) return err(monthUpdateError.message);
+    if (!monthUpdated?.id) return err("Statement month submit update was not applied.");
 
     revalidatePath("/cc");
     revalidatePath("/requests");
     revalidatePath("/");
-    ccSuccess("Statement month submitted and linked receipts marked Statement Paid.");
+    return ok("Statement month submitted and linked receipts marked Statement Paid.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not submit statement month."));
+    return err(getErrorMessage(error, "Could not submit statement month."));
   }
 }
 
-export async function reopenStatementMonthAction(formData: FormData): Promise<void> {
+export async function reopenStatementMonthAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
     await requireCcManagerRole();
 
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
-    if (!statementMonthId) throw new Error("Statement month is required.");
+    if (!statementMonthId) return err("Statement month is required.");
 
     const { data: statementMonth, error: statementMonthError } = await supabase
       .from("cc_statement_months")
       .select("id, posted_at, posted_to_banner_at, statement_month")
       .eq("id", statementMonthId)
       .single();
-    if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
-    if (!statementMonth.posted_at) throw new Error("Statement month is already open.");
+    if (statementMonthError || !statementMonth) return err("Statement month not found.");
+    if (!statementMonth.posted_at) return err("Statement month is already open.");
     if (statementMonth.posted_to_banner_at) {
-      throw new Error("Statement month is already posted to Banner. Reopening is blocked to protect posted totals.");
+      return err("Statement month is already posted to Banner. Reopening is blocked to protect posted totals.");
     }
 
     const { data: receiptRows, error: receiptError } = await supabase
       .from("purchase_receipts")
       .select("purchase_id")
       .eq("cc_statement_month_id", statementMonthId);
-    if (receiptError) throw new Error(receiptError.message);
+    if (receiptError) return err(receiptError.message);
 
     const purchaseIds = Array.from(
       new Set((receiptRows ?? []).map((row) => String(row.purchase_id ?? "")).filter(Boolean))
@@ -836,13 +871,13 @@ export async function reopenStatementMonthAction(formData: FormData): Promise<vo
         .from("purchases")
         .select("id, status, request_type, is_credit_card")
         .in("id", purchaseIds);
-      if (purchasesError) throw new Error(purchasesError.message);
+      if (purchasesError) return err(purchasesError.message);
 
       for (const purchase of purchases ?? []) {
         const isCc = (purchase.request_type as string) === "expense" && Boolean(purchase.is_credit_card as boolean | null);
         if (!isCc) continue;
         if ((purchase.status as string) === "posted") {
-          throw new Error("One or more linked purchases are already posted. Reopen is blocked.");
+          return err("One or more linked purchases are already posted. Reopen is blocked.");
         }
       }
 
@@ -850,7 +885,7 @@ export async function reopenStatementMonthAction(formData: FormData): Promise<vo
         .from("purchases")
         .update({ cc_workflow_status: "receipts_uploaded", procurement_status: "receipts_uploaded" })
         .in("id", purchaseIds);
-      if (purchaseResetError) throw new Error(purchaseResetError.message);
+      if (purchaseResetError) return err(purchaseResetError.message);
     }
 
     const { data: monthReset, error: monthResetError } = await supabase
@@ -859,45 +894,48 @@ export async function reopenStatementMonthAction(formData: FormData): Promise<vo
       .eq("id", statementMonthId)
       .select("id")
       .maybeSingle();
-    if (monthResetError) throw new Error(monthResetError.message);
-    if (!monthReset?.id) throw new Error("Statement month reopen update was not applied.");
+    if (monthResetError) return err(monthResetError.message);
+    if (!monthReset?.id) return err("Statement month reopen update was not applied.");
 
     revalidatePath("/cc");
     revalidatePath("/requests");
-    ccSuccess("Statement month reopened.");
+    return ok("Statement month reopened.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not reopen statement month."));
+    return err(getErrorMessage(error, "Could not reopen statement month."));
   }
 }
 
-export async function postStatementMonthToBannerAction(formData: FormData): Promise<void> {
+export async function postStatementMonthToBannerAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
     await requireCcManagerRole();
 
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
-    if (!statementMonthId) throw new Error("Statement month is required.");
+    if (!statementMonthId) return err("Statement month is required.");
 
     const { data: statementMonth, error: statementMonthError } = await supabase
       .from("cc_statement_months")
       .select("id, statement_month, posted_at, posted_to_banner_at")
       .eq("id", statementMonthId)
       .single();
-    if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
-    if (!statementMonth.posted_at) throw new Error("Submit statement as paid before posting to Banner.");
-    if (statementMonth.posted_to_banner_at) throw new Error("Statement month is already posted to Banner.");
+    if (statementMonthError || !statementMonth) return err("Statement month not found.");
+    if (!statementMonth.posted_at) return err("Submit statement as paid before posting to Banner.");
+    if (statementMonth.posted_to_banner_at) return err("Statement month is already posted to Banner.");
 
     const { data: receiptRows, error: receiptError } = await supabase
       .from("purchase_receipts")
       .select("purchase_id, amount_received")
       .eq("cc_statement_month_id", statementMonthId);
-    if (receiptError) throw new Error(receiptError.message);
-    if (!receiptRows || receiptRows.length === 0) throw new Error("No receipts are linked to this statement month.");
+    if (receiptError) return err(receiptError.message);
+    if (!receiptRows || receiptRows.length === 0) return err("No receipts are linked to this statement month.");
 
     const totalsByPurchaseId = new Map<string, number>();
     for (const row of receiptRows) {
@@ -912,7 +950,7 @@ export async function postStatementMonthToBannerAction(formData: FormData): Prom
       .from("purchases")
       .select("id, project_id, status, estimated_amount, requested_amount, request_type, is_credit_card")
       .in("id", purchaseIds);
-    if (purchasesError) throw new Error(purchasesError.message);
+    if (purchasesError) return err(purchasesError.message);
 
     for (const purchase of purchases ?? []) {
       const isCc = (purchase.request_type as string) === "expense" && Boolean(purchase.is_credit_card as boolean | null);
@@ -933,7 +971,7 @@ export async function postStatementMonthToBannerAction(formData: FormData): Prom
           procurement_status: "posted_to_account"
         })
         .eq("id", purchase.id as string);
-      if (updateError) throw new Error(updateError.message);
+      if (updateError) return err(updateError.message);
 
       const { error: eventError } = await supabase.from("purchase_events").insert({
         purchase_id: purchase.id as string,
@@ -947,7 +985,7 @@ export async function postStatementMonthToBannerAction(formData: FormData): Prom
         changed_by_user_id: user.id,
         note: `Posted to Banner for statement ${(statementMonth.statement_month as string).slice(0, 7)}`
       });
-      if (eventError) throw new Error(eventError.message);
+      if (eventError) return err(eventError.message);
     }
 
     const { data: statementUpdated, error: statementUpdateError } = await supabase
@@ -956,39 +994,42 @@ export async function postStatementMonthToBannerAction(formData: FormData): Prom
       .eq("id", statementMonthId)
       .select("id")
       .maybeSingle();
-    if (statementUpdateError) throw new Error(statementUpdateError.message);
-    if (!statementUpdated?.id) throw new Error("Statement post-to-Banner update was not applied.");
+    if (statementUpdateError) return err(statementUpdateError.message);
+    if (!statementUpdated?.id) return err("Statement post-to-Banner update was not applied.");
 
     revalidatePath("/cc");
     revalidatePath("/requests");
     revalidatePath("/");
-    ccSuccess("Statement month posted to Banner. Pending CC moved to YTD.");
+    return ok("Statement month posted to Banner. Pending CC moved to YTD.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not post statement month to Banner."));
+    return err(getErrorMessage(error, "Could not post statement month to Banner."));
   }
 }
 
-export async function unpostStatementMonthFromBannerAction(formData: FormData): Promise<void> {
+export async function unpostStatementMonthFromBannerAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
     await requireCcManagerRole();
 
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
-    if (!statementMonthId) throw new Error("Statement month is required.");
+    if (!statementMonthId) return err("Statement month is required.");
 
     const { data: statementMonth, error: statementMonthError } = await supabase
       .from("cc_statement_months")
       .select("id, statement_month, posted_at, posted_to_banner_at")
       .eq("id", statementMonthId)
       .single();
-    if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
-    if (!statementMonth.posted_at) throw new Error("Statement month is not submitted.");
-    if (!statementMonth.posted_to_banner_at) throw new Error("Statement month is not posted to Banner.");
+    if (statementMonthError || !statementMonth) return err("Statement month not found.");
+    if (!statementMonth.posted_at) return err("Statement month is not submitted.");
+    if (!statementMonth.posted_to_banner_at) return err("Statement month is not posted to Banner.");
 
     const { totalsByPurchaseId, hasStatementLines } = await getStatementMonthLinkedPurchaseTotals(supabase, statementMonthId);
     if (totalsByPurchaseId.size === 0) {
@@ -998,16 +1039,16 @@ export async function unpostStatementMonthFromBannerAction(formData: FormData): 
         .eq("id", statementMonthId)
         .select("id")
         .maybeSingle();
-      if (statementUpdateError) throw new Error(statementUpdateError.message);
-      if (!statementUpdated?.id) throw new Error("Statement unpost update was not applied.");
+      if (statementUpdateError) return err(statementUpdateError.message);
+      if (!statementUpdated?.id) return err("Statement unpost update was not applied.");
 
       revalidatePath("/cc");
       revalidatePath("/requests");
       revalidatePath("/");
       if (hasStatementLines) {
-        ccSuccess("Statement month unposted from Banner. Historical statement lines were preserved, but no linked purchases were restored.");
+        return ok("Statement month unposted from Banner. Historical statement lines were preserved, but no linked purchases were restored.");
       }
-      ccSuccess("Statement month unposted from Banner. No linked receipts or purchases were found for this historical month.");
+      return ok("Statement month unposted from Banner. No linked receipts or purchases were found for this historical month.");
     }
     const purchaseIds = [...totalsByPurchaseId.keys()];
 
@@ -1015,7 +1056,7 @@ export async function unpostStatementMonthFromBannerAction(formData: FormData): 
       .from("purchases")
       .select("id, status, estimated_amount, requested_amount, request_type, is_credit_card")
       .in("id", purchaseIds);
-    if (purchasesError) throw new Error(purchasesError.message);
+    if (purchasesError) return err(purchasesError.message);
 
     for (const purchase of purchases ?? []) {
       const isCc = (purchase.request_type as string) === "expense" && Boolean(purchase.is_credit_card as boolean | null);
@@ -1035,7 +1076,7 @@ export async function unpostStatementMonthFromBannerAction(formData: FormData): 
           procurement_status: "statement_paid"
         })
         .eq("id", purchase.id as string);
-      if (updateError) throw new Error(updateError.message);
+      if (updateError) return err(updateError.message);
 
       const { error: eventError } = await supabase.from("purchase_events").insert({
         purchase_id: purchase.id as string,
@@ -1049,7 +1090,7 @@ export async function unpostStatementMonthFromBannerAction(formData: FormData): 
         changed_by_user_id: user.id,
         note: `Unposted from Banner for statement ${(statementMonth.statement_month as string).slice(0, 7)}`
       });
-      if (eventError) throw new Error(eventError.message);
+      if (eventError) return err(eventError.message);
     }
 
     const { data: statementUpdated, error: statementUpdateError } = await supabase
@@ -1058,26 +1099,29 @@ export async function unpostStatementMonthFromBannerAction(formData: FormData): 
       .eq("id", statementMonthId)
       .select("id")
       .maybeSingle();
-    if (statementUpdateError) throw new Error(statementUpdateError.message);
-    if (!statementUpdated?.id) throw new Error("Statement unpost update was not applied.");
+    if (statementUpdateError) return err(statementUpdateError.message);
+    if (!statementUpdated?.id) return err("Statement unpost update was not applied.");
 
     revalidatePath("/cc");
     revalidatePath("/requests");
     revalidatePath("/");
-    ccSuccess("Statement month unposted from Banner. Linked purchases moved back to Pending CC.");
+    return ok("Statement month unposted from Banner. Linked purchases moved back to Pending CC.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not unpost statement month from Banner."));
+    return err(getErrorMessage(error, "Could not unpost statement month from Banner."));
   }
 }
 
-export async function createReimbursementRequestAction(formData: FormData): Promise<void> {
+export async function createReimbursementRequestAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
 
     const projectId = String(formData.get("projectId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
@@ -1087,9 +1131,9 @@ export async function createReimbursementRequestAction(formData: FormData): Prom
     const amount = parseMoney(formData.get("amount"));
 
     if (!projectId || !productionCategoryId || !title) {
-      throw new Error("Project, department, and title are required.");
+      return err("Project, department, and title are required.");
     }
-    if (amount === 0) throw new Error("Amount must be non-zero.");
+    if (amount === 0) return err("Amount must be non-zero.");
 
     await requireProjectRole(projectId, ["admin", "project_manager", "buyer"], {
       productionCategoryId,
@@ -1100,14 +1144,14 @@ export async function createReimbursementRequestAction(formData: FormData): Prom
       p_project_id: projectId,
       p_production_category_id: productionCategoryId
     });
-    if (ensureLineError || !budgetLineId) throw new Error(ensureLineError?.message ?? "Unable to resolve reporting line.");
+    if (ensureLineError || !budgetLineId) return err(ensureLineError?.message ?? "Unable to resolve reporting line.");
 
     const { data: budgetLine, error: budgetLineError } = await supabase
       .from("project_budget_lines")
       .select("id, account_code_id")
       .eq("id", budgetLineId as string)
       .single();
-    if (budgetLineError || !budgetLine) throw new Error("Reporting line not found.");
+    if (budgetLineError || !budgetLine) return err("Reporting line not found.");
 
     const { data: inserted, error: insertError } = await supabase
       .from("purchases")
@@ -1133,7 +1177,7 @@ export async function createReimbursementRequestAction(formData: FormData): Prom
       })
       .select("id")
       .single();
-    if (insertError || !inserted) throw new Error(insertError?.message ?? "Could not create reimbursement.");
+    if (insertError || !inserted) return err(insertError?.message ?? "Could not create reimbursement.");
 
     const { error: allocationError } = await supabase.from("purchase_allocations").insert({
       purchase_id: inserted.id as string,
@@ -1143,7 +1187,7 @@ export async function createReimbursementRequestAction(formData: FormData): Prom
       amount,
       reporting_bucket: "direct"
     });
-    if (allocationError) throw new Error(allocationError.message);
+    if (allocationError) return err(allocationError.message);
 
     const { error: eventError } = await supabase.from("purchase_events").insert({
       purchase_id: inserted.id as string,
@@ -1157,19 +1201,22 @@ export async function createReimbursementRequestAction(formData: FormData): Prom
       changed_by_user_id: user.id,
       note: "Reimbursement request created"
     });
-    if (eventError) throw new Error(eventError.message);
+    if (eventError) return err(eventError.message);
 
     revalidatePath("/cc");
     revalidatePath("/requests");
     revalidatePath("/");
-    ccSuccess("Reimbursement request saved.");
+    return ok("Reimbursement request saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not save reimbursement request."));
+    return err(getErrorMessage(error, "Could not save reimbursement request."));
   }
 }
 
-export async function addStatementLineAction(formData: FormData): Promise<void> {
+export async function addStatementLineAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
@@ -1177,20 +1224,20 @@ export async function addStatementLineAction(formData: FormData): Promise<void> 
     const amount = parseMoney(formData.get("amount"));
     const note = String(formData.get("note") ?? "").trim();
 
-    if (!statementMonthId || !projectBudgetLineId) throw new Error("Statement month and budget line are required.");
-    if (amount === 0) throw new Error("Amount must be non-zero.");
+    if (!statementMonthId || !projectBudgetLineId) return err("Statement month and budget line are required.");
+    if (amount === 0) return err("Amount must be non-zero.");
 
     const { data: statementMonth, error: statementMonthError } = await supabase
       .from("cc_statement_months")
       .select("id")
       .eq("id", statementMonthId)
       .single();
-    if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
+    if (statementMonthError || !statementMonth) return err("Statement month not found.");
 
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
     await requireCcManagerRole();
 
     const { error } = await supabase.from("cc_statement_lines").insert({
@@ -1199,23 +1246,26 @@ export async function addStatementLineAction(formData: FormData): Promise<void> 
       amount,
       note: note || null
     });
-    if (error) throw new Error(error.message);
+    if (error) return err(error.message);
 
     revalidatePath("/cc");
-    ccSuccess("Statement line added.");
+    return ok("Statement line added.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not add statement line."));
+    return err(getErrorMessage(error, "Could not add statement line."));
   }
 }
 
-export async function confirmStatementLineMatchAction(formData: FormData): Promise<void> {
+export async function confirmStatementLineMatchAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
 
     const statementLineId = String(formData.get("statementLineId") ?? "").trim();
     const purchaseIds = formData
@@ -1223,43 +1273,43 @@ export async function confirmStatementLineMatchAction(formData: FormData): Promi
       .map((value) => String(value).trim())
       .filter(Boolean);
 
-    if (!statementLineId) throw new Error("Statement line is required.");
-    if (purchaseIds.length === 0) throw new Error("Select at least one pending purchase to match.");
+    if (!statementLineId) return err("Statement line is required.");
+    if (purchaseIds.length === 0) return err("Select at least one pending purchase to match.");
 
     const { data: statementLine, error: statementLineError } = await supabase
       .from("cc_statement_lines")
       .select("id, amount, matched_purchase_ids, statement_month_id, project_budget_line_id")
       .eq("id", statementLineId)
       .single();
-    if (statementLineError || !statementLine) throw new Error("Statement line not found.");
+    if (statementLineError || !statementLine) return err("Statement line not found.");
 
     const { data: statementMonth, error: statementMonthError } = await supabase
       .from("cc_statement_months")
       .select("id, credit_card_id, statement_month")
       .eq("id", statementLine.statement_month_id as string)
       .single();
-    if (statementMonthError || !statementMonth) throw new Error("Statement month not found.");
+    if (statementMonthError || !statementMonth) return err("Statement month not found.");
     await requireCcManagerRole();
 
     const { data: purchases, error: purchasesError } = await supabase
       .from("purchases")
       .select("id, project_id, budget_line_id, status, pending_cc_amount, credit_card_id, estimated_amount, requested_amount")
       .in("id", purchaseIds);
-    if (purchasesError) throw new Error(purchasesError.message);
-    if (!purchases || purchases.length !== purchaseIds.length) throw new Error("One or more selected purchases were not found.");
+    if (purchasesError) return err(purchasesError.message);
+    if (!purchases || purchases.length !== purchaseIds.length) return err("One or more selected purchases were not found.");
 
     const selectedTotal = purchases.reduce((sum, purchase) => sum + Number(purchase.pending_cc_amount ?? 0), 0);
     const statementAmount = Number(statementLine.amount ?? 0);
     if (Math.abs(selectedTotal - statementAmount) > 0.01) {
-      throw new Error(`Selected purchases total ${selectedTotal.toFixed(2)} but statement line is ${statementAmount.toFixed(2)}.`);
+      return err(`Selected purchases total ${selectedTotal.toFixed(2)} but statement line is ${statementAmount.toFixed(2)}.`);
     }
 
     for (const purchase of purchases) {
       if ((purchase.budget_line_id as string) !== (statementLine.project_budget_line_id as string)) {
-        throw new Error("All purchases must match the selected statement budget line.");
+        return err("All purchases must match the selected statement budget line.");
       }
       if ((purchase.status as string) !== "pending_cc") {
-        throw new Error("Only pending credit-card purchases can be matched.");
+        return err("Only pending credit-card purchases can be matched.");
       }
     }
 
@@ -1276,7 +1326,7 @@ export async function confirmStatementLineMatchAction(formData: FormData): Promi
           posted_date: null
         })
         .eq("id", purchase.id as string);
-      if (updateError) throw new Error(updateError.message);
+      if (updateError) return err(updateError.message);
 
       const { error: eventError } = await supabase.from("purchase_events").insert({
         purchase_id: purchase.id as string,
@@ -1290,7 +1340,7 @@ export async function confirmStatementLineMatchAction(formData: FormData): Promi
         changed_by_user_id: user.id,
         note: `Statement paid ${(statementMonth.statement_month as string).slice(0, 7)}; awaiting accounts posting`
       });
-      if (eventError) throw new Error(eventError.message);
+      if (eventError) return err(eventError.message);
     }
 
     const matchedPurchaseIds = Array.from(new Set([...(statementLine.matched_purchase_ids as string[] | null | undefined) ?? [], ...purchaseIds]));
@@ -1298,13 +1348,13 @@ export async function confirmStatementLineMatchAction(formData: FormData): Promi
       .from("cc_statement_lines")
       .update({ matched_purchase_ids: matchedPurchaseIds })
       .eq("id", statementLineId);
-    if (lineUpdateError) throw new Error(lineUpdateError.message);
+    if (lineUpdateError) return err(lineUpdateError.message);
 
     const { data: openLines, error: openLinesError } = await supabase
       .from("cc_statement_lines")
       .select("id, matched_purchase_ids")
       .eq("statement_month_id", statementMonth.id as string);
-    if (openLinesError) throw new Error(openLinesError.message);
+    if (openLinesError) return err(openLinesError.message);
 
     const allMatched = (openLines ?? []).every((line) => Array.isArray(line.matched_purchase_ids) && line.matched_purchase_ids.length > 0);
     if (allMatched) {
@@ -1315,9 +1365,10 @@ export async function confirmStatementLineMatchAction(formData: FormData): Promi
     revalidatePath("/requests");
     revalidatePath("/");
     revalidatePath("/projects");
-    ccSuccess("Statement match posted.");
+    return ok("Statement match posted.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    ccError(getErrorMessage(error, "Could not match statement line."));
+    return err(getErrorMessage(error, "Could not match statement line."));
   }
 }
+
+export type { ActionState };
