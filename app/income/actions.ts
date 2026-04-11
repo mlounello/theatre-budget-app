@@ -1,10 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 type IncomeType = "starting_budget" | "donation" | "ticket_sales" | "other";
+
+type ActionState = {
+  ok: boolean;
+  message: string;
+  timestamp: number;
+};
+
+const emptyState: ActionState = { ok: true, message: "", timestamp: 0 };
 
 function parseMoney(value: FormDataEntryValue | null): number {
   if (typeof value !== "string" || value.trim() === "") return 0;
@@ -42,29 +49,26 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-function rethrowIfRedirect(error: unknown): void {
-  const message =
-    typeof error === "object" && error !== null && "message" in error
-      ? String((error as { message?: unknown }).message)
-      : "";
-  const digest =
-    typeof error === "object" && error !== null && "digest" in error
-      ? String((error as { digest?: unknown }).digest)
-      : "";
-
-  if (message.includes("NEXT_REDIRECT") || digest.includes("NEXT_REDIRECT")) {
-    throw error;
-  }
+function ok(message: string): ActionState {
+  return { ok: true, message, timestamp: Date.now() };
 }
 
-export async function createIncomeEntryAction(formData: FormData): Promise<void> {
+function err(message: string): ActionState {
+  return { ok: false, message, timestamp: Date.now() };
+}
+
+export async function createIncomeEntryAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
 
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
 
     const organizationId = String(formData.get("organizationId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
@@ -75,8 +79,8 @@ export async function createIncomeEntryAction(formData: FormData): Promise<void>
     const amount = parseMoney(formData.get("amount"));
     const receivedOn = String(formData.get("receivedOn") ?? "").trim();
 
-    if (!organizationId) throw new Error("Organization is required.");
-    if (amount === 0) throw new Error("Amount must be non-zero.");
+    if (!organizationId) return err("Organization is required.");
+    if (amount === 0) return err("Amount must be non-zero.");
 
     const lineName = lineNameInput || defaultLineName(incomeType);
 
@@ -105,27 +109,30 @@ export async function createIncomeEntryAction(formData: FormData): Promise<void>
         received_on: receivedOn || null,
         created_by_user_id: user.id
       });
-      if (fallback.error) throw new Error(fallback.error.message);
+      if (fallback.error) return err(fallback.error.message);
     }
 
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath("/income");
-    redirect("/income?ok=Income%20entry%20saved.");
+    return ok("Income entry saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    redirect(`/income?error=${encodeURIComponent(getErrorMessage(error, "Could not save income entry."))}`);
+    return err(getErrorMessage(error, "Could not save income entry."));
   }
 }
 
-export async function updateIncomeEntryAction(formData: FormData): Promise<void> {
+export async function updateIncomeEntryAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
 
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
 
     const id = String(formData.get("id") ?? "").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
@@ -137,9 +144,9 @@ export async function updateIncomeEntryAction(formData: FormData): Promise<void>
     const amount = parseMoney(formData.get("amount"));
     const receivedOn = String(formData.get("receivedOn") ?? "").trim();
 
-    if (!id) throw new Error("Income entry id is required.");
-    if (!organizationId) throw new Error("Organization is required.");
-    if (amount === 0) throw new Error("Amount must be non-zero.");
+    if (!id) return err("Income entry id is required.");
+    if (!organizationId) return err("Organization is required.");
+    if (amount === 0) return err("Amount must be non-zero.");
 
     const lineName = lineNameInput || defaultLineName(incomeType);
 
@@ -177,58 +184,64 @@ export async function updateIncomeEntryAction(formData: FormData): Promise<void>
         .select("id")
         .maybeSingle();
 
-      if (fallback.error) throw new Error(fallback.error.message);
-      if (!fallback.data?.id) throw new Error("Income entry update was not applied.");
+      if (fallback.error) return err(fallback.error.message);
+      if (!fallback.data?.id) return err("Income entry update was not applied.");
     } else if (!withType.data?.id) {
-      throw new Error("Income entry update was not applied.");
+      return err("Income entry update was not applied.");
     }
 
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath("/income");
-    redirect("/income?ok=Income%20entry%20updated.");
+    return ok("Income entry updated.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    redirect(`/income?error=${encodeURIComponent(getErrorMessage(error, "Could not update income entry."))}`);
+    return err(getErrorMessage(error, "Could not update income entry."));
   }
 }
 
-export async function deleteIncomeEntryAction(formData: FormData): Promise<void> {
+export async function deleteIncomeEntryAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
 
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
 
     const id = String(formData.get("id") ?? "").trim();
-    if (!id) throw new Error("Income entry id is required.");
+    if (!id) return err("Income entry id is required.");
 
     const { error } = await supabase.from("income_lines").delete().eq("id", id);
-    if (error) throw new Error(error.message);
+    if (error) return err(error.message);
 
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath("/income");
-    redirect("/income?ok=Income%20entry%20deleted.");
+    return ok("Income entry deleted.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    redirect(`/income?error=${encodeURIComponent(getErrorMessage(error, "Could not delete income entry."))}`);
+    return err(getErrorMessage(error, "Could not delete income entry."));
   }
 }
 
-export async function bulkUpdateIncomeEntriesAction(formData: FormData): Promise<void> {
+export async function bulkUpdateIncomeEntriesAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
 
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
 
     const ids = parseIdsJson(formData.get("selectedIdsJson"));
-    if (ids.length === 0) throw new Error("Select at least one income entry.");
+    if (ids.length === 0) return err("Select at least one income entry.");
 
     const applyOrganization = formData.get("applyOrganization") === "on";
     const applyType = formData.get("applyIncomeType") === "on";
@@ -240,7 +253,7 @@ export async function bulkUpdateIncomeEntriesAction(formData: FormData): Promise
     const applyReceivedOn = formData.get("applyReceivedOn") === "on";
 
     if (!applyOrganization && !applyType && !applyCategory && !applyBanner && !applyLineName && !applyReference && !applyAmount && !applyReceivedOn) {
-      throw new Error("Choose at least one field to apply.");
+      return err("Choose at least one field to apply.");
     }
 
     const targetOrganizationId = String(formData.get("organizationId") ?? "").trim();
@@ -252,41 +265,40 @@ export async function bulkUpdateIncomeEntriesAction(formData: FormData): Promise
     const targetAmount = parseMoney(formData.get("amount"));
     const targetReceivedOn = String(formData.get("receivedOn") ?? "").trim();
 
-    if (applyOrganization && !targetOrganizationId) throw new Error("Organization is required when applying organization.");
-    if (applyAmount && targetAmount === 0) throw new Error("Amount must be non-zero when applying amount.");
+    if (applyOrganization && !targetOrganizationId) return err("Organization is required when applying organization.");
+    if (applyAmount && targetAmount === 0) return err("Amount must be non-zero when applying amount.");
 
     const { data: existingRows, error: existingError } = await supabase
       .from("income_lines")
       .select("id, organization_id, production_category_id, banner_account_code_id, income_type, line_name, reference_number, amount, received_on")
       .in("id", ids);
-    if (existingError) throw new Error(existingError.message);
-    if (!existingRows || existingRows.length !== ids.length) throw new Error("Some selected income entries were not found.");
+    if (existingError) return err(existingError.message);
+    if (!existingRows || existingRows.length !== ids.length) return err("Some selected income entries were not found.");
 
-    // First pass: validate all derived values before mutating rows.
     for (const row of existingRows) {
       const nextOrganizationId = applyOrganization ? targetOrganizationId : ((row.organization_id as string | null) ?? "");
-      if (!nextOrganizationId) throw new Error("Organization cannot be empty.");
+      if (!nextOrganizationId) return err("Organization cannot be empty.");
 
       const nextIncomeType = applyType ? targetIncomeType : parseIncomeType(String(row.income_type ?? "other"));
       const nextLineName = applyLineName
         ? targetLineName || defaultLineName(nextIncomeType)
         : (String(row.line_name ?? "").trim() || defaultLineName(nextIncomeType));
-      if (!nextLineName) throw new Error("Line name cannot be empty.");
+      if (!nextLineName) return err("Line name cannot be empty.");
 
       const nextAmount = applyAmount ? targetAmount : Number(row.amount ?? 0);
-      if (nextAmount === 0) throw new Error("Amount cannot be zero.");
+      if (nextAmount === 0) return err("Amount cannot be zero.");
     }
 
     for (const row of existingRows) {
       const nextOrganizationId = applyOrganization ? targetOrganizationId : ((row.organization_id as string | null) ?? "");
-      if (!nextOrganizationId) throw new Error("Organization cannot be empty.");
+      if (!nextOrganizationId) return err("Organization cannot be empty.");
 
       const nextIncomeType = applyType ? targetIncomeType : parseIncomeType(String(row.income_type ?? "other"));
       const nextLineName = applyLineName
         ? targetLineName || defaultLineName(nextIncomeType)
         : (String(row.line_name ?? "").trim() || defaultLineName(nextIncomeType));
       const nextAmount = applyAmount ? targetAmount : Number(row.amount ?? 0);
-      if (nextAmount === 0) throw new Error("Amount cannot be zero.");
+      if (nextAmount === 0) return err("Amount cannot be zero.");
 
       const withType = await supabase
         .from("income_lines")
@@ -325,44 +337,48 @@ export async function bulkUpdateIncomeEntriesAction(formData: FormData): Promise
           .eq("id", row.id as string)
           .select("id")
           .maybeSingle();
-        if (fallback.error) throw new Error(fallback.error.message);
-        if (!fallback.data?.id) throw new Error("A bulk income update was not applied.");
+        if (fallback.error) return err(fallback.error.message);
+        if (!fallback.data?.id) return err("A bulk income update was not applied.");
       } else if (!withType.data?.id) {
-        throw new Error("A bulk income update was not applied.");
+        return err("A bulk income update was not applied.");
       }
     }
 
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath("/income");
-    redirect("/income?ok=Bulk%20income%20update%20saved.");
+    return ok("Bulk income update saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    redirect(`/income?error=${encodeURIComponent(getErrorMessage(error, "Could not bulk update income entries."))}`);
+    return err(getErrorMessage(error, "Could not bulk update income entries."));
   }
 }
 
-export async function bulkDeleteIncomeEntriesAction(formData: FormData): Promise<void> {
+export async function bulkDeleteIncomeEntriesAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
 
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
 
     const ids = parseIdsJson(formData.get("selectedIdsJson"));
-    if (ids.length === 0) throw new Error("Select at least one income entry.");
+    if (ids.length === 0) return err("Select at least one income entry.");
 
     const { error } = await supabase.from("income_lines").delete().in("id", ids);
-    if (error) throw new Error(error.message);
+    if (error) return err(error.message);
 
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath("/income");
-    redirect("/income?ok=Selected%20income%20entries%20deleted.");
+    return ok("Selected income entries deleted.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    redirect(`/income?error=${encodeURIComponent(getErrorMessage(error, "Could not delete selected income entries."))}`);
+    return err(getErrorMessage(error, "Could not delete selected income entries."));
   }
 }
+
+export type { ActionState };

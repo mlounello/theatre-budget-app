@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   bulkDeleteIncomeEntriesAction,
   bulkUpdateIncomeEntriesAction,
   deleteIncomeEntryAction,
-  updateIncomeEntryAction
+  updateIncomeEntryAction,
+  type ActionState
 } from "@/app/income/actions";
 import { formatCurrency } from "@/lib/format";
 import type { AccountCodeOption, IncomeRow, OrganizationOption, ProductionCategoryOption } from "@/lib/db";
@@ -40,6 +41,8 @@ const SORT_KEYS: SortKey[] = [
   "amount",
   "receivedOn"
 ];
+
+const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
 function asString(value: string | null | undefined): string {
   return (value ?? "").toLowerCase();
@@ -132,6 +135,45 @@ export function IncomeTable({
   const allVisibleSelected = sortedRows.length > 0 && selectedVisibleCount === sortedRows.length;
   const selectedIdsJson = JSON.stringify(selectedIds);
 
+  const [updateState, updateAction] = useActionState(updateIncomeEntryAction, initialState);
+  const [deleteState, deleteAction] = useActionState(deleteIncomeEntryAction, initialState);
+  const [bulkUpdateState, bulkUpdateAction] = useActionState(bulkUpdateIncomeEntriesAction, initialState);
+  const [bulkDeleteState, bulkDeleteAction] = useActionState(bulkDeleteIncomeEntriesAction, initialState);
+
+  useEffect(() => {
+    const editFromUrl = searchParams.get("inc_edit");
+    setEditingId(editFromUrl ? editFromUrl : null);
+    setBulkEditOpen(searchParams.get("inc_bulk") === "1");
+  }, [searchParams]);
+
+  function openEdit(id: string): void {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("inc_edit", id);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    setEditingId(id);
+  }
+
+  function closeEdit(): void {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("inc_edit");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    setEditingId(null);
+  }
+
+  function openBulkEdit(): void {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("inc_bulk", "1");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    setBulkEditOpen(true);
+  }
+
+  function closeBulkEdit(): void {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("inc_bulk");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    setBulkEditOpen(false);
+  }
+
   function onToggle(key: SortKey): void {
     const nextDirection: SortDirection = key === sortKey ? (direction === "asc" ? "desc" : "asc") : "asc";
     const params = new URLSearchParams(searchParams.toString());
@@ -162,18 +204,41 @@ export function IncomeTable({
     });
   }
 
+  useEffect(() => {
+    if (!bulkDeleteState.ok && bulkDeleteState.message) return;
+    if (!bulkDeleteState.message) return;
+    setSelectedIds([]);
+  }, [bulkDeleteState]);
+
+  useEffect(() => {
+    if (!bulkUpdateState.ok && bulkUpdateState.message) return;
+    if (!bulkUpdateState.message) return;
+    setBulkEditOpen(true);
+  }, [bulkUpdateState]);
+
   return (
     <>
+      {deleteState.message ? (
+        <p className={deleteState.ok ? "successNote" : "errorNote"} key={deleteState.timestamp}>
+          {deleteState.message}
+        </p>
+      ) : null}
+      {bulkDeleteState.message ? (
+        <p className={bulkDeleteState.ok ? "successNote" : "errorNote"} key={bulkDeleteState.timestamp}>
+          {bulkDeleteState.message}
+        </p>
+      ) : null}
+
       <div className="bulkToolbar">
         <p className="bulkMeta">
           Selected: {selectedIds.length} total ({selectedVisibleCount} visible)
         </p>
         <div className="bulkActions">
-          <button type="button" className="tinyButton" disabled={selectedIds.length === 0} onClick={() => setBulkEditOpen(true)}>
+          <button type="button" className="tinyButton" disabled={selectedIds.length === 0} onClick={openBulkEdit}>
             Bulk Edit
           </button>
           <form
-            action={bulkDeleteIncomeEntriesAction}
+            action={bulkDeleteAction}
             onSubmit={(event) => {
               if (!window.confirm(`Delete ${selectedIds.length} selected income entries?`)) {
                 event.preventDefault();
@@ -271,7 +336,7 @@ export function IncomeTable({
               </tr>
             ) : null}
             {sortedRows.map((row) => (
-              <tr key={row.id}>
+              <tr key={row.id} id={`income-${row.id}`}>
                 <td className="rowSelectCell">
                   <input type="checkbox" checked={selectedSet.has(row.id)} onChange={() => toggleRowSelection(row.id)} />
                 </td>
@@ -285,10 +350,10 @@ export function IncomeTable({
                 <td>{formatCurrency(row.amount)}</td>
                 <td>{row.receivedOn ?? "-"}</td>
                 <td className="actionCell">
-                  <button type="button" className="tinyButton" onClick={() => setEditingId(row.id)}>
+                  <button type="button" className="tinyButton" onClick={() => openEdit(row.id)}>
                     Edit
                   </button>
-                  <form action={deleteIncomeEntryAction}>
+                  <form action={deleteAction}>
                     <input type="hidden" name="id" value={row.id} />
                     <button
                       type="submit"
@@ -311,7 +376,12 @@ export function IncomeTable({
         <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit income entry">
           <div className="modalPanel">
             <h2>Edit Income Entry</h2>
-            <form action={updateIncomeEntryAction} className="requestForm">
+            {updateState.message ? (
+              <p className={updateState.ok ? "successNote" : "errorNote"} key={updateState.timestamp}>
+                {updateState.message}
+              </p>
+            ) : null}
+            <form action={updateAction} className="requestForm">
               <input type="hidden" name="id" value={editingRow.id} />
               <label>
                 Organization
@@ -385,7 +455,7 @@ export function IncomeTable({
                 <input name="receivedOn" type="date" defaultValue={editingRow.receivedOn ?? ""} />
               </label>
               <div className="modalActions">
-                <button type="button" className="tinyButton" onClick={() => setEditingId(null)}>
+                <button type="button" className="tinyButton" onClick={closeEdit}>
                   Cancel
                 </button>
                 <button type="submit" className="buttonLink buttonPrimary">
@@ -402,7 +472,12 @@ export function IncomeTable({
           <div className="modalPanel">
             <h2>Bulk Edit Income Entries</h2>
             <p className="heroSubtitle">Only checked fields are applied to all selected rows.</p>
-            <form action={bulkUpdateIncomeEntriesAction} className="requestForm">
+            {bulkUpdateState.message ? (
+              <p className={bulkUpdateState.ok ? "successNote" : "errorNote"} key={bulkUpdateState.timestamp}>
+                {bulkUpdateState.message}
+              </p>
+            ) : null}
+            <form action={bulkUpdateAction} className="requestForm">
               <input type="hidden" name="selectedIdsJson" value={selectedIdsJson} />
               <label className="checkboxLabel">
                 <input name="applyOrganization" type="checkbox" />
@@ -516,7 +591,7 @@ export function IncomeTable({
               </label>
 
               <div className="modalActions">
-                <button type="button" className="tinyButton" onClick={() => setBulkEditOpen(false)}>
+                <button type="button" className="tinyButton" onClick={closeBulkEdit}>
                   Close
                 </button>
                 <button type="submit" className="tinyButton">

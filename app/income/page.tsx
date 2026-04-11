@@ -1,4 +1,4 @@
-import { createIncomeEntryAction } from "@/app/income/actions";
+import { AddIncomeForm } from "@/app/income/add-income-form";
 import { IncomeTable } from "@/app/income/income-table";
 import { formatCurrency } from "@/lib/format";
 import { getAccountCodeOptions, getFiscalYearOptions, getIncomeRows, getOrganizationOptions, getProductionCategoryOptions } from "@/lib/db";
@@ -8,15 +8,13 @@ import { redirect } from "next/navigation";
 export default async function IncomePage({
   searchParams
 }: {
-  searchParams?: Promise<{ ok?: string; error?: string; fy?: string; org?: string }>;
+  searchParams?: Promise<{ fy?: string; org?: string }>;
 }) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const okMessage = resolvedSearchParams?.ok;
-  const errorMessage = resolvedSearchParams?.error;
   const selectedFiscalYearId = (resolvedSearchParams?.fy ?? "").trim();
   const selectedOrganizationId = (resolvedSearchParams?.org ?? "").trim();
 
@@ -99,8 +97,6 @@ export default async function IncomePage({
         <p className="eyebrow">Income</p>
         <h1>Income and Starting Budget</h1>
         <p className="heroSubtitle">Track initial budget allocations plus incoming ticket and donation revenue by fiscal year and organization.</p>
-        {okMessage ? <p className="successNote">{okMessage}</p> : null}
-        {errorMessage ? <p className="errorNote">{errorMessage}</p> : null}
       </header>
 
       <article className="panel requestFormPanel">
@@ -138,88 +134,12 @@ export default async function IncomePage({
 
       <article className="panel requestFormPanel">
         <h2>Add Income Entry</h2>
-        <form className="requestForm" action={createIncomeEntryAction}>
-          <label>
-            Organization
-            <select name="organizationId" required>
-              <option value="">Select organization</option>
-              {organizations.map((organization) => (
-                <option key={organization.id} value={organization.id}>
-                  {organization.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Income Type
-            <select name="incomeType" defaultValue="starting_budget" required>
-              <option value="starting_budget">Starting Budget</option>
-              <option value="donation">Donation</option>
-              <option value="ticket_sales">Ticket Sales</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-          <label>
-            Production Category (optional)
-            <select name="productionCategoryId" defaultValue="">
-              <option value="">Unassigned</option>
-              {productionCategoryOptions.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Banner Account Code (optional)
-            <select name="bannerAccountCodeId" defaultValue="">
-              <option value="">Unassigned</option>
-              {revenueAccountCodes.length > 0 ? (
-                <optgroup label="Revenue Accounts">
-                  {revenueAccountCodes.map((accountCode) => (
-                    <option key={accountCode.id} value={accountCode.id}>
-                      {accountCode.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-              {otherAccountCodes.length > 0 ? (
-                <optgroup label="Other Accounts">
-                  {otherAccountCodes.map((accountCode) => (
-                    <option key={accountCode.id} value={accountCode.id}>
-                      {accountCode.label}
-                    </option>
-                  ))}
-                </optgroup>
-              ) : null}
-            </select>
-          </label>
-
-          <label>
-            Description
-            <input name="lineName" placeholder="Optional (auto-filled from type if blank)" />
-          </label>
-
-          <label>
-            Reference
-            <input name="referenceNumber" placeholder="Optional (donor, batch ID, etc.)" />
-          </label>
-
-          <label>
-            Amount
-            <input name="amount" type="number" step="0.01" required />
-          </label>
-
-          <label>
-            Received On
-            <input name="receivedOn" type="date" />
-          </label>
-
-          <button type="submit" className="buttonLink buttonPrimary">
-            Save Income
-          </button>
-        </form>
+        <AddIncomeForm
+          organizations={organizations}
+          revenueAccountCodes={revenueAccountCodes}
+          otherAccountCodes={otherAccountCodes}
+          productionCategoryOptions={productionCategoryOptions}
+        />
       </article>
 
       <div className="gridCards">
