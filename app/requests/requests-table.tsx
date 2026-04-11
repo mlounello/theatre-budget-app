@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { bulkDeleteRequestsAction, bulkUpdateRequestsAction } from "@/app/requests/actions";
+import { bulkDeleteRequestsAction, bulkUpdateRequestsAction, type ActionState } from "@/app/requests/actions";
 import { CcReconcileModal } from "@/app/requests/cc-reconcile-modal";
 import { RequestRowActions } from "@/app/requests/request-row-actions";
 import { formatCurrency } from "@/lib/format";
@@ -49,6 +49,7 @@ const SORT_KEYS: SortKey[] = [
   "postedAmount",
   "receiptTotal"
 ];
+const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
 function asString(value: string | null | undefined): string {
   return (value ?? "").toLowerCase();
@@ -78,9 +79,9 @@ function sortRows(rows: PurchaseRow[], key: SortKey, direction: SortDirection): 
         ? (a[key] as number) - (b[key] as number)
         : key === "createdAt"
           ? asString(a.createdAt).localeCompare(asString(b.createdAt))
-        : key === "requestNumber"
-          ? asString(aRequestNumber).localeCompare(asString(bRequestNumber))
-          : asString(a[key] as string | null).localeCompare(asString(b[key] as string | null));
+          : key === "requestNumber"
+            ? asString(aRequestNumber).localeCompare(asString(bRequestNumber))
+            : asString(a[key] as string | null).localeCompare(asString(b[key] as string | null));
     return cmp * dir;
   });
 }
@@ -127,6 +128,9 @@ export function RequestsTable({
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  const [bulkUpdateState, bulkUpdateAction] = useActionState(bulkUpdateRequestsAction, initialState);
+  const [bulkDeleteState, bulkDeleteAction] = useActionState(bulkDeleteRequestsAction, initialState);
+
   const sortFromUrl = searchParams.get("rq_sort");
   const dirFromUrl = searchParams.get("rq_dir");
   const initialSortKey: SortKey = sortFromUrl && SORT_KEYS.includes(sortFromUrl as SortKey) ? (sortFromUrl as SortKey) : "createdAt";
@@ -140,6 +144,7 @@ export function RequestsTable({
   const [queryFilter, setQueryFilter] = useState(searchParams.get("rq_f_q") ?? "");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [pendingBulkDeleteIds, setPendingBulkDeleteIds] = useState<string[]>([]);
 
   const filteredPurchases = useMemo(() => {
     const q = queryFilter.trim().toLowerCase();
@@ -165,6 +170,52 @@ export function RequestsTable({
   );
   const allVisibleSelected = sortedPurchases.length > 0 && selectedVisibleCount === sortedPurchases.length;
   const selectedIdsJson = JSON.stringify(selectedIds);
+
+  const openBulkEdit = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("rq_bulk", "1");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    setBulkEditOpen(true);
+  }, [pathname, router, searchParams]);
+
+  const closeBulkEdit = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("rq_bulk");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    setBulkEditOpen(false);
+  }, [pathname, router, searchParams]);
+
+  const closeEditForIds = useCallback(
+    (ids: string[]) => {
+      const editId = searchParams.get("rq_edit");
+      const ccId = searchParams.get("rq_cc");
+      const shouldCloseEdit = editId && ids.includes(editId);
+      const shouldCloseCc = ccId && ids.includes(ccId);
+      if (!shouldCloseEdit && !shouldCloseCc) return;
+      const params = new URLSearchParams(searchParams.toString());
+      if (shouldCloseEdit) params.delete("rq_edit");
+      if (shouldCloseCc) params.delete("rq_cc");
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParams]
+  );
+
+  useEffect(() => {
+    setBulkEditOpen(searchParams.get("rq_bulk") === "1");
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!bulkDeleteState.ok || !bulkDeleteState.message) return;
+    setSelectedIds([]);
+    if (pendingBulkDeleteIds.length > 0) {
+      closeEditForIds(pendingBulkDeleteIds);
+    }
+  }, [bulkDeleteState, pendingBulkDeleteIds, closeEditForIds]);
+
+  useEffect(() => {
+    if (!bulkUpdateState.ok || !bulkUpdateState.message) return;
+    setBulkEditOpen(true);
+  }, [bulkUpdateState]);
 
   function onToggle(key: SortKey): void {
     const nextDirection: SortDirection = key === sortKey ? (direction === "asc" ? "desc" : "asc") : "asc";
@@ -200,21 +251,29 @@ export function RequestsTable({
 
   return (
     <>
+      {bulkDeleteState.message ? (
+        <p className={bulkDeleteState.ok ? "successNote" : "errorNote"} key={bulkDeleteState.timestamp}>
+          {bulkDeleteState.message}
+        </p>
+      ) : null}
+
       {canManageRows ? (
         <div className="bulkToolbar">
           <p className="bulkMeta">
             Selected: {selectedIds.length} total ({selectedVisibleCount} visible)
           </p>
           <div className="bulkActions">
-            <button type="button" className="tinyButton" disabled={selectedIds.length === 0} onClick={() => setBulkEditOpen(true)}>
+            <button type="button" className="tinyButton" disabled={selectedIds.length === 0} onClick={openBulkEdit}>
               Bulk Edit
             </button>
             <form
-              action={bulkDeleteRequestsAction}
+              action={bulkDeleteAction}
               onSubmit={(event) => {
                 if (!window.confirm(`Delete ${selectedIds.length} selected request(s)? This cannot be undone.`)) {
                   event.preventDefault();
+                  return;
                 }
+                setPendingBulkDeleteIds([...selectedIds]);
               }}
             >
               <input type="hidden" name="selectedIdsJson" value={selectedIdsJson} />
@@ -393,7 +452,12 @@ export function RequestsTable({
             <p className="heroSubtitle">
               Select fields to apply, then set the new value. Only checked fields are updated for all selected rows.
             </p>
-            <form action={bulkUpdateRequestsAction} className="requestForm">
+            {bulkUpdateState.message ? (
+              <p className={bulkUpdateState.ok ? "successNote" : "errorNote"} key={bulkUpdateState.timestamp}>
+                {bulkUpdateState.message}
+              </p>
+            ) : null}
+            <form action={bulkUpdateAction} className="requestForm">
               <input type="hidden" name="selectedIdsJson" value={selectedIdsJson} />
 
               <label className="checkboxLabel">
@@ -517,7 +581,7 @@ export function RequestsTable({
               </label>
 
               <div className="modalActions">
-                <button type="button" className="tinyButton" onClick={() => setBulkEditOpen(false)}>
+                <button type="button" className="tinyButton" onClick={closeBulkEdit}>
                   Close
                 </button>
                 <button type="submit" className="tinyButton">

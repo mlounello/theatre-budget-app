@@ -1,18 +1,31 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useActionState, useCallback, useMemo } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   addRequestReceipt,
   deleteRequestReceipt,
   markCcPostedToAccount,
   reconcileRequestToPendingCc,
-  updateRequestReceipt
+  updateRequestReceipt,
+  type ActionState
 } from "@/app/requests/actions";
 import { formatCurrency } from "@/lib/format";
 import type { PurchaseRow, RequestReceiptRow } from "@/lib/db";
 
+const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
+
 export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow; receipts: RequestReceiptRow[] }) {
-  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [addState, addAction] = useActionState(addRequestReceipt, initialState);
+  const [updateState, updateAction] = useActionState(updateRequestReceipt, initialState);
+  const [deleteState, deleteAction] = useActionState(deleteRequestReceipt, initialState);
+  const [reconcileState, reconcileAction] = useActionState(reconcileRequestToPendingCc, initialState);
+  const [postState, postAction] = useActionState(markCcPostedToAccount, initialState);
+
+  const open = useMemo(() => searchParams.get("rq_cc") === purchase.id, [searchParams, purchase.id]);
   const title = useMemo(() => `${purchase.projectName} | ${purchase.title}`, [purchase.projectName, purchase.title]);
   const safeDateText = (value: string | null | undefined): string => {
     const normalized = typeof value === "string" ? value : "";
@@ -26,13 +39,25 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
     [receipts, purchase.id]
   );
 
+  const openModal = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("rq_cc", purchase.id);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [pathname, purchase.id, router, searchParams]);
+
+  const closeModal = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("rq_cc");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams]);
+
   if (!(purchase.requestType === "expense" && purchase.isCreditCard)) {
     return <span>-</span>;
   }
 
   return (
     <>
-      <button type="button" className="tinyButton" onClick={() => setOpen(true)}>
+      <button type="button" className="tinyButton" onClick={openModal}>
         CC Reconcile
       </button>
       {open ? (
@@ -49,9 +74,35 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
               CC Workflow Status: <strong>{purchase.ccWorkflowStatus ?? "requested"}</strong>
             </p>
 
+            {addState.message ? (
+              <p className={addState.ok ? "successNote" : "errorNote"} key={addState.timestamp}>
+                {addState.message}
+              </p>
+            ) : null}
+            {updateState.message ? (
+              <p className={updateState.ok ? "successNote" : "errorNote"} key={updateState.timestamp}>
+                {updateState.message}
+              </p>
+            ) : null}
+            {deleteState.message ? (
+              <p className={deleteState.ok ? "successNote" : "errorNote"} key={deleteState.timestamp}>
+                {deleteState.message}
+              </p>
+            ) : null}
+            {reconcileState.message ? (
+              <p className={reconcileState.ok ? "successNote" : "errorNote"} key={reconcileState.timestamp}>
+                {reconcileState.message}
+              </p>
+            ) : null}
+            {postState.message ? (
+              <p className={postState.ok ? "successNote" : "errorNote"} key={postState.timestamp}>
+                {postState.message}
+              </p>
+            ) : null}
+
             <article className="panel" style={{ marginBottom: "0.75rem" }}>
               <h3>Add Receipt</h3>
-              <form action={addRequestReceipt} className="requestForm" encType="multipart/form-data">
+              <form action={addAction} className="requestForm" encType="multipart/form-data">
                 <input type="hidden" name="purchaseId" value={purchase.id} />
                 <label>
                   Amount
@@ -83,7 +134,7 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
                   <summary>
                     {formatCurrency(receipt.amountReceived)} | {receipt.note ?? "Receipt"} | {safeDateText(receipt.createdAt)}
                   </summary>
-                  <form action={updateRequestReceipt} className="requestForm">
+                  <form action={updateAction} className="requestForm">
                     <input type="hidden" name="receiptId" value={receipt.id} />
                     <label>
                       Amount
@@ -108,7 +159,7 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
                       Save Receipt
                     </button>
                   </form>
-                  <form action={deleteRequestReceipt} className="inlineEditForm">
+                  <form action={deleteAction} className="inlineEditForm">
                     <input type="hidden" name="receiptId" value={receipt.id} />
                     <button type="submit" className="tinyButton dangerButton">
                       Delete Receipt
@@ -121,14 +172,14 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
             <article className="panel">
               <h3>Reconcile</h3>
               <p>Moves this request to Pending CC using the total of all attached receipt amounts.</p>
-              <form action={reconcileRequestToPendingCc} className="inlineEditForm">
+              <form action={reconcileAction} className="inlineEditForm">
                 <input type="hidden" name="purchaseId" value={purchase.id} />
                 <button type="submit" className="tinyButton">
                   Reconcile to Pending CC
                 </button>
               </form>
               {purchase.ccWorkflowStatus === "statement_paid" ? (
-                <form action={markCcPostedToAccount} className="inlineEditForm" style={{ marginTop: "0.4rem" }}>
+                <form action={postAction} className="inlineEditForm" style={{ marginTop: "0.4rem" }}>
                   <input type="hidden" name="purchaseId" value={purchase.id} />
                   <button type="submit" className="tinyButton">
                     Mark Posted to Account
@@ -140,7 +191,7 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
             </article>
 
             <div className="modalActions">
-              <button type="button" className="tinyButton" onClick={() => setOpen(false)}>
+              <button type="button" className="tinyButton" onClick={closeModal}>
                 Close
               </button>
             </div>

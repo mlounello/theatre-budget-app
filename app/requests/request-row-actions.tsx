@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { deleteRequestAction, updateRequestInline } from "@/app/requests/actions";
+import { useActionState, useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { deleteRequestAction, updateRequestInline, type ActionState } from "@/app/requests/actions";
 import type { AccountCodeOption, ProcurementProjectOption, ProductionCategoryOption, PurchaseRow } from "@/lib/db";
+
+const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
 export function RequestRowActions({
   purchase,
@@ -15,11 +18,44 @@ export function RequestRowActions({
   accountCodeOptions: AccountCodeOption[];
   productionCategoryOptions: ProductionCategoryOption[];
 }) {
-  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [updateState, updateAction] = useActionState(updateRequestInline, initialState);
+  const [deleteState, deleteAction] = useActionState(deleteRequestAction, initialState);
+
+  const open = useMemo(() => searchParams.get("rq_edit") === purchase.id, [searchParams, purchase.id]);
   const [editRequestType, setEditRequestType] = useState(purchase.requestType);
   const [editProjectId, setEditProjectId] = useState(purchase.projectId);
   const [editProductionCategoryId, setEditProductionCategoryId] = useState(purchase.productionCategoryId ?? "");
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState(purchase.bannerAccountCodeId ?? "");
+
+  const openEdit = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("rq_edit", purchase.id);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [pathname, purchase.id, router, searchParams]);
+
+  const closeEdit = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("rq_edit");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    if (!open) return;
+    setEditProjectId(purchase.projectId);
+    setEditRequestType(purchase.requestType);
+    setEditProductionCategoryId(purchase.productionCategoryId ?? "");
+    setEditBannerAccountCodeId(purchase.bannerAccountCodeId ?? "");
+  }, [open, purchase]);
+
+  useEffect(() => {
+    if (!deleteState.ok || !deleteState.message) return;
+    if (open) {
+      closeEdit();
+    }
+  }, [deleteState, open, closeEdit]);
 
   return (
     <>
@@ -32,13 +68,13 @@ export function RequestRowActions({
             setEditRequestType(purchase.requestType);
             setEditProductionCategoryId(purchase.productionCategoryId ?? "");
             setEditBannerAccountCodeId(purchase.bannerAccountCodeId ?? "");
-            setOpen(true);
+            openEdit();
           }}
         >
           Edit
         </button>
         <form
-          action={deleteRequestAction}
+          action={deleteAction}
           onSubmit={(event) => {
             if (!window.confirm("Delete this request? This cannot be undone.")) {
               event.preventDefault();
@@ -59,7 +95,17 @@ export function RequestRowActions({
             <p className="heroSubtitle">
               {purchase.projectName} | {purchase.title}
             </p>
-            <form action={updateRequestInline} className="requestForm">
+            {updateState.message ? (
+              <p className={updateState.ok ? "successNote" : "errorNote"} key={updateState.timestamp}>
+                {updateState.message}
+              </p>
+            ) : null}
+            {deleteState.message ? (
+              <p className={deleteState.ok ? "successNote" : "errorNote"} key={deleteState.timestamp}>
+                {deleteState.message}
+              </p>
+            ) : null}
+            <form action={updateAction} className="requestForm">
               <input type="hidden" name="purchaseId" value={purchase.id} />
               <label>
                 Project
@@ -134,9 +180,6 @@ export function RequestRowActions({
                   onChange={(event) => {
                     const value = event.target.value as typeof editRequestType;
                     setEditRequestType(value);
-                    if (value !== "expense") {
-                      // CC only applies to expense rows.
-                    }
                   }}
                 >
                   <option value="requisition">Requisition</option>
@@ -160,7 +203,7 @@ export function RequestRowActions({
               </label>
 
               <div className="modalActions">
-                <button type="button" className="tinyButton" onClick={() => setOpen(false)}>
+                <button type="button" className="tinyButton" onClick={closeEdit}>
                   Close
                 </button>
                 <button type="submit" className="tinyButton">

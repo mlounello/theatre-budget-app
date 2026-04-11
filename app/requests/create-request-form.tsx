@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { createRequest } from "@/app/requests/actions";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { createRequest, type ActionState } from "@/app/requests/actions";
 import type { AccountCodeOption, ProcurementProjectOption, ProductionCategoryOption, ProjectBudgetLineOption } from "@/lib/db";
 
 type AllocationRow = {
@@ -26,6 +26,7 @@ function uid(): string {
 
 const NONE_FISCAL_YEAR = "__none_fiscal_year__";
 const NONE_ORGANIZATION = "__none_organization__";
+const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
 export function CreateRequestForm({
   budgetLineOptions,
@@ -34,6 +35,8 @@ export function CreateRequestForm({
   productionCategoryOptions,
   canManageSplits
 }: Props) {
+  const [state, formAction] = useActionState(createRequest, initialState);
+  const formRef = useRef<HTMLFormElement | null>(null);
   const [useSplits, setUseSplits] = useState(false);
   const [selectedFiscalYear, setSelectedFiscalYear] = useState("");
   const [selectedOrganization, setSelectedOrganization] = useState("");
@@ -114,6 +117,22 @@ export function CreateRequestForm({
     useSplits
   ]);
 
+  useEffect(() => {
+    if (!state.ok || !state.message) return;
+    if (formRef.current) {
+      formRef.current.reset();
+    }
+    setRows([
+      {
+        id: uid(),
+        reportingBudgetLineId: "",
+        accountCodeId: "",
+        amount: "",
+        reportingBucket: "direct"
+      }
+    ]);
+  }, [state]);
+
   const fiscalYearOptions = useMemo(() => {
     const map = new Map<string, string>();
     for (const option of budgetLineOptions) {
@@ -172,7 +191,12 @@ export function CreateRequestForm({
   );
 
   return (
-    <form className="requestForm" action={createRequest}>
+    <form className="requestForm" action={formAction} ref={formRef}>
+      {state.message ? (
+        <p className={state.ok ? "successNote" : "errorNote"} key={state.timestamp}>
+          {state.message}
+        </p>
+      ) : null}
       <label>
         Fiscal Year
         <select
