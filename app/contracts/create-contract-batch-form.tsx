@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { createContractsBulkAction } from "@/app/contracts/actions";
+import { useActionState, useEffect, useMemo, useState } from "react";
+import { createContractsBulkAction, type ActionState } from "@/app/contracts/actions";
 import type { AccountCodeOption, FiscalYearOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
 
 type BulkLine = {
@@ -18,6 +18,8 @@ function makeLine(): BulkLine {
   };
 }
 
+const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
+
 export function CreateContractBatchForm({
   fiscalYearOptions,
   organizationOptions,
@@ -29,6 +31,7 @@ export function CreateContractBatchForm({
   projectOptions: ProcurementProjectOption[];
   accountCodeOptions: AccountCodeOption[];
 }) {
+  const [state, formAction] = useActionState(createContractsBulkAction, initialState);
   const [fiscalYearId, setFiscalYearId] = useState("");
   const [organizationId, setOrganizationId] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -54,6 +57,11 @@ export function CreateContractBatchForm({
     window.localStorage.setItem("tba_contracts_project_id", projectId);
     window.localStorage.setItem("tba_contracts_banner_account_code_id", bannerAccountCodeId);
   }, [fiscalYearId, organizationId, projectId, bannerAccountCodeId]);
+
+  useEffect(() => {
+    if (!state.ok || !state.message) return;
+    setRows([makeLine(), makeLine(), makeLine()]);
+  }, [state]);
 
   const linesJson = useMemo(() => {
     const clean = rows
@@ -86,7 +94,12 @@ export function CreateContractBatchForm({
   }
 
   return (
-    <form className="requestForm" action={createContractsBulkAction}>
+    <form className="requestForm" action={formAction}>
+      {state.message ? (
+        <p className={state.ok ? "successNote" : "errorNote"} key={state.timestamp}>
+          {state.message}
+        </p>
+      ) : null}
       <div className="contractBulkShared">
         <label>
           Fiscal Year

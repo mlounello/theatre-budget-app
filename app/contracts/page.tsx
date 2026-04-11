@@ -1,10 +1,7 @@
-import {
-  updateContractInstallmentStatusAction,
-  updateContractWorkflowAction
-} from "@/app/contracts/actions";
 import { CreateContractBatchForm } from "@/app/contracts/create-contract-batch-form";
 import { CreateContractForm } from "@/app/contracts/create-contract-form";
 import { ContractRowActions } from "@/app/contracts/contract-row-actions";
+import { ContractInstallmentControl, ContractWorkflowControl } from "@/app/contracts/contract-inline-actions";
 import { formatCurrency } from "@/lib/format";
 import { getContractsData } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
@@ -36,18 +33,10 @@ function installmentClass(value: string): string {
   return "status-requested";
 }
 
-export default async function ContractsPage({
-  searchParams
-}: {
-  searchParams?: Promise<{ ok?: string; error?: string }>;
-}) {
+export default async function ContractsPage() {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
-
-  const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const okMessage = resolvedSearchParams?.ok;
-  const errorMessage = resolvedSearchParams?.error;
 
   const { contracts, installments, fiscalYearOptions, organizationOptions, projectOptions, accountCodeOptions, canManageContracts } =
     await getContractsData();
@@ -65,8 +54,6 @@ export default async function ContractsPage({
         <p className="eyebrow">Contracts</p>
         <h1>Contract Payments</h1>
         <p className="heroSubtitle">Track contract paperwork workflow and installment check payments outside procurement.</p>
-        {okMessage ? <p className="successNote">{okMessage}</p> : null}
-        {errorMessage ? <p className="errorNote">{errorMessage}</p> : null}
       </header>
 
       {canManageContracts ? (
@@ -144,22 +131,15 @@ export default async function ContractsPage({
                       <td>
                         {canManageContracts ? (
                           <>
-                            <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>{workflowLabel(contract.workflowStatus)}</span>
-                            <form action={updateContractWorkflowAction} className="inlineEditForm">
-                              <input type="hidden" name="contractId" value={contract.id} />
-                              <select name="workflowStatus" defaultValue={contract.workflowStatus}>
-                                <option value="w9_requested">W9 Requested</option>
-                                <option value="contract_sent">Contract Sent</option>
-                                <option value="contract_signed_returned">Contract Signed + Returned</option>
-                                <option value="siena_signed">Siena Signed</option>
-                              </select>
-                              <button className="tinyButton" type="submit">
-                                Save
-                              </button>
-                            </form>
+                            <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>
+                              {workflowLabel(contract.workflowStatus)}
+                            </span>
+                            <ContractWorkflowControl contract={contract} />
                           </>
                         ) : (
-                          <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>{workflowLabel(contract.workflowStatus)}</span>
+                          <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>
+                            {workflowLabel(contract.workflowStatus)}
+                          </span>
                         )}
                       </td>
                       <td>
@@ -174,21 +154,15 @@ export default async function ContractsPage({
                               </span>
                               {canManageContracts ? (
                                 <>
-                                  <span className={`statusChip ${installmentClass(row.status)}`}>{installmentLabel(row.status)}</span>
-                                  <form action={updateContractInstallmentStatusAction} className="inlineEditForm">
-                                    <input type="hidden" name="installmentId" value={row.id} />
-                                    <select name="status" defaultValue={row.status}>
-                                      <option value="planned">Not Submitted</option>
-                                      <option value="check_request_submitted">Check Request Submitted</option>
-                                      <option value="check_paid">Check Paid</option>
-                                    </select>
-                                    <button type="submit" className="tinyButton">
-                                      Save
-                                    </button>
-                                  </form>
+                                  <span className={`statusChip ${installmentClass(row.status)}`}>
+                                    {installmentLabel(row.status)}
+                                  </span>
+                                  <ContractInstallmentControl installment={row} />
                                 </>
                               ) : (
-                                <span className={`statusChip ${installmentClass(row.status)}`}>{installmentLabel(row.status)}</span>
+                                <span className={`statusChip ${installmentClass(row.status)}`}>
+                                  {installmentLabel(row.status)}
+                                </span>
                               )}
                             </div>
                           ))}

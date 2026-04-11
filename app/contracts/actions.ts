@@ -1,10 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
 import type { PurchaseStatus } from "@/lib/types";
+
+type ActionState = {
+  ok: boolean;
+  message: string;
+  timestamp: number;
+};
 
 type ContractWorkflowStatus = "w9_requested" | "contract_sent" | "contract_signed_returned" | "siena_signed";
 type InstallmentStatus = "planned" | "check_request_submitted" | "check_paid";
@@ -13,6 +18,21 @@ type BulkContractLine = {
   contractValue: string;
   installmentCount?: string;
 };
+
+const emptyState: ActionState = { ok: true, message: "", timestamp: 0 };
+
+function ok(message: string): ActionState {
+  return { ok: true, message, timestamp: Date.now() };
+}
+
+function err(message: string): ActionState {
+  return { ok: false, message, timestamp: Date.now() };
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim().length > 0) return error.message;
+  return fallback;
+}
 
 function parseMoney(value: FormDataEntryValue | null): number {
   if (typeof value !== "string" || value.trim() === "") return 0;
@@ -36,23 +56,6 @@ function parseInstallmentStatus(value: FormDataEntryValue | null): InstallmentSt
   const raw = String(value ?? "planned").trim().toLowerCase();
   if (raw === "check_request_submitted" || raw === "check_paid") return raw;
   return "planned";
-}
-
-function rethrowIfRedirect(error: unknown): void {
-  const message =
-    typeof error === "object" && error !== null && "message" in error
-      ? String((error as { message?: unknown }).message)
-      : "";
-  const digest =
-    typeof error === "object" && error !== null && "digest" in error
-      ? String((error as { digest?: unknown }).digest)
-      : "";
-  if (message.includes("NEXT_REDIRECT") || digest.includes("NEXT_REDIRECT")) throw error;
-}
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim().length > 0) return error.message;
-  return fallback;
 }
 
 function splitAmounts(total: number, count: number): number[] {
@@ -108,13 +111,17 @@ async function ensurePmOrAdmin(projectId: string, userId: string): Promise<void>
   }
 }
 
-export async function createContractAction(formData: FormData): Promise<void> {
+export async function createContractAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
 
     const projectId = String(formData.get("projectId") ?? "").trim();
     const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
@@ -128,10 +135,10 @@ export async function createContractAction(formData: FormData): Promise<void> {
     const installmentCount = parseInstallmentCount(formData.get("installmentCount"));
     const notes = String(formData.get("notes") ?? "").trim();
 
-    if (!projectId) throw new Error("Project is required.");
-    if (!bannerAccountCodeId) throw new Error("Banner account code is required.");
-    if (!contractorName) throw new Error("Contracted employee name is required.");
-    if (contractValue === 0) throw new Error("Contract value must be non-zero.");
+    if (!projectId) return err("Project is required.");
+    if (!bannerAccountCodeId) return err("Banner account code is required.");
+    if (!contractorName) return err("Contracted employee name is required.");
+    if (contractValue === 0) return err("Contract value must be non-zero.");
 
     await ensurePmOrAdmin(projectId, user.id);
 
@@ -140,7 +147,7 @@ export async function createContractAction(formData: FormData): Promise<void> {
       .select("id, organization_id, fiscal_year_id")
       .eq("id", projectId)
       .single();
-    if (projectError || !projectRow) throw new Error("Project not found.");
+    if (projectError || !projectRow) return err("Project not found.");
 
     const resolvedOrganizationId = organizationId || ((projectRow.organization_id as string | null) ?? null);
     const resolvedFiscalYearId = fiscalYearId || ((projectRow.fiscal_year_id as string | null) ?? null);
@@ -153,15 +160,15 @@ export async function createContractAction(formData: FormData): Promise<void> {
       .order("sort_order", { ascending: true })
       .limit(1)
       .maybeSingle();
-    if (miscCategoryError) throw new Error(miscCategoryError.message);
-    if (!miscCategory?.id) throw new Error("Production category 'Miscellaneous' is required for contract reporting.");
+    if (miscCategoryError) return err(miscCategoryError.message);
+    if (!miscCategory?.id) return err("Production category 'Miscellaneous' is required for contract reporting.");
     const miscCategoryId = miscCategory.id as string;
 
     const { data: reportingBudgetLineId, error: lineError } = await supabase.rpc("ensure_project_category_line", {
       p_project_id: projectId,
       p_production_category_id: miscCategoryId
     });
-    if (lineError || !reportingBudgetLineId) throw new Error(lineError?.message ?? "Could not resolve reporting line.");
+    if (lineError || !reportingBudgetLineId) return err(lineError?.message ?? "Could not resolve reporting line.");
 
     const { data: contract, error: contractError } = await supabase
       .from("contracts")
@@ -183,7 +190,7 @@ export async function createContractAction(formData: FormData): Promise<void> {
       })
       .select("id")
       .single();
-    if (contractError || !contract) throw new Error(contractError?.message ?? "Could not create contract.");
+    if (contractError || !contract) return err(contractError?.message ?? "Could not create contract.");
 
     const installmentAmounts = splitAmounts(contractValue, installmentCount);
     for (let index = 0; index < installmentAmounts.length; index += 1) {
@@ -215,7 +222,7 @@ export async function createContractAction(formData: FormData): Promise<void> {
         })
         .select("id")
         .single();
-      if (purchaseError || !purchase) throw new Error(purchaseError?.message ?? "Could not create linked payment row.");
+      if (purchaseError || !purchase) return err(purchaseError?.message ?? "Could not create linked payment row.");
 
       const { error: allocationError } = await supabase.from("purchase_allocations").insert({
         purchase_id: purchase.id,
@@ -226,7 +233,7 @@ export async function createContractAction(formData: FormData): Promise<void> {
         reporting_bucket: "direct",
         note: "Contract installment allocation"
       });
-      if (allocationError) throw new Error(allocationError.message);
+      if (allocationError) return err(allocationError.message);
 
       const { error: installmentError } = await supabase.from("contract_installments").insert({
         contract_id: contract.id,
@@ -235,27 +242,30 @@ export async function createContractAction(formData: FormData): Promise<void> {
         installment_amount: installmentAmount,
         status: "planned"
       });
-      if (installmentError) throw new Error(installmentError.message);
+      if (installmentError) return err(installmentError.message);
     }
 
     revalidatePath("/contracts");
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath(`/projects/${projectId}`);
-    redirect("/contracts?ok=Contract%20saved.");
+    return ok("Contract saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    redirect(`/contracts?error=${encodeURIComponent(getErrorMessage(error, "Could not save contract."))}`);
+    return err(getErrorMessage(error, "Could not save contract."));
   }
 }
 
-export async function createContractsBulkAction(formData: FormData): Promise<void> {
+export async function createContractsBulkAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
 
     const projectId = String(formData.get("projectId") ?? "").trim();
     const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
@@ -263,9 +273,9 @@ export async function createContractsBulkAction(formData: FormData): Promise<voi
     const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
     const rows = parseBulkContractLines(formData.get("linesJson"));
 
-    if (!projectId) throw new Error("Project is required.");
-    if (!bannerAccountCodeId) throw new Error("Banner account code is required.");
-    if (rows.length === 0) throw new Error("Add at least one contract row.");
+    if (!projectId) return err("Project is required.");
+    if (!bannerAccountCodeId) return err("Banner account code is required.");
+    if (rows.length === 0) return err("Add at least one contract row.");
 
     await ensurePmOrAdmin(projectId, user.id);
     const rpcRows = rows.map((row) => ({
@@ -281,26 +291,29 @@ export async function createContractsBulkAction(formData: FormData): Promise<voi
       p_banner_account_code_id: bannerAccountCodeId,
       p_rows: rpcRows
     });
-    if (createError) throw new Error(createError.message);
+    if (createError) return err(createError.message);
 
     revalidatePath("/contracts");
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath(`/projects/${projectId}`);
-    redirect(`/contracts?ok=${encodeURIComponent(`Saved ${Number(createdCount ?? rows.length)} contracts.`)}`);
+    return ok(`Saved ${Number(createdCount ?? rows.length)} contracts.`);
   } catch (error) {
-    rethrowIfRedirect(error);
-    redirect(`/contracts?error=${encodeURIComponent(getErrorMessage(error, "Could not save bulk contracts."))}`);
+    return err(getErrorMessage(error, "Could not save bulk contracts."));
   }
 }
 
-export async function updateContractDetailsAction(formData: FormData): Promise<void> {
+export async function updateContractDetailsAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
 
     const contractId = String(formData.get("contractId") ?? "").trim();
     const projectId = String(formData.get("projectId") ?? "").trim();
@@ -314,18 +327,18 @@ export async function updateContractDetailsAction(formData: FormData): Promise<v
     const contractValue = parseMoney(formData.get("contractValue"));
     const notes = String(formData.get("notes") ?? "").trim();
 
-    if (!contractId) throw new Error("Contract id is required.");
-    if (!projectId) throw new Error("Project is required.");
-    if (!bannerAccountCodeId) throw new Error("Banner account code is required.");
-    if (!contractorName) throw new Error("Contracted employee name is required.");
-    if (contractValue === 0) throw new Error("Contract value must be non-zero.");
+    if (!contractId) return err("Contract id is required.");
+    if (!projectId) return err("Project is required.");
+    if (!bannerAccountCodeId) return err("Banner account code is required.");
+    if (!contractorName) return err("Contracted employee name is required.");
+    if (contractValue === 0) return err("Contract value must be non-zero.");
 
     const { data: existing, error: existingError } = await supabase
       .from("contracts")
       .select("id, project_id, installment_count, production_category_id")
       .eq("id", contractId)
       .single();
-    if (existingError || !existing) throw new Error("Contract not found.");
+    if (existingError || !existing) return err("Contract not found.");
 
     await ensurePmOrAdmin(existing.project_id as string, user.id);
     if ((existing.project_id as string) !== projectId) {
@@ -337,18 +350,18 @@ export async function updateContractDetailsAction(formData: FormData): Promise<v
       .select("id, organization_id, fiscal_year_id")
       .eq("id", projectId)
       .single();
-    if (projectError || !projectRow) throw new Error("Project not found.");
+    if (projectError || !projectRow) return err("Project not found.");
 
     const resolvedOrganizationId = organizationId || ((projectRow.organization_id as string | null) ?? null);
     const resolvedFiscalYearId = fiscalYearId || ((projectRow.fiscal_year_id as string | null) ?? null);
     const productionCategoryId = (existing.production_category_id as string | null) ?? null;
-    if (!productionCategoryId) throw new Error("Contract production category is missing.");
+    if (!productionCategoryId) return err("Contract production category is missing.");
 
     const { data: reportingBudgetLineId, error: lineError } = await supabase.rpc("ensure_project_category_line", {
       p_project_id: projectId,
       p_production_category_id: productionCategoryId
     });
-    if (lineError || !reportingBudgetLineId) throw new Error(lineError?.message ?? "Could not resolve reporting line.");
+    if (lineError || !reportingBudgetLineId) return err(lineError?.message ?? "Could not resolve reporting line.");
 
     const { data: contractUpdated, error: contractUpdateError } = await supabase
       .from("contracts")
@@ -367,15 +380,15 @@ export async function updateContractDetailsAction(formData: FormData): Promise<v
       .eq("id", contractId)
       .select("id")
       .maybeSingle();
-    if (contractUpdateError) throw new Error(contractUpdateError.message);
-    if (!contractUpdated?.id) throw new Error("Contract update was not applied.");
+    if (contractUpdateError) return err(contractUpdateError.message);
+    if (!contractUpdated?.id) return err("Contract update was not applied.");
 
     const { data: installments, error: installmentsError } = await supabase
       .from("contract_installments")
       .select("id, purchase_id, installment_number, status")
       .eq("contract_id", contractId)
       .order("installment_number", { ascending: true });
-    if (installmentsError) throw new Error(installmentsError.message);
+    if (installmentsError) return err(installmentsError.message);
 
     const count = Number(existing.installment_count ?? 1);
     const parts = splitAmounts(contractValue, count);
@@ -391,8 +404,8 @@ export async function updateContractDetailsAction(formData: FormData): Promise<v
         .eq("id", installment.id as string)
         .select("id")
         .maybeSingle();
-      if (installmentUpdateError) throw new Error(installmentUpdateError.message);
-      if (!installmentUpdated?.id) throw new Error("Installment amount update was not applied.");
+      if (installmentUpdateError) return err(installmentUpdateError.message);
+      if (!installmentUpdated?.id) return err("Installment amount update was not applied.");
 
       if (!installment.purchase_id) continue;
 
@@ -424,8 +437,8 @@ export async function updateContractDetailsAction(formData: FormData): Promise<v
         .eq("id", purchaseId)
         .select("id")
         .maybeSingle();
-      if (purchaseUpdateError) throw new Error(purchaseUpdateError.message);
-      if (!purchaseUpdated?.id) throw new Error("Linked purchase update was not applied.");
+      if (purchaseUpdateError) return err(purchaseUpdateError.message);
+      if (!purchaseUpdated?.id) return err("Linked purchase update was not applied.");
 
       const { data: allocationUpdated, error: allocationUpdateError } = await supabase
         .from("purchase_allocations")
@@ -438,39 +451,42 @@ export async function updateContractDetailsAction(formData: FormData): Promise<v
         .eq("purchase_id", purchaseId)
         .select("id")
         .limit(1);
-      if (allocationUpdateError) throw new Error(allocationUpdateError.message);
-      if (!allocationUpdated || allocationUpdated.length === 0) throw new Error("Linked allocation update was not applied.");
+      if (allocationUpdateError) return err(allocationUpdateError.message);
+      if (!allocationUpdated || allocationUpdated.length === 0) return err("Linked allocation update was not applied.");
     }
 
     revalidatePath("/contracts");
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath(`/projects/${projectId}`);
-    redirect("/contracts?ok=Contract%20updated.");
+    return ok("Contract updated.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    redirect(`/contracts?error=${encodeURIComponent(getErrorMessage(error, "Could not update contract."))}`);
+    return err(getErrorMessage(error, "Could not update contract."));
   }
 }
 
-export async function updateContractWorkflowAction(formData: FormData): Promise<void> {
+export async function updateContractWorkflowAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
 
     const contractId = String(formData.get("contractId") ?? "").trim();
     const workflowStatus = parseWorkflowStatus(formData.get("workflowStatus"));
-    if (!contractId) throw new Error("Contract id is required.");
+    if (!contractId) return err("Contract id is required.");
 
     const { data: contract, error: contractError } = await supabase
       .from("contracts")
       .select("id, project_id")
       .eq("id", contractId)
       .single();
-    if (contractError || !contract) throw new Error("Contract not found.");
+    if (contractError || !contract) return err("Contract not found.");
     const projectId = contract.project_id as string;
 
     await ensurePmOrAdmin(projectId, user.id);
@@ -481,44 +497,47 @@ export async function updateContractWorkflowAction(formData: FormData): Promise<
       .eq("id", contractId)
       .select("id")
       .maybeSingle();
-    if (updateError) throw new Error(updateError.message);
-    if (!updated?.id) throw new Error("Contract workflow update was not applied.");
+    if (updateError) return err(updateError.message);
+    if (!updated?.id) return err("Contract workflow update was not applied.");
 
     revalidatePath("/contracts");
-    redirect("/contracts?ok=Contract%20workflow%20updated.");
+    return ok("Contract workflow updated.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    redirect(`/contracts?error=${encodeURIComponent(getErrorMessage(error, "Could not update contract workflow."))}`);
+    return err(getErrorMessage(error, "Could not update contract workflow."));
   }
 }
 
-export async function updateContractInstallmentStatusAction(formData: FormData): Promise<void> {
+export async function updateContractInstallmentStatusAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
 
     const installmentId = String(formData.get("installmentId") ?? "").trim();
     const nextStatus = parseInstallmentStatus(formData.get("status"));
-    if (!installmentId) throw new Error("Installment id is required.");
+    if (!installmentId) return err("Installment id is required.");
 
     const { data: installment, error: installmentError } = await supabase
       .from("contract_installments")
       .select("id, contract_id, purchase_id, installment_amount, status, contracts!inner(project_id)")
       .eq("id", installmentId)
       .single();
-    if (installmentError || !installment) throw new Error("Installment not found.");
+    if (installmentError || !installment) return err("Installment not found.");
     const contractJoin = installment.contracts as { project_id?: string } | Array<{ project_id?: string }> | null;
     const contractRow = Array.isArray(contractJoin) ? contractJoin[0] : contractJoin;
     const projectId = contractRow?.project_id;
-    if (!projectId) throw new Error("Project could not be resolved.");
+    if (!projectId) return err("Project could not be resolved.");
 
     await ensurePmOrAdmin(projectId, user.id);
 
     const amount = parseMoney(String(installment.installment_amount ?? "0"));
-    if (amount === 0) throw new Error("Installment amount must be non-zero.");
+    if (amount === 0) return err("Installment amount must be non-zero.");
 
     let purchaseStatus: PurchaseStatus = "requested";
     let requestedAmount = 0;
@@ -555,8 +574,8 @@ export async function updateContractInstallmentStatusAction(formData: FormData):
         .eq("id", installment.purchase_id as string)
         .select("id")
         .maybeSingle();
-      if (purchaseUpdateError) throw new Error(purchaseUpdateError.message);
-      if (!purchaseUpdated?.id) throw new Error("Installment purchase status update was not applied.");
+      if (purchaseUpdateError) return err(purchaseUpdateError.message);
+      if (!purchaseUpdated?.id) return err("Installment purchase status update was not applied.");
 
       const { error: eventError } = await supabase.from("purchase_events").insert({
         purchase_id: installment.purchase_id as string,
@@ -570,7 +589,7 @@ export async function updateContractInstallmentStatusAction(formData: FormData):
         changed_by_user_id: user.id,
         note: `Contract installment marked ${nextStatus}`
       });
-      if (eventError) throw new Error(eventError.message);
+      if (eventError) return err(eventError.message);
     }
 
     const today = new Date().toISOString().slice(0, 10);
@@ -584,37 +603,40 @@ export async function updateContractInstallmentStatusAction(formData: FormData):
       .eq("id", installmentId)
       .select("id")
       .maybeSingle();
-    if (installmentUpdateError) throw new Error(installmentUpdateError.message);
-    if (!installmentUpdated?.id) throw new Error("Installment status update was not applied.");
+    if (installmentUpdateError) return err(installmentUpdateError.message);
+    if (!installmentUpdated?.id) return err("Installment status update was not applied.");
 
     revalidatePath("/contracts");
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath(`/projects/${projectId}`);
-    redirect("/contracts?ok=Installment%20status%20updated.");
+    return ok("Installment status updated.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    redirect(`/contracts?error=${encodeURIComponent(getErrorMessage(error, "Could not update installment status."))}`);
+    return err(getErrorMessage(error, "Could not update installment status."));
   }
 }
 
-export async function deleteContractAction(formData: FormData): Promise<void> {
+export async function deleteContractAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
       data: { user }
     } = await supabase.auth.getUser();
-    if (!user) throw new Error("You must be signed in.");
+    if (!user) return err("You must be signed in.");
 
     const contractId = String(formData.get("contractId") ?? "").trim();
-    if (!contractId) throw new Error("Contract id is required.");
+    if (!contractId) return err("Contract id is required.");
 
     const { data: contract, error: contractError } = await supabase
       .from("contracts")
       .select("id, project_id")
       .eq("id", contractId)
       .single();
-    if (contractError || !contract) throw new Error("Contract not found.");
+    if (contractError || !contract) return err("Contract not found.");
     const projectId = contract.project_id as string;
 
     await ensurePmOrAdmin(projectId, user.id);
@@ -622,15 +644,16 @@ export async function deleteContractAction(formData: FormData): Promise<void> {
     const { error: deleteError } = await supabase.rpc("delete_contract_with_links", {
       p_contract_id: contractId
     });
-    if (deleteError) throw new Error(deleteError.message);
+    if (deleteError) return err(deleteError.message);
 
     revalidatePath("/contracts");
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath(`/projects/${projectId}`);
-    redirect("/contracts?ok=Contract%20deleted.");
+    return ok("Contract deleted.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    redirect(`/contracts?error=${encodeURIComponent(getErrorMessage(error, "Could not delete contract."))}`);
+    return err(getErrorMessage(error, "Could not delete contract."));
   }
 }
+
+export type { ActionState };

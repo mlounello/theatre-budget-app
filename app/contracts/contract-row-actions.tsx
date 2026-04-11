@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { deleteContractAction, updateContractDetailsAction } from "@/app/contracts/actions";
+import { useActionState, useCallback, useEffect, useMemo, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { deleteContractAction, updateContractDetailsAction, type ActionState } from "@/app/contracts/actions";
 import type { AccountCodeOption, ContractRow, FiscalYearOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
+
+const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
 export function ContractRowActions({
   contract,
@@ -17,16 +20,51 @@ export function ContractRowActions({
   projectOptions: ProcurementProjectOption[];
   accountCodeOptions: AccountCodeOption[];
 }) {
-  const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [updateState, updateAction] = useActionState(updateContractDetailsAction, initialState);
+  const [deleteState, deleteAction] = useActionState(deleteContractAction, initialState);
+
+  const open = useMemo(() => searchParams.get("ct_edit") === contract.id, [searchParams, contract.id]);
+  const [editProjectId, setEditProjectId] = useState(contract.projectId);
+  const [editFiscalYearId, setEditFiscalYearId] = useState(contract.fiscalYearId ?? "");
+  const [editOrganizationId, setEditOrganizationId] = useState(contract.organizationId ?? "");
+  const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState(contract.bannerAccountCodeId ?? "");
+
+  const openEdit = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("ct_edit", contract.id);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [contract.id, pathname, router, searchParams]);
+
+  const closeEdit = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("ct_edit");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    if (!open) return;
+    setEditProjectId(contract.projectId);
+    setEditFiscalYearId(contract.fiscalYearId ?? "");
+    setEditOrganizationId(contract.organizationId ?? "");
+    setEditBannerAccountCodeId(contract.bannerAccountCodeId ?? "");
+  }, [open, contract]);
+
+  useEffect(() => {
+    if (!deleteState.ok || !deleteState.message) return;
+    if (open) closeEdit();
+  }, [deleteState, open, closeEdit]);
 
   return (
     <>
       <div className="actionCell">
-        <button type="button" className="tinyButton" onClick={() => setOpen(true)}>
+        <button type="button" className="tinyButton" onClick={openEdit}>
           Edit
         </button>
         <form
-          action={deleteContractAction}
+          action={deleteAction}
           onSubmit={(event) => {
             if (!window.confirm("Delete this contract and all linked installment rows? This cannot be undone.")) {
               event.preventDefault();
@@ -48,7 +86,17 @@ export function ContractRowActions({
               {contract.projectName}
               {contract.season ? ` (${contract.season})` : ""}
             </p>
-            <form action={updateContractDetailsAction} className="requestForm">
+            {updateState.message ? (
+              <p className={updateState.ok ? "successNote" : "errorNote"} key={updateState.timestamp}>
+                {updateState.message}
+              </p>
+            ) : null}
+            {deleteState.message ? (
+              <p className={deleteState.ok ? "successNote" : "errorNote"} key={deleteState.timestamp}>
+                {deleteState.message}
+              </p>
+            ) : null}
+            <form action={updateAction} className="requestForm">
               <input type="hidden" name="contractId" value={contract.id} />
               <label>
                 Name
@@ -72,7 +120,11 @@ export function ContractRowActions({
               </label>
               <label>
                 FY
-                <select name="fiscalYearId" defaultValue={contract.fiscalYearId ?? ""}>
+                <select
+                  name="fiscalYearId"
+                  value={editFiscalYearId}
+                  onChange={(event) => setEditFiscalYearId(event.target.value)}
+                >
                   <option value="">From project default</option>
                   {fiscalYearOptions.map((fiscalYear) => (
                     <option key={fiscalYear.id} value={fiscalYear.id}>
@@ -83,7 +135,11 @@ export function ContractRowActions({
               </label>
               <label>
                 Org
-                <select name="organizationId" defaultValue={contract.organizationId ?? ""}>
+                <select
+                  name="organizationId"
+                  value={editOrganizationId}
+                  onChange={(event) => setEditOrganizationId(event.target.value)}
+                >
                   <option value="">From project default</option>
                   {organizationOptions.map((organization) => (
                     <option key={organization.id} value={organization.id}>
@@ -94,7 +150,12 @@ export function ContractRowActions({
               </label>
               <label>
                 Project
-                <select name="projectId" defaultValue={contract.projectId} required>
+                <select
+                  name="projectId"
+                  value={editProjectId}
+                  onChange={(event) => setEditProjectId(event.target.value)}
+                  required
+                >
                   {projectOptions.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.label}
@@ -104,7 +165,12 @@ export function ContractRowActions({
               </label>
               <label>
                 Banner Account
-                <select name="bannerAccountCodeId" defaultValue={contract.bannerAccountCodeId} required>
+                <select
+                  name="bannerAccountCodeId"
+                  value={editBannerAccountCodeId}
+                  onChange={(event) => setEditBannerAccountCodeId(event.target.value)}
+                  required
+                >
                   {accountCodeOptions.map((accountCode) => (
                     <option key={accountCode.id} value={accountCode.id}>
                       {accountCode.label}
@@ -117,7 +183,7 @@ export function ContractRowActions({
                 <input name="notes" defaultValue={contract.notes ?? ""} />
               </label>
               <div className="modalActions">
-                <button type="button" className="tinyButton" onClick={() => setOpen(false)}>
+                <button type="button" className="tinyButton" onClick={closeEdit}>
                   Close
                 </button>
                 <button type="submit" className="tinyButton">

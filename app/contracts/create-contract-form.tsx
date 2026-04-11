@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createContractAction } from "@/app/contracts/actions";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { createContractAction, type ActionState } from "@/app/contracts/actions";
 import type { AccountCodeOption, FiscalYearOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
+
+const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
 export function CreateContractForm({
   fiscalYearOptions,
@@ -15,6 +17,8 @@ export function CreateContractForm({
   projectOptions: ProcurementProjectOption[];
   accountCodeOptions: AccountCodeOption[];
 }) {
+  const [state, formAction] = useActionState(createContractAction, initialState);
+  const formRef = useRef<HTMLFormElement | null>(null);
   const [fiscalYearId, setFiscalYearId] = useState("");
   const [organizationId, setOrganizationId] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -40,8 +44,18 @@ export function CreateContractForm({
     window.localStorage.setItem("tba_contracts_banner_account_code_id", bannerAccountCodeId);
   }, [fiscalYearId, organizationId, projectId, bannerAccountCodeId]);
 
+  useEffect(() => {
+    if (!state.ok || !state.message || !formRef.current) return;
+    formRef.current.reset();
+  }, [state]);
+
   return (
-    <form className="requestForm" action={createContractAction}>
+    <form className="requestForm" action={formAction} ref={formRef}>
+      {state.message ? (
+        <p className={state.ok ? "successNote" : "errorNote"} key={state.timestamp}>
+          {state.message}
+        </p>
+      ) : null}
       <label>
         Fiscal Year
         <select name="fiscalYearId" value={fiscalYearId} onChange={(event) => setFiscalYearId(event.target.value)}>
