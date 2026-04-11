@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   addProcurementReceivingDocAction,
@@ -10,7 +10,8 @@ import {
   deleteProcurementReceivingDocAction,
   deleteProcurementAction,
   deleteProcurementReceiptAction,
-  updateProcurementAction
+  updateProcurementAction,
+  type ActionState
 } from "@/app/procurement/actions";
 import { formatCurrency } from "@/lib/format";
 import type {
@@ -43,6 +44,7 @@ const CC_PROCUREMENT_STATUSES = [
   { value: "cancelled", label: "Cancelled" }
 ] as const;
 const NEW_VENDOR_VALUE = "__new_vendor__";
+const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
 function procurementLabel(value: string, isCreditCard: boolean, requestType: ProcurementRow["requestType"]): string {
   if (requestType === "request") return "Budget Hold";
@@ -135,23 +137,23 @@ function sortRows(rows: ProcurementRow[], receipts: ProcurementReceiptRow[], key
               ? asString(a.projectName)
               : key === "createdAt"
                 ? asString(a.createdAt)
-              : key === "organizationName"
-                ? asString(a.organizationName)
-            : key === "productionCategoryName"
-              ? asString(a.productionCategoryName)
-              : key === "bannerAccountCode"
-                ? asString(a.bannerAccountCode)
-              : key === "title"
-                ? asString(a.title)
-                : key === "requisitionNumber"
-                  ? asString(a.requisitionNumber)
-                  : key === "poNumber"
-                    ? asString(a.poNumber)
-                    : key === "vendorName"
-                      ? asString(a.vendorName)
-                      : key === "procurementStatus"
-                        ? asString(a.procurementStatus)
-                        : asString(a.budgetStatus);
+                : key === "organizationName"
+                  ? asString(a.organizationName)
+              : key === "productionCategoryName"
+                ? asString(a.productionCategoryName)
+                : key === "bannerAccountCode"
+                  ? asString(a.bannerAccountCode)
+                  : key === "title"
+                    ? asString(a.title)
+                    : key === "requisitionNumber"
+                      ? asString(a.requisitionNumber)
+                      : key === "poNumber"
+                        ? asString(a.poNumber)
+                        : key === "vendorName"
+                          ? asString(a.vendorName)
+                          : key === "procurementStatus"
+                            ? asString(a.procurementStatus)
+                            : asString(a.budgetStatus);
     const bVal =
       key === "orderValue"
         ? bOrderValue
@@ -161,23 +163,23 @@ function sortRows(rows: ProcurementRow[], receipts: ProcurementReceiptRow[], key
               ? asString(b.projectName)
               : key === "createdAt"
                 ? asString(b.createdAt)
-              : key === "organizationName"
-                ? asString(b.organizationName)
+                : key === "organizationName"
+                  ? asString(b.organizationName)
               : key === "productionCategoryName"
                 ? asString(b.productionCategoryName)
-              : key === "bannerAccountCode"
-                ? asString(b.bannerAccountCode)
-              : key === "title"
-                ? asString(b.title)
-                : key === "requisitionNumber"
-                  ? asString(b.requisitionNumber)
-                  : key === "poNumber"
-                    ? asString(b.poNumber)
-                    : key === "vendorName"
-                      ? asString(b.vendorName)
-                      : key === "procurementStatus"
-                        ? asString(b.procurementStatus)
-                        : asString(b.budgetStatus);
+                : key === "bannerAccountCode"
+                  ? asString(b.bannerAccountCode)
+                  : key === "title"
+                    ? asString(b.title)
+                    : key === "requisitionNumber"
+                      ? asString(b.requisitionNumber)
+                      : key === "poNumber"
+                        ? asString(b.poNumber)
+                        : key === "vendorName"
+                          ? asString(b.vendorName)
+                          : key === "procurementStatus"
+                            ? asString(b.procurementStatus)
+                            : asString(b.budgetStatus);
 
     if (key === "poNumber") {
       const aPo = extractSortablePoNumber(a.poNumber);
@@ -264,6 +266,8 @@ export function ProcurementTable({
   const [editNewVendorName, setEditNewVendorName] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [pendingBulkDeleteIds, setPendingBulkDeleteIds] = useState<string[]>([]);
   const CONTRACT_PAYMENT_PROCUREMENT_STATUSES = [
     { value: "requested", label: "Unpaid" },
     { value: "paid", label: "Paid" }
@@ -293,6 +297,53 @@ export function ProcurementTable({
   );
   const allVisibleSelected = sortedPurchases.length > 0 && selectedVisibleCount === sortedPurchases.length;
   const selectedIdsJson = JSON.stringify(selectedIds);
+
+  const [updateState, updateAction] = useActionState(updateProcurementAction, initialState);
+  const [deleteState, deleteAction] = useActionState(deleteProcurementAction, initialState);
+  const [bulkUpdateState, bulkUpdateAction] = useActionState(bulkUpdateProcurementAction, initialState);
+  const [bulkDeleteState, bulkDeleteAction] = useActionState(bulkDeleteProcurementAction, initialState);
+  const [addReceivingState, addReceivingAction] = useActionState(addProcurementReceivingDocAction, initialState);
+  const [deleteReceivingState, deleteReceivingAction] = useActionState(deleteProcurementReceivingDocAction, initialState);
+  const [addReceiptState, addReceiptAction] = useActionState(addProcurementReceiptAction, initialState);
+  const [deleteReceiptState, deleteReceiptAction] = useActionState(deleteProcurementReceiptAction, initialState);
+
+  const openEdit = useCallback(
+    (id: string) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("pr_edit", id);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      setEditingId(id);
+    },
+    [pathname, router, searchParams]
+  );
+
+  const closeEdit = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("pr_edit");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    setEditingId(null);
+  }, [pathname, router, searchParams]);
+
+  const openBulkEdit = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("pr_bulk", "1");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    setBulkEditOpen(true);
+  }, [pathname, router, searchParams]);
+
+  const closeBulkEdit = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete("pr_bulk");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    setBulkEditOpen(false);
+  }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    const editFromUrl = searchParams.get("pr_edit");
+    setEditingId(editFromUrl ? editFromUrl : null);
+    setBulkEditOpen(searchParams.get("pr_bulk") === "1");
+  }, [searchParams]);
+
   useEffect(() => {
     if (!editingPurchase) return;
     setEditProjectId(editingPurchase.projectId);
@@ -302,6 +353,26 @@ export function ProcurementTable({
     setEditVendorId(editingPurchase.vendorId ?? "");
     setEditNewVendorName("");
   }, [editingPurchase]);
+
+  useEffect(() => {
+    if (!deleteState.ok || !deleteState.message) return;
+    if (pendingDeleteId && editingId === pendingDeleteId) {
+      closeEdit();
+    }
+  }, [deleteState, pendingDeleteId, editingId, closeEdit]);
+
+  useEffect(() => {
+    if (!bulkDeleteState.ok || !bulkDeleteState.message) return;
+    setSelectedIds([]);
+    if (editingId && pendingBulkDeleteIds.includes(editingId)) {
+      closeEdit();
+    }
+  }, [bulkDeleteState, pendingBulkDeleteIds, editingId, closeEdit]);
+
+  useEffect(() => {
+    if (!bulkUpdateState.ok || !bulkUpdateState.message) return;
+    setBulkEditOpen(true);
+  }, [bulkUpdateState]);
 
   function onToggle(key: SortKey): void {
     const nextDirection: SortDirection = sortKey === key ? (direction === "asc" ? "desc" : "asc") : "asc";
@@ -335,20 +406,33 @@ export function ProcurementTable({
 
   return (
     <>
+      {deleteState.message ? (
+        <p className={deleteState.ok ? "successNote" : "errorNote"} key={deleteState.timestamp}>
+          {deleteState.message}
+        </p>
+      ) : null}
+      {bulkDeleteState.message ? (
+        <p className={bulkDeleteState.ok ? "successNote" : "errorNote"} key={bulkDeleteState.timestamp}>
+          {bulkDeleteState.message}
+        </p>
+      ) : null}
+
       <div className="bulkToolbar">
         <p className="bulkMeta">
           Selected: {selectedIds.length} total ({selectedVisibleCount} visible)
         </p>
         <div className="bulkActions">
-          <button type="button" className="tinyButton" disabled={selectedIds.length === 0} onClick={() => setBulkEditOpen(true)}>
+          <button type="button" className="tinyButton" disabled={selectedIds.length === 0} onClick={openBulkEdit}>
             Bulk Edit
           </button>
           <form
-            action={bulkDeleteProcurementAction}
+            action={bulkDeleteAction}
             onSubmit={(event) => {
               if (!window.confirm(`Delete ${selectedIds.length} selected procurement row(s)?`)) {
                 event.preventDefault();
+                return;
               }
+              setPendingBulkDeleteIds([...selectedIds]);
             }}
           >
             <input type="hidden" name="selectedIdsJson" value={selectedIdsJson} />
@@ -510,13 +594,17 @@ export function ProcurementTable({
                   <td>
                     {canManageProcurement ? (
                       <div className="actionCell">
-                        <button type="button" className="tinyButton" onClick={() => setEditingId(purchase.id)}>
+                        <button type="button" className="tinyButton" onClick={() => openEdit(purchase.id)}>
                           Edit
                         </button>
                         <form
-                          action={deleteProcurementAction}
+                          action={deleteAction}
                           onSubmit={(event) => {
-                            if (!window.confirm("Delete this procurement row?")) event.preventDefault();
+                            if (!window.confirm("Delete this procurement row?")) {
+                              event.preventDefault();
+                              return;
+                            }
+                            setPendingDeleteId(purchase.id);
                           }}
                         >
                           <input type="hidden" name="id" value={purchase.id} />
@@ -540,7 +628,12 @@ export function ProcurementTable({
         <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit procurement record">
           <div className="modalPanel">
             <h2>Edit Procurement Record</h2>
-            <form action={updateProcurementAction} className="requestForm">
+            {updateState.message ? (
+              <p className={updateState.ok ? "successNote" : "errorNote"} key={updateState.timestamp}>
+                {updateState.message}
+              </p>
+            ) : null}
+            <form action={updateAction} className="requestForm">
               <input type="hidden" name="id" value={editingPurchase.id} />
               <label>
                 <input name="budgetTracked" type="checkbox" defaultChecked={editingPurchase.budgetTracked} />
@@ -706,7 +799,7 @@ export function ProcurementTable({
                 <input name="notes" defaultValue={editingPurchase.notes ?? ""} />
               </label>
               <div className="modalActions">
-                <button type="button" className="tinyButton" onClick={() => setEditingId(null)}>
+                <button type="button" className="tinyButton" onClick={closeEdit}>
                   Cancel
                 </button>
                 <button type="submit" className="buttonLink buttonPrimary">
@@ -717,7 +810,17 @@ export function ProcurementTable({
 
             <article className="panel">
               <h2>Receiving Docs</h2>
-              <form action={addProcurementReceivingDocAction} className="requestForm">
+              {addReceivingState.message ? (
+                <p className={addReceivingState.ok ? "successNote" : "errorNote"} key={addReceivingState.timestamp}>
+                  {addReceivingState.message}
+                </p>
+              ) : null}
+              {deleteReceivingState.message ? (
+                <p className={deleteReceivingState.ok ? "successNote" : "errorNote"} key={deleteReceivingState.timestamp}>
+                  {deleteReceivingState.message}
+                </p>
+              ) : null}
+              <form action={addReceivingAction} className="requestForm">
                 <input type="hidden" name="purchaseId" value={editingPurchase.id} />
                 <label>
                   Receiving Doc #
@@ -744,7 +847,7 @@ export function ProcurementTable({
                       {doc.docCode}
                       {doc.receivedOn ? ` | ${doc.receivedOn}` : ""}
                       {doc.note ? ` | ${doc.note}` : ""}
-                      <form action={deleteProcurementReceivingDocAction} className="inlineEditForm">
+                      <form action={deleteReceivingAction} className="inlineEditForm">
                         <input type="hidden" name="id" value={doc.id} />
                         <button type="submit" className="tinyButton dangerButton">
                           Trash
@@ -758,7 +861,17 @@ export function ProcurementTable({
 
             <article className="panel">
               <h2>Receipts</h2>
-              <form action={addProcurementReceiptAction} className="requestForm">
+              {addReceiptState.message ? (
+                <p className={addReceiptState.ok ? "successNote" : "errorNote"} key={addReceiptState.timestamp}>
+                  {addReceiptState.message}
+                </p>
+              ) : null}
+              {deleteReceiptState.message ? (
+                <p className={deleteReceiptState.ok ? "successNote" : "errorNote"} key={deleteReceiptState.timestamp}>
+                  {deleteReceiptState.message}
+                </p>
+              ) : null}
+              <form action={addReceiptAction} className="requestForm">
                 <input type="hidden" name="purchaseId" value={editingPurchase.id} />
                 <label>
                   Note
@@ -788,7 +901,7 @@ export function ProcurementTable({
                     <li key={receipt.id}>
                       {receipt.note ?? "Receipt"} | {formatCurrency(receipt.amountReceived)} | {receipt.createdAt.slice(0, 10)}
                       {receipt.fullyReceived ? " | Full" : ""}
-                      <form action={deleteProcurementReceiptAction} className="inlineEditForm">
+                      <form action={deleteReceiptAction} className="inlineEditForm">
                         <input type="hidden" name="id" value={receipt.id} />
                         <button type="submit" className="tinyButton dangerButton">
                           Trash
@@ -808,7 +921,12 @@ export function ProcurementTable({
           <div className="modalPanel">
             <h2>Bulk Edit Procurement Rows</h2>
             <p className="heroSubtitle">Only checked fields are applied to all selected rows.</p>
-            <form action={bulkUpdateProcurementAction} className="requestForm">
+            {bulkUpdateState.message ? (
+              <p className={bulkUpdateState.ok ? "successNote" : "errorNote"} key={bulkUpdateState.timestamp}>
+                {bulkUpdateState.message}
+              </p>
+            ) : null}
+            <form action={bulkUpdateAction} className="requestForm">
               <input type="hidden" name="selectedIdsJson" value={selectedIdsJson} />
 
               <label className="checkboxLabel">
@@ -992,7 +1110,7 @@ export function ProcurementTable({
               </label>
 
               <div className="modalActions">
-                <button type="button" className="tinyButton" onClick={() => setBulkEditOpen(false)}>
+                <button type="button" className="tinyButton" onClick={closeBulkEdit}>
                   Close
                 </button>
                 <button type="submit" className="tinyButton">

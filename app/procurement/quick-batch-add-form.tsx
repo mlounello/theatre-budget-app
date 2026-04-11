@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { createProcurementBatchAction } from "@/app/procurement/actions";
+import { useActionState, useEffect, useMemo, useState } from "react";
+import { createProcurementBatchAction, type ActionState } from "@/app/procurement/actions";
 import type {
   AccountCodeOption,
   OrganizationOption,
@@ -22,6 +22,7 @@ type BatchLine = {
 
 const NONE_FISCAL_YEAR = "__none_fiscal_year__";
 const NONE_ORGANIZATION = "__none_organization__";
+const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
 function makeLine(): BatchLine {
   return {
@@ -48,6 +49,7 @@ export function QuickBatchAddForm({
   accountCodeOptions: AccountCodeOption[];
   productionCategoryOptions: ProductionCategoryOption[];
 }) {
+  const [state, formAction] = useActionState(createProcurementBatchAction, initialState);
   const [fiscalYearId, setFiscalYearId] = useState("");
   const [organizationId, setOrganizationId] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -77,6 +79,12 @@ export function QuickBatchAddForm({
     window.localStorage.setItem("tba_batch_production_category_id", productionCategoryId);
     window.localStorage.setItem("tba_batch_banner_account_code_id", bannerAccountCodeId);
   }, [fiscalYearId, organizationId, projectId, productionCategoryId, bannerAccountCodeId]);
+
+  useEffect(() => {
+    if (state.ok && state.message) {
+      setLines([makeLine(), makeLine(), makeLine()]);
+    }
+  }, [state]);
 
   const fiscalYearOptions = useMemo(() => {
     const map = new Map<string, string>();
@@ -140,7 +148,12 @@ export function QuickBatchAddForm({
   );
 
   return (
-    <form action={createProcurementBatchAction} className="requestForm">
+    <form action={formAction} className="requestForm">
+      {state.message ? (
+        <p className={state.ok ? "successNote" : "errorNote"} key={state.timestamp}>
+          {state.message}
+        </p>
+      ) : null}
       <label>
         Fiscal Year
         <select

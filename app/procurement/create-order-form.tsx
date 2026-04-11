@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { createProcurementOrderAction } from "@/app/procurement/actions";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { createProcurementOrderAction, type ActionState } from "@/app/procurement/actions";
 import type {
   AccountCodeOption,
   OrganizationOption,
@@ -14,6 +14,7 @@ import type {
 const NONE_FISCAL_YEAR = "__none_fiscal_year__";
 const NONE_ORGANIZATION = "__none_organization__";
 const NEW_VENDOR_VALUE = "__new_vendor__";
+const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
 export function CreateOrderForm({
   projectOptions,
@@ -30,6 +31,8 @@ export function CreateOrderForm({
   accountCodeOptions: AccountCodeOption[];
   productionCategoryOptions: ProductionCategoryOption[];
 }) {
+  const [state, formAction] = useActionState(createProcurementOrderAction, initialState);
+  const formRef = useRef<HTMLFormElement | null>(null);
   const [projectId, setProjectId] = useState("");
   const [fiscalYearId, setFiscalYearId] = useState("");
   const [organizationId, setOrganizationId] = useState("");
@@ -83,6 +86,14 @@ export function CreateOrderForm({
     window.localStorage.setItem("tba_procurement_is_cc", isCreditCard ? "1" : "0");
   }, [fiscalYearId, organizationId, projectId, vendorId, productionCategoryId, bannerAccountCodeId, requestType, isCreditCard]);
 
+  useEffect(() => {
+    if (state.ok && state.message && formRef.current) {
+      formRef.current.reset();
+      setVendorId("");
+      setNewVendorName("");
+    }
+  }, [state]);
+
   const fiscalYearOptions = useMemo(() => {
     const map = new Map<string, string>();
     for (const line of budgetLineOptions) {
@@ -124,7 +135,12 @@ export function CreateOrderForm({
   const isExternalProject = selectedProject?.isExternal ?? false;
 
   return (
-    <form action={createProcurementOrderAction} className="requestForm">
+    <form action={formAction} className="requestForm" ref={formRef}>
+      {state.message ? (
+        <p className={state.ok ? "successNote" : "errorNote"} key={state.timestamp}>
+          {state.message}
+        </p>
+      ) : null}
       <label>
         Fiscal Year
         <select

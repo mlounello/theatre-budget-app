@@ -5,18 +5,10 @@ import { getProcurementData } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
 import { redirect } from "next/navigation";
 
-export default async function ProcurementPage({
-  searchParams
-}: {
-  searchParams?: Promise<{ ok?: string; error?: string }>;
-}) {
+export default async function ProcurementPage() {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
-
-  const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const okMessage = resolvedSearchParams?.ok;
-  const errorMessage = resolvedSearchParams?.error;
 
   const {
     purchases,
@@ -29,8 +21,7 @@ export default async function ProcurementPage({
     accountCodeOptions,
     productionCategoryOptions,
     canManageProcurement
-  } =
-    await getProcurementData();
+  } = await getProcurementData();
 
   return (
     <section>
@@ -38,8 +29,6 @@ export default async function ProcurementPage({
         <p className="eyebrow">Procurement</p>
         <h1>Order and Purchasing Workflow</h1>
         <p className="heroSubtitle">Track requisitions, PO progress, receipts, invoices, and payment alongside budget statuses.</p>
-        {okMessage ? <p className="successNote">{okMessage}</p> : null}
-        {errorMessage ? <p className="errorNote">{errorMessage}</p> : null}
       </header>
 
       {canManageProcurement ? (
