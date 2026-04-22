@@ -1,10 +1,25 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
 import { getFiscalYearOptions, getHistoricalMonthlyActuals } from "@/lib/db";
+
+type ActionState = {
+  ok: boolean;
+  message: string;
+  timestamp: number;
+};
+
+const emptyState: ActionState = { ok: true, message: "", timestamp: 0 };
+
+function ok(message: string): ActionState {
+  return { ok: true, message, timestamp: Date.now() };
+}
+
+function err(message: string): ActionState {
+  return { ok: false, message, timestamp: Date.now() };
+}
 
 type MonthUpdateInput = {
   id?: string;
@@ -57,22 +72,6 @@ function parseBulkPlanAccountCodes(value: FormDataEntryValue | null): string[] {
   } catch {
     return [];
   }
-}
-
-function planningSuccess(message: string, params: { fiscalYearId?: string; organizationId?: string } = {}): never {
-  const search = new URLSearchParams();
-  search.set("ok", message);
-  if (params.fiscalYearId) search.set("fiscalYearId", params.fiscalYearId);
-  if (params.organizationId) search.set("organizationId", params.organizationId);
-  redirect(`/budget-planning?${search.toString()}`);
-}
-
-function planningError(message: string, params: { fiscalYearId?: string; organizationId?: string } = {}): never {
-  const search = new URLSearchParams();
-  search.set("error", message);
-  if (params.fiscalYearId) search.set("fiscalYearId", params.fiscalYearId);
-  if (params.organizationId) search.set("organizationId", params.organizationId);
-  redirect(`/budget-planning?${search.toString()}`);
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -395,8 +394,12 @@ async function upsertBudgetPlanAnnualAmount(params: {
   await replaceBudgetPlanMonths(supabase, planId, computedMonths);
 }
 
-export async function upsertBudgetPlanAnnualAmountAction(formData: FormData): Promise<void> {
+export async function upsertBudgetPlanAnnualAmountAction(
+  _prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
   try {
+    void _prevState;
     const supabase = await getSupabaseServerClient();
     const { userId } = await requirePlanningAccess();
 
@@ -424,17 +427,19 @@ export async function upsertBudgetPlanAnnualAmountAction(formData: FormData): Pr
     });
 
     revalidatePath("/budget-planning");
-    planningSuccess("Budget plan saved.", { fiscalYearId, organizationId });
+    return ok("Budget plan saved.");
   } catch (error) {
     rethrowIfRedirect(error);
-    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
-    const organizationId = String(formData.get("organizationId") ?? "").trim();
-    planningError(getErrorMessage(error, "Unable to save budget plan."), { fiscalYearId, organizationId });
+    return err(getErrorMessage(error, "Unable to save budget plan."));
   }
 }
 
-export async function bulkCreateBudgetPlansAction(formData: FormData): Promise<void> {
+export async function bulkCreateBudgetPlansAction(
+  _prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
   try {
+    void _prevState;
     const supabase = await getSupabaseServerClient();
     const { userId } = await requirePlanningAccess();
 
@@ -462,12 +467,10 @@ export async function bulkCreateBudgetPlansAction(formData: FormData): Promise<v
     }
 
     revalidatePath("/budget-planning");
-    planningSuccess("Bulk plans saved.", { fiscalYearId, organizationId });
+    return ok("Bulk plans saved.");
   } catch (error) {
     rethrowIfRedirect(error);
-    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
-    const organizationId = String(formData.get("organizationId") ?? "").trim();
-    planningError(getErrorMessage(error, "Unable to save bulk plans."), { fiscalYearId, organizationId });
+    return err(getErrorMessage(error, "Unable to save bulk plans."));
   }
 }
 
@@ -486,14 +489,16 @@ async function requireTwelveMonths(
   }
 }
 
-export async function updateBudgetPlanMonthsAction(formData: FormData): Promise<void> {
+export async function updateBudgetPlanMonthsAction(
+  _prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
   try {
+    void _prevState;
     const supabase = await getSupabaseServerClient();
     const { userId } = await requirePlanningAccess();
 
     const planId = String(formData.get("budgetPlanId") ?? "").trim();
-    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
-    const organizationId = String(formData.get("organizationId") ?? "").trim();
     const updates = parseMonthUpdates(formData.get("monthUpdatesJson"));
 
     if (!planId) throw new Error("Budget plan is required.");
@@ -541,11 +546,9 @@ export async function updateBudgetPlanMonthsAction(formData: FormData): Promise<
     if (touchError) throw new Error(touchError.message);
 
     revalidatePath("/budget-planning");
-    planningSuccess("Monthly plan updated.", { fiscalYearId, organizationId });
+    return ok("Monthly plan updated.");
   } catch (error) {
     rethrowIfRedirect(error);
-    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
-    const organizationId = String(formData.get("organizationId") ?? "").trim();
-    planningError(getErrorMessage(error, "Unable to update monthly plan."), { fiscalYearId, organizationId });
+    return err(getErrorMessage(error, "Unable to update monthly plan."));
   }
 }

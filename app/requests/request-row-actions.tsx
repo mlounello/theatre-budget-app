@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useMemo, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { deleteRequestAction, updateRequestInline, type ActionState } from "@/app/requests/actions";
 import type { AccountCodeOption, ProcurementProjectOption, ProductionCategoryOption, PurchaseRow } from "@/lib/db";
@@ -29,6 +29,13 @@ export function RequestRowActions({
   const [editProjectId, setEditProjectId] = useState(purchase.projectId);
   const [editProductionCategoryId, setEditProductionCategoryId] = useState(purchase.productionCategoryId ?? "");
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState(purchase.bannerAccountCodeId ?? "");
+  const [editTitle, setEditTitle] = useState(purchase.title ?? "");
+  const [editRequisitionNumber, setEditRequisitionNumber] = useState(purchase.requisitionNumber ?? "");
+  const [editReferenceNumber, setEditReferenceNumber] = useState(purchase.referenceNumber ?? "");
+  const [editIsCreditCard, setEditIsCreditCard] = useState(Boolean(purchase.isCreditCard));
+  const [editEstimatedAmount, setEditEstimatedAmount] = useState(String(purchase.estimatedAmount ?? 0));
+  const [editRequestedAmount, setEditRequestedAmount] = useState(String(purchase.requestedAmount ?? 0));
+  const lastEditIdRef = useRef<string | null>(null);
 
   const openEdit = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -43,11 +50,22 @@ export function RequestRowActions({
   }, [pathname, router, searchParams]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      lastEditIdRef.current = null;
+      return;
+    }
+    if (lastEditIdRef.current === purchase.id) return;
+    lastEditIdRef.current = purchase.id;
     setEditProjectId(purchase.projectId);
     setEditRequestType(purchase.requestType);
     setEditProductionCategoryId(purchase.productionCategoryId ?? "");
     setEditBannerAccountCodeId(purchase.bannerAccountCodeId ?? "");
+    setEditTitle(purchase.title ?? "");
+    setEditRequisitionNumber(purchase.requisitionNumber ?? "");
+    setEditReferenceNumber(purchase.referenceNumber ?? "");
+    setEditIsCreditCard(Boolean(purchase.isCreditCard));
+    setEditEstimatedAmount(String(purchase.estimatedAmount ?? 0));
+    setEditRequestedAmount(String(purchase.requestedAmount ?? 0));
   }, [open, purchase]);
 
   useEffect(() => {
@@ -157,18 +175,31 @@ export function RequestRowActions({
               </label>
               <label>
                 Title
-                <input name="title" defaultValue={purchase.title} required />
+                <input
+                  name="title"
+                  value={editTitle}
+                  onChange={(event) => setEditTitle(event.target.value)}
+                  required
+                />
               </label>
               {editRequestType === "requisition" ? (
                 <label>
                   Requisition #
-                  <input name="requisitionNumber" defaultValue={purchase.requisitionNumber ?? ""} />
+                  <input
+                    name="requisitionNumber"
+                    value={editRequisitionNumber}
+                    onChange={(event) => setEditRequisitionNumber(event.target.value)}
+                  />
                 </label>
               ) : null}
               {editRequestType !== "requisition" && editRequestType !== "budget_transfer" ? (
                 <label>
                   Reference #
-                  <input name="referenceNumber" defaultValue={purchase.referenceNumber ?? ""} />
+                  <input
+                    name="referenceNumber"
+                    value={editReferenceNumber}
+                    onChange={(event) => setEditReferenceNumber(event.target.value)}
+                  />
                 </label>
               ) : null}
               <input type="hidden" name="budgetLineId" value="" />
@@ -190,16 +221,33 @@ export function RequestRowActions({
                 </select>
               </label>
               <label className="checkboxLabel">
-                <input name="isCreditCard" type="checkbox" defaultChecked={purchase.isCreditCard} />
+                <input
+                  name="isCreditCard"
+                  type="checkbox"
+                  checked={editIsCreditCard}
+                  onChange={(event) => setEditIsCreditCard(event.target.checked)}
+                />
                 Credit Card (expense only)
               </label>
               <label>
                 Estimated
-                <input name="estimatedAmount" type="number" step="0.01" defaultValue={purchase.estimatedAmount} />
+                <input
+                  name="estimatedAmount"
+                  type="number"
+                  step="0.01"
+                  value={editEstimatedAmount}
+                  onChange={(event) => setEditEstimatedAmount(event.target.value)}
+                />
               </label>
               <label>
                 Requested
-                <input name="requestedAmount" type="number" step="0.01" defaultValue={purchase.requestedAmount} />
+                <input
+                  name="requestedAmount"
+                  type="number"
+                  step="0.01"
+                  value={editRequestedAmount}
+                  onChange={(event) => setEditRequestedAmount(event.target.value)}
+                />
               </label>
 
               <div className="modalActions">

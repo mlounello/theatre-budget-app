@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useCallback, useMemo } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   addRequestReceipt,
@@ -15,6 +15,12 @@ import type { PurchaseRow, RequestReceiptRow } from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
+type ReceiptEditState = {
+  amountReceived: string;
+  note: string;
+  receiptUrl: string;
+};
+
 export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow; receipts: RequestReceiptRow[] }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -26,6 +32,9 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
   const [postState, postAction] = useActionState(markCcPostedToAccount, initialState);
 
   const open = useMemo(() => searchParams.get("rq_cc") === purchase.id, [searchParams, purchase.id]);
+
+  const [receiptEdits, setReceiptEdits] = useState<Record<string, ReceiptEditState>>({});
+  const lastPurchaseIdRef = useRef<string | null>(null);
   const title = useMemo(() => `${purchase.projectName} | ${purchase.title}`, [purchase.projectName, purchase.title]);
   const safeDateText = (value: string | null | undefined): string => {
     const normalized = typeof value === "string" ? value : "";
@@ -50,6 +59,42 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
     params.delete("rq_cc");
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [pathname, router, searchParams]);
+
+  useEffect(() => {
+    if (!open) {
+      lastPurchaseIdRef.current = null;
+      setReceiptEdits({});
+      return;
+    }
+    if (lastPurchaseIdRef.current === purchase.id) return;
+    lastPurchaseIdRef.current = purchase.id;
+    const next: Record<string, ReceiptEditState> = {};
+    for (const receipt of purchaseReceipts) {
+      next[receipt.id] = {
+        amountReceived: String(receipt.amountReceived ?? 0),
+        note: receipt.note ?? "",
+        receiptUrl: receipt.attachmentStoredValue ?? ""
+      };
+    }
+    setReceiptEdits(next);
+  }, [open, purchase, purchaseReceipts]);
+
+  useEffect(() => {
+    if (!open) return;
+    setReceiptEdits((prev) => {
+      const next = { ...prev };
+      for (const receipt of purchaseReceipts) {
+        if (!next[receipt.id]) {
+          next[receipt.id] = {
+            amountReceived: String(receipt.amountReceived ?? 0),
+            note: receipt.note ?? "",
+            receiptUrl: receipt.attachmentStoredValue ?? ""
+          };
+        }
+      }
+      return next;
+    });
+  }, [open, purchaseReceipts]);
 
   if (!(purchase.requestType === "expense" && purchase.isCreditCard)) {
     return <span>-</span>;
@@ -138,15 +183,54 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
                     <input type="hidden" name="receiptId" value={receipt.id} />
                     <label>
                       Amount
-                      <input name="amountReceived" type="number" step="0.01" defaultValue={receipt.amountReceived} required />
+                      <input
+                        name="amountReceived"
+                        type="number"
+                        step="0.01"
+                        value={receiptEdits[receipt.id]?.amountReceived ?? ""}
+                        onChange={(event) =>
+                          setReceiptEdits((prev) => ({
+                            ...prev,
+                            [receipt.id]: {
+                              ...(prev[receipt.id] ?? { amountReceived: "", note: "", receiptUrl: "" }),
+                              amountReceived: event.target.value
+                            }
+                          }))
+                        }
+                        required
+                      />
                     </label>
                     <label>
                       Note
-                      <input name="note" defaultValue={receipt.note ?? ""} />
+                      <input
+                        name="note"
+                        value={receiptEdits[receipt.id]?.note ?? ""}
+                        onChange={(event) =>
+                          setReceiptEdits((prev) => ({
+                            ...prev,
+                            [receipt.id]: {
+                              ...(prev[receipt.id] ?? { amountReceived: "", note: "", receiptUrl: "" }),
+                              note: event.target.value
+                            }
+                          }))
+                        }
+                      />
                     </label>
                     <label>
                       Receipt URL
-                      <input name="receiptUrl" defaultValue={receipt.attachmentStoredValue ?? ""} />
+                      <input
+                        name="receiptUrl"
+                        value={receiptEdits[receipt.id]?.receiptUrl ?? ""}
+                        onChange={(event) =>
+                          setReceiptEdits((prev) => ({
+                            ...prev,
+                            [receipt.id]: {
+                              ...(prev[receipt.id] ?? { amountReceived: "", note: "", receiptUrl: "" }),
+                              receiptUrl: event.target.value
+                            }
+                          }))
+                        }
+                      />
                     </label>
                     {receipt.attachmentUrl ? (
                       <p>

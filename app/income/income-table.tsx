@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   bulkDeleteIncomeEntriesAction,
@@ -107,6 +107,15 @@ export function IncomeTable({
   const [categoryFilter, setCategoryFilter] = useState(searchParams.get("inc_f_cat") ?? "");
   const [queryFilter, setQueryFilter] = useState(searchParams.get("inc_f_q") ?? "");
   const editingRow = rows.find((row) => row.id === editingId) ?? null;
+  const [editOrganizationId, setEditOrganizationId] = useState("");
+  const [editIncomeType, setEditIncomeType] = useState<IncomeRow["incomeType"]>("other");
+  const [editProductionCategoryId, setEditProductionCategoryId] = useState("");
+  const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState("");
+  const [editLineName, setEditLineName] = useState("");
+  const [editReferenceNumber, setEditReferenceNumber] = useState("");
+  const [editAmount, setEditAmount] = useState("");
+  const [editReceivedOn, setEditReceivedOn] = useState("");
+  const lastEditIdRef = useRef<string | null>(null);
   const filteredRows = useMemo(() => {
     const q = queryFilter.trim().toLowerCase();
     return rows.filter((row) => {
@@ -145,6 +154,23 @@ export function IncomeTable({
     setEditingId(editFromUrl ? editFromUrl : null);
     setBulkEditOpen(searchParams.get("inc_bulk") === "1");
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!editingRow) {
+      lastEditIdRef.current = null;
+      return;
+    }
+    if (lastEditIdRef.current === editingRow.id) return;
+    lastEditIdRef.current = editingRow.id;
+    setEditOrganizationId(editingRow.organizationId ?? "");
+    setEditIncomeType(editingRow.incomeType);
+    setEditProductionCategoryId(editingRow.productionCategoryId ?? "");
+    setEditBannerAccountCodeId(editingRow.bannerAccountCodeId ?? "");
+    setEditLineName(editingRow.lineName ?? "");
+    setEditReferenceNumber(editingRow.referenceNumber ?? "");
+    setEditAmount(String(editingRow.amount ?? 0));
+    setEditReceivedOn(editingRow.receivedOn ?? "");
+  }, [editingRow]);
 
   function openEdit(id: string): void {
     const params = new URLSearchParams(searchParams.toString());
@@ -385,7 +411,12 @@ export function IncomeTable({
               <input type="hidden" name="id" value={editingRow.id} />
               <label>
                 Organization
-                <select name="organizationId" defaultValue={editingRow.organizationId ?? ""} required>
+                <select
+                  name="organizationId"
+                  value={editOrganizationId}
+                  onChange={(event) => setEditOrganizationId(event.target.value)}
+                  required
+                >
                   <option value="">Select organization</option>
                   {organizations.map((organization) => (
                     <option key={organization.id} value={organization.id}>
@@ -396,7 +427,12 @@ export function IncomeTable({
               </label>
               <label>
                 Income Type
-                <select name="incomeType" defaultValue={editingRow.incomeType} required>
+                <select
+                  name="incomeType"
+                  value={editIncomeType}
+                  onChange={(event) => setEditIncomeType(event.target.value as IncomeRow["incomeType"])}
+                  required
+                >
                   <option value="starting_budget">Starting Budget</option>
                   <option value="donation">Donation</option>
                   <option value="ticket_sales">Ticket Sales</option>
@@ -405,7 +441,11 @@ export function IncomeTable({
               </label>
               <label>
                 Production Category
-                <select name="productionCategoryId" defaultValue={editingRow.productionCategoryId ?? ""}>
+                <select
+                  name="productionCategoryId"
+                  value={editProductionCategoryId}
+                  onChange={(event) => setEditProductionCategoryId(event.target.value)}
+                >
                   <option value="">Unassigned</option>
                   {productionCategoryOptions.map((category) => (
                     <option key={category.id} value={category.id}>
@@ -416,7 +456,11 @@ export function IncomeTable({
               </label>
               <label>
                 Banner Account Code
-                <select name="bannerAccountCodeId" defaultValue={editingRow.bannerAccountCodeId ?? ""}>
+                <select
+                  name="bannerAccountCodeId"
+                  value={editBannerAccountCodeId}
+                  onChange={(event) => setEditBannerAccountCodeId(event.target.value)}
+                >
                   <option value="">Unassigned</option>
                   {revenueAccountCodes.length > 0 ? (
                     <optgroup label="Revenue Accounts">
@@ -440,19 +484,35 @@ export function IncomeTable({
               </label>
               <label>
                 Description
-                <input name="lineName" defaultValue={editingRow.lineName} />
+                <input name="lineName" value={editLineName} onChange={(event) => setEditLineName(event.target.value)} />
               </label>
               <label>
                 Reference
-                <input name="referenceNumber" defaultValue={editingRow.referenceNumber ?? ""} />
+                <input
+                  name="referenceNumber"
+                  value={editReferenceNumber}
+                  onChange={(event) => setEditReferenceNumber(event.target.value)}
+                />
               </label>
               <label>
                 Amount
-                <input name="amount" type="number" step="0.01" defaultValue={editingRow.amount} required />
+                <input
+                  name="amount"
+                  type="number"
+                  step="0.01"
+                  value={editAmount}
+                  onChange={(event) => setEditAmount(event.target.value)}
+                  required
+                />
               </label>
               <label>
                 Received On
-                <input name="receivedOn" type="date" defaultValue={editingRow.receivedOn ?? ""} />
+                <input
+                  name="receivedOn"
+                  type="date"
+                  value={editReceivedOn}
+                  onChange={(event) => setEditReceivedOn(event.target.value)}
+                />
               </label>
               <div className="modalActions">
                 <button type="button" className="tinyButton" onClick={closeEdit}>

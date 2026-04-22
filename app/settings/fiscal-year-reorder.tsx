@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { reorderFiscalYearsAction } from "@/app/settings/actions";
+import { useActionState, useMemo, useState } from "react";
+import { reorderFiscalYearsAction, type ActionState } from "@/app/settings/actions";
 
 type Item = {
   id: string;
@@ -12,6 +12,7 @@ export function FiscalYearReorder({ items }: { items: Item[] }) {
   const initial = useMemo(() => items, [items]);
   const [ordered, setOrdered] = useState<Item[]>(initial);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [state, formAction] = useActionState(reorderFiscalYearsAction, { ok: true, message: "", timestamp: 0 } satisfies ActionState);
 
   if (items.length < 2) return null;
 
@@ -29,7 +30,12 @@ export function FiscalYearReorder({ items }: { items: Item[] }) {
   return (
     <details className="reorderDetails">
       <summary>Reorder Fiscal Years</summary>
-      <form action={reorderFiscalYearsAction} className="reorderBlock">
+      {state.message ? (
+        <p className={state.ok ? "successNote" : "errorNote"} key={state.timestamp}>
+          {state.message}
+        </p>
+      ) : null}
+      <form action={formAction} className="reorderBlock">
         <input type="hidden" name="orderedFiscalYearIds" value={JSON.stringify(ordered.map((item) => item.id))} />
         <p className="reorderHint">Drag to reorder, then save.</p>
         <ul className="reorderList">

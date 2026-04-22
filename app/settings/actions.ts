@@ -1,11 +1,26 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
 import { APP_ID } from "@/lib/supabase-schema";
 import { syncAppUsers, syncAppUsersSafe } from "@/lib/app-user-sync";
+
+type ActionState = {
+  ok: boolean;
+  message: string;
+  timestamp: number;
+};
+
+const emptyState: ActionState = { ok: true, message: "", timestamp: 0 };
+
+function ok(message: string): ActionState {
+  return { ok: true, message, timestamp: Date.now() };
+}
+
+function err(message: string): ActionState {
+  return { ok: false, message, timestamp: Date.now() };
+}
 
 function parseMoney(value: FormDataEntryValue | null): number {
   if (typeof value !== "string" || value.trim() === "") return 0;
@@ -113,13 +128,12 @@ async function requireProjectSettingsWrite(
   }
 }
 
-function settingsSuccess(message: string, hash?: string): never {
-  const target = `/settings?ok=${encodeURIComponent(message)}${hash ? `#${hash}` : ""}`;
-  redirect(target);
+function settingsSuccess(message: string): ActionState {
+  return ok(message);
 }
 
-function settingsError(message: string): never {
-  redirect(`/settings?error=${encodeURIComponent(message)}`);
+function settingsError(message: string): ActionState {
+  return err(message);
 }
 
 async function createProjectViaRpc(
@@ -167,7 +181,8 @@ async function createProjectViaRpc(
   return fallback.data as string;
 }
 
-export async function createProjectAction(formData: FormData): Promise<void> {
+export async function createProjectAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
@@ -241,14 +256,14 @@ export async function createProjectAction(formData: FormData): Promise<void> {
     revalidatePath("/settings");
     revalidatePath("/requests");
     revalidatePath(`/projects/${newProjectId}`);
-    settingsSuccess("Project saved.");
+    return settingsSuccess("Project saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Project creation failed."));
+    return settingsError(getErrorMessage(error, "Project creation failed."));
   }
 }
 
-export async function createFiscalYearAction(formData: FormData): Promise<void> {
+export async function createFiscalYearAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
@@ -276,14 +291,14 @@ export async function createFiscalYearAction(formData: FormData): Promise<void> 
 
     revalidatePath("/settings");
     revalidatePath("/overview");
-    settingsSuccess("Fiscal year saved.");
+    return settingsSuccess("Fiscal year saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not save fiscal year."));
+    return settingsError(getErrorMessage(error, "Could not save fiscal year."));
   }
 }
 
-export async function createOrganizationAction(formData: FormData): Promise<void> {
+export async function createOrganizationAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
@@ -310,14 +325,14 @@ export async function createOrganizationAction(formData: FormData): Promise<void
 
     revalidatePath("/settings");
     revalidatePath("/overview");
-    settingsSuccess("Organization saved.");
+    return settingsSuccess("Organization saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not save organization."));
+    return settingsError(getErrorMessage(error, "Could not save organization."));
   }
 }
 
-export async function createAccountCodeAction(formData: FormData): Promise<void> {
+export async function createAccountCodeAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
@@ -342,14 +357,14 @@ export async function createAccountCodeAction(formData: FormData): Promise<void>
     if (error) throw new Error(error.message);
 
     revalidatePath("/settings");
-    settingsSuccess("Account code saved.");
+    return settingsSuccess("Account code saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not save account code."));
+    return settingsError(getErrorMessage(error, "Could not save account code."));
   }
 }
 
-export async function createProductionCategoryAction(formData: FormData): Promise<void> {
+export async function createProductionCategoryAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
@@ -401,14 +416,14 @@ export async function createProductionCategoryAction(formData: FormData): Promis
     revalidatePath("/requests");
     revalidatePath("/procurement");
     revalidatePath("/income");
-    settingsSuccess("Production category saved.");
+    return settingsSuccess("Production category saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not save production category."));
+    return settingsError(getErrorMessage(error, "Could not save production category."));
   }
 }
 
-export async function updateAccountCodeAction(formData: FormData): Promise<void> {
+export async function updateAccountCodeAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
@@ -438,14 +453,14 @@ export async function updateAccountCodeAction(formData: FormData): Promise<void>
 
     revalidatePath("/settings");
     revalidatePath("/requests");
-    settingsSuccess("Account code updated.");
+    return settingsSuccess("Account code updated.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not update account code."));
+    return settingsError(getErrorMessage(error, "Could not update account code."));
   }
 }
 
-export async function updateProductionCategoryAction(formData: FormData): Promise<void> {
+export async function updateProductionCategoryAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
@@ -476,14 +491,14 @@ export async function updateProductionCategoryAction(formData: FormData): Promis
     revalidatePath("/requests");
     revalidatePath("/procurement");
     revalidatePath("/income");
-    settingsSuccess("Production category updated.");
+    return settingsSuccess("Production category updated.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not update production category."));
+    return settingsError(getErrorMessage(error, "Could not update production category."));
   }
 }
 
-export async function deleteAccountCodeAction(formData: FormData): Promise<void> {
+export async function deleteAccountCodeAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
@@ -512,7 +527,7 @@ export async function deleteAccountCodeAction(formData: FormData): Promise<void>
       if (!deactivated?.id) throw new Error("Account code deactivation was not applied.");
       revalidatePath("/settings");
       revalidatePath("/requests");
-      settingsSuccess("Account code is in use and was deactivated.");
+      return settingsSuccess("Account code is in use and was deactivated.");
     }
 
     const { error } = await supabase.from("account_codes").delete().eq("id", id);
@@ -520,14 +535,14 @@ export async function deleteAccountCodeAction(formData: FormData): Promise<void>
 
     revalidatePath("/settings");
     revalidatePath("/requests");
-    settingsSuccess("Account code deleted.");
+    return settingsSuccess("Account code deleted.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not delete account code."));
+    return settingsError(getErrorMessage(error, "Could not delete account code."));
   }
 }
 
-export async function deleteProductionCategoryAction(formData: FormData): Promise<void> {
+export async function deleteProductionCategoryAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
@@ -565,7 +580,7 @@ export async function deleteProductionCategoryAction(formData: FormData): Promis
       revalidatePath("/requests");
       revalidatePath("/procurement");
       revalidatePath("/income");
-      settingsSuccess("Category is in use and was deactivated.");
+      return settingsSuccess("Category is in use and was deactivated.");
     }
 
     const { error } = await supabase.from("production_categories").delete().eq("id", id);
@@ -575,14 +590,14 @@ export async function deleteProductionCategoryAction(formData: FormData): Promis
     revalidatePath("/requests");
     revalidatePath("/procurement");
     revalidatePath("/income");
-    settingsSuccess("Production category deleted.");
+    return settingsSuccess("Production category deleted.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not delete production category."));
+    return settingsError(getErrorMessage(error, "Could not delete production category."));
   }
 }
 
-export async function updateFiscalYearAction(formData: FormData): Promise<void> {
+export async function updateFiscalYearAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
@@ -604,14 +619,14 @@ export async function updateFiscalYearAction(formData: FormData): Promise<void> 
 
     revalidatePath("/settings");
     revalidatePath("/overview");
-    settingsSuccess("Fiscal year updated.");
+    return settingsSuccess("Fiscal year updated.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not update fiscal year."));
+    return settingsError(getErrorMessage(error, "Could not update fiscal year."));
   }
 }
 
-export async function deleteFiscalYearAction(formData: FormData): Promise<void> {
+export async function deleteFiscalYearAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
@@ -647,14 +662,14 @@ export async function deleteFiscalYearAction(formData: FormData): Promise<void> 
     revalidatePath("/requests");
     revalidatePath("/procurement");
     revalidatePath("/");
-    settingsSuccess("Fiscal year deleted.");
+    return settingsSuccess("Fiscal year deleted.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not delete fiscal year."));
+    return settingsError(getErrorMessage(error, "Could not delete fiscal year."));
   }
 }
 
-export async function updateOrganizationAction(formData: FormData): Promise<void> {
+export async function updateOrganizationAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
@@ -675,14 +690,14 @@ export async function updateOrganizationAction(formData: FormData): Promise<void
 
     revalidatePath("/settings");
     revalidatePath("/overview");
-    settingsSuccess("Organization updated.");
+    return settingsSuccess("Organization updated.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not update organization."));
+    return settingsError(getErrorMessage(error, "Could not update organization."));
   }
 }
 
-export async function deleteOrganizationAction(formData: FormData): Promise<void> {
+export async function deleteOrganizationAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
@@ -718,14 +733,14 @@ export async function deleteOrganizationAction(formData: FormData): Promise<void
     revalidatePath("/requests");
     revalidatePath("/procurement");
     revalidatePath("/");
-    settingsSuccess("Organization deleted.");
+    return settingsSuccess("Organization deleted.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not delete organization."));
+    return settingsError(getErrorMessage(error, "Could not delete organization."));
   }
 }
 
-export async function updateProjectAction(formData: FormData): Promise<void> {
+export async function updateProjectAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const id = String(formData.get("id") ?? "").trim();
@@ -757,14 +772,14 @@ export async function updateProjectAction(formData: FormData): Promise<void> {
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath(`/projects/${id}`);
-    settingsSuccess("Project updated.");
+    return settingsSuccess("Project updated.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not update project."));
+    return settingsError(getErrorMessage(error, "Could not update project."));
   }
 }
 
-export async function updateBudgetLineAction(formData: FormData): Promise<void> {
+export async function updateBudgetLineAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const id = String(formData.get("id") ?? "").trim();
@@ -829,14 +844,14 @@ export async function updateBudgetLineAction(formData: FormData): Promise<void> 
     if (focusProjectId) {
       revalidatePath(`/projects/${focusProjectId}`);
     }
-    settingsSuccess("Budget line updated.", focusProjectId ? `project-${focusProjectId}` : undefined);
+    return settingsSuccess("Budget line updated.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not update budget line."));
+    return settingsError(getErrorMessage(error, "Could not update budget line."));
   }
 }
 
-export async function addBudgetLineAction(formData: FormData): Promise<void> {
+export async function addBudgetLineAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
@@ -916,14 +931,14 @@ export async function addBudgetLineAction(formData: FormData): Promise<void> {
     revalidatePath("/settings");
     revalidatePath(`/projects/${projectId}`);
     revalidatePath("/requests");
-    settingsSuccess("Budget line saved.");
+    return settingsSuccess("Budget line saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not add budget line."));
+    return settingsError(getErrorMessage(error, "Could not add budget line."));
   }
 }
 
-export async function reorderBudgetLinesAction(formData: FormData): Promise<void> {
+export async function reorderBudgetLinesAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const projectId = String(formData.get("projectId") ?? "").trim();
@@ -954,14 +969,14 @@ export async function reorderBudgetLinesAction(formData: FormData): Promise<void
     revalidatePath("/settings");
     revalidatePath("/");
     revalidatePath(`/projects/${projectId}`);
-    settingsSuccess("Line order saved.");
+    return settingsSuccess("Line order saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not reorder lines."));
+    return settingsError(getErrorMessage(error, "Could not reorder lines."));
   }
 }
 
-export async function reorderFiscalYearsAction(formData: FormData): Promise<void> {
+export async function reorderFiscalYearsAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
@@ -983,14 +998,14 @@ export async function reorderFiscalYearsAction(formData: FormData): Promise<void
 
     revalidatePath("/settings");
     revalidatePath("/overview");
-    settingsSuccess("Fiscal year order saved.");
+    return settingsSuccess("Fiscal year order saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not reorder fiscal years."));
+    return settingsError(getErrorMessage(error, "Could not reorder fiscal years."));
   }
 }
 
-export async function reorderOrganizationsAction(formData: FormData): Promise<void> {
+export async function reorderOrganizationsAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
@@ -1012,14 +1027,14 @@ export async function reorderOrganizationsAction(formData: FormData): Promise<vo
 
     revalidatePath("/settings");
     revalidatePath("/overview");
-    settingsSuccess("Organization order saved.");
+    return settingsSuccess("Organization order saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not reorder organizations."));
+    return settingsError(getErrorMessage(error, "Could not reorder organizations."));
   }
 }
 
-export async function reorderProjectsAction(formData: FormData): Promise<void> {
+export async function reorderProjectsAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
@@ -1051,25 +1066,9 @@ export async function reorderProjectsAction(formData: FormData): Promise<void> {
     revalidatePath("/settings");
     revalidatePath("/");
     revalidatePath("/overview");
-    settingsSuccess("Project order saved.");
+    return settingsSuccess("Project order saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not reorder projects."));
-  }
-}
-
-function rethrowIfRedirect(error: unknown): void {
-  const message =
-    typeof error === "object" && error !== null && "message" in error
-      ? String((error as { message?: unknown }).message)
-      : "";
-  const digest =
-    typeof error === "object" && error !== null && "digest" in error
-      ? String((error as { digest?: unknown }).digest)
-      : "";
-
-  if (message.includes("NEXT_REDIRECT") || digest.includes("NEXT_REDIRECT")) {
-    throw error;
+    return settingsError(getErrorMessage(error, "Could not reorder projects."));
   }
 }
 
@@ -1078,7 +1077,8 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-export async function importHierarchyCsvAction(formData: FormData): Promise<void> {
+export async function importHierarchyCsvAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const {
@@ -1240,15 +1240,15 @@ export async function importHierarchyCsvAction(formData: FormData): Promise<void
     revalidatePath("/overview");
     revalidatePath("/settings");
     revalidatePath("/requests");
-    redirect("/settings?import=ok");
+    return settingsSuccess("CSV import completed.");
   } catch (error) {
-    rethrowIfRedirect(error);
     const message = error instanceof Error ? error.message : "CSV import failed.";
-    redirect(`/settings?import=error&msg=${encodeURIComponent(message)}`);
+    return settingsError(message);
   }
 }
 
-export async function createUserAccessScopeAction(formData: FormData): Promise<void> {
+export async function createUserAccessScopeAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const access = await getAccessContext();
@@ -1367,14 +1367,14 @@ export async function createUserAccessScopeAction(formData: FormData): Promise<v
 
     revalidatePath("/settings");
     await syncAppUsersSafe("user_scope_saved");
-    settingsSuccess(`User scope saved. Added ${createdCount}, skipped ${skippedCount} existing.`);
+    return settingsSuccess(`User scope saved. Added ${createdCount}, skipped ${skippedCount} existing.`);
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not save user scope."));
+    return settingsError(getErrorMessage(error, "Could not save user scope."));
   }
 }
 
-export async function addProjectMembershipAction(formData: FormData): Promise<void> {
+export async function addProjectMembershipAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const access = await getAccessContext();
@@ -1399,14 +1399,14 @@ export async function addProjectMembershipAction(formData: FormData): Promise<vo
 
     revalidatePath("/settings");
     await syncAppUsersSafe("project_membership_saved");
-    settingsSuccess("Project membership saved.");
+    return settingsSuccess("Project membership saved.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not save project membership."));
+    return settingsError(getErrorMessage(error, "Could not save project membership."));
   }
 }
 
-export async function removeProjectMembershipAction(formData: FormData): Promise<void> {
+export async function removeProjectMembershipAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const access = await getAccessContext();
@@ -1428,14 +1428,14 @@ export async function removeProjectMembershipAction(formData: FormData): Promise
 
     revalidatePath("/settings");
     await syncAppUsersSafe("project_membership_removed");
-    settingsSuccess("Project membership removed.");
+    return settingsSuccess("Project membership removed.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not remove project membership."));
+    return settingsError(getErrorMessage(error, "Could not remove project membership."));
   }
 }
 
-export async function deleteUserAccessScopeAction(formData: FormData): Promise<void> {
+export async function deleteUserAccessScopeAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const access = await getAccessContext();
@@ -1465,14 +1465,14 @@ export async function deleteUserAccessScopeAction(formData: FormData): Promise<v
 
     revalidatePath("/settings");
     await syncAppUsersSafe("user_scope_removed");
-    settingsSuccess("User scope removed.");
+    return settingsSuccess("User scope removed.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not remove user scope."));
+    return settingsError(getErrorMessage(error, "Could not remove user scope."));
   }
 }
 
-export async function updateUserAccessScopeAction(formData: FormData): Promise<void> {
+export async function updateUserAccessScopeAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     const supabase = await getSupabaseServerClient();
     const access = await getAccessContext();
@@ -1535,14 +1535,14 @@ export async function updateUserAccessScopeAction(formData: FormData): Promise<v
 
     revalidatePath("/settings");
     await syncAppUsersSafe("user_scope_updated");
-    settingsSuccess("User scope updated.");
+    return settingsSuccess("User scope updated.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not update user scope."));
+    return settingsError(getErrorMessage(error, "Could not update user scope."));
   }
 }
 
-export async function archiveUserProfileAction(formData: FormData): Promise<void> {
+export async function archiveUserProfileAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
@@ -1576,21 +1576,23 @@ export async function archiveUserProfileAction(formData: FormData): Promise<void
     revalidatePath("/requests");
     revalidatePath("/procurement");
     await syncAppUsersSafe("user_archived");
-    settingsSuccess("User archived. Access and memberships removed.");
+    return settingsSuccess("User archived. Access and memberships removed.");
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError(getErrorMessage(error, "Could not archive user."));
+    return settingsError(getErrorMessage(error, "Could not archive user."));
   }
 }
 
-export async function syncAppUsersAction(): Promise<void> {
+export async function syncAppUsersAction(_prevState: ActionState = emptyState, _formData: FormData): Promise<ActionState> {
+  void _prevState;
+  void _formData;
   try {
     await requireSettingsAdmin();
     const result = await syncAppUsers({ fullSync: true, reason: "settings_manual" });
     if (!result.ok) throw new Error(result.error ?? "User sync failed.");
-    settingsSuccess(`User sync complete (${result.count} users).`);
+    return settingsSuccess(`User sync complete (${result.count} users).`);
   } catch (error) {
-    rethrowIfRedirect(error);
-    settingsError((error as Error).message || "User sync failed.");
+    return settingsError((error as Error).message || "User sync failed.");
   }
 }
+
+export type { ActionState };

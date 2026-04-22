@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useMemo, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   addProcurementReceivingDocAction,
@@ -264,6 +264,18 @@ export function ProcurementTable({
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState("");
   const [editVendorId, setEditVendorId] = useState("");
   const [editNewVendorName, setEditNewVendorName] = useState("");
+  const [editBudgetTracked, setEditBudgetTracked] = useState(false);
+  const [editProcurementStatus, setEditProcurementStatus] = useState("requested");
+  const [editReferenceNumber, setEditReferenceNumber] = useState("");
+  const [editRequisitionNumber, setEditRequisitionNumber] = useState("");
+  const [editPoNumber, setEditPoNumber] = useState("");
+  const [editInvoiceNumber, setEditInvoiceNumber] = useState("");
+  const [editOrderValue, setEditOrderValue] = useState("");
+  const [editOrderedOn, setEditOrderedOn] = useState("");
+  const [editReceivedOn, setEditReceivedOn] = useState("");
+  const [editPaidOn, setEditPaidOn] = useState("");
+  const [editNotes, setEditNotes] = useState("");
+  const lastEditIdRef = useRef<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
@@ -345,13 +357,39 @@ export function ProcurementTable({
   }, [searchParams]);
 
   useEffect(() => {
-    if (!editingPurchase) return;
+    if (!editingPurchase) {
+      lastEditIdRef.current = null;
+      return;
+    }
+    if (lastEditIdRef.current === editingPurchase.id) return;
+    lastEditIdRef.current = editingPurchase.id;
+    const resolvedOrderValue =
+      editingPurchase.estimatedAmount !== 0
+        ? editingPurchase.estimatedAmount
+        : editingPurchase.requestedAmount !== 0
+          ? editingPurchase.requestedAmount
+          : editingPurchase.encumberedAmount !== 0
+            ? editingPurchase.encumberedAmount
+            : editingPurchase.pendingCcAmount !== 0
+              ? editingPurchase.pendingCcAmount
+              : editingPurchase.postedAmount;
     setEditProjectId(editingPurchase.projectId);
     setEditOrganizationId(editingPurchase.organizationId ?? "");
     setEditProductionCategoryId(editingPurchase.productionCategoryId ?? "");
     setEditBannerAccountCodeId(editingPurchase.bannerAccountCodeId ?? "");
     setEditVendorId(editingPurchase.vendorId ?? "");
     setEditNewVendorName("");
+    setEditBudgetTracked(Boolean(editingPurchase.budgetTracked));
+    setEditProcurementStatus(editingPurchase.procurementStatus);
+    setEditReferenceNumber(editingPurchase.referenceNumber ?? "");
+    setEditRequisitionNumber(editingPurchase.requisitionNumber ?? "");
+    setEditPoNumber(editingPurchase.poNumber ?? "");
+    setEditInvoiceNumber(editingPurchase.invoiceNumber ?? "");
+    setEditOrderValue(String(resolvedOrderValue ?? ""));
+    setEditOrderedOn(editingPurchase.orderedOn ?? "");
+    setEditReceivedOn(editingPurchase.receivedOn ?? "");
+    setEditPaidOn(editingPurchase.paidOn ?? "");
+    setEditNotes(editingPurchase.notes ?? "");
   }, [editingPurchase]);
 
   useEffect(() => {
@@ -636,7 +674,12 @@ export function ProcurementTable({
             <form action={updateAction} className="requestForm">
               <input type="hidden" name="id" value={editingPurchase.id} />
               <label>
-                <input name="budgetTracked" type="checkbox" defaultChecked={editingPurchase.budgetTracked} />
+                <input
+                  name="budgetTracked"
+                  type="checkbox"
+                  checked={editBudgetTracked}
+                  onChange={(event) => setEditBudgetTracked(event.target.checked)}
+                />
                 Track in budget
               </label>
               <label>
@@ -710,7 +753,11 @@ export function ProcurementTable({
               </label>
               <label>
                 Procurement Status
-                <select name="procurementStatus" defaultValue={editingPurchase.procurementStatus}>
+                <select
+                  name="procurementStatus"
+                  value={editProcurementStatus}
+                  onChange={(event) => setEditProcurementStatus(event.target.value)}
+                >
                   {(editingPurchase.requestType === "contract_payment"
                     ? CONTRACT_PAYMENT_PROCUREMENT_STATUSES
                     : editingPurchase.requestType === "expense" && editingPurchase.isCreditCard
@@ -725,19 +772,31 @@ export function ProcurementTable({
               </label>
               <label>
                 Reference #
-                <input name="referenceNumber" defaultValue={editingPurchase.referenceNumber ?? ""} />
+                <input
+                  name="referenceNumber"
+                  value={editReferenceNumber}
+                  onChange={(event) => setEditReferenceNumber(event.target.value)}
+                />
               </label>
               <label>
                 Requisition #
-                <input name="requisitionNumber" defaultValue={editingPurchase.requisitionNumber ?? ""} />
+                <input
+                  name="requisitionNumber"
+                  value={editRequisitionNumber}
+                  onChange={(event) => setEditRequisitionNumber(event.target.value)}
+                />
               </label>
               <label>
                 PO #
-                <input name="poNumber" defaultValue={editingPurchase.poNumber ?? ""} />
+                <input name="poNumber" value={editPoNumber} onChange={(event) => setEditPoNumber(event.target.value)} />
               </label>
               <label>
                 Invoice #
-                <input name="invoiceNumber" defaultValue={editingPurchase.invoiceNumber ?? ""} />
+                <input
+                  name="invoiceNumber"
+                  value={editInvoiceNumber}
+                  onChange={(event) => setEditInvoiceNumber(event.target.value)}
+                />
               </label>
               <label>
                 Vendor
@@ -769,34 +828,40 @@ export function ProcurementTable({
                   name="orderValue"
                   type="number"
                   step="0.01"
-                  defaultValue={
-                    editingPurchase.estimatedAmount !== 0
-                      ? editingPurchase.estimatedAmount
-                      : editingPurchase.requestedAmount !== 0
-                        ? editingPurchase.requestedAmount
-                        : editingPurchase.encumberedAmount !== 0
-                          ? editingPurchase.encumberedAmount
-                          : editingPurchase.pendingCcAmount !== 0
-                            ? editingPurchase.pendingCcAmount
-                            : editingPurchase.postedAmount
-                  }
+                  value={editOrderValue}
+                  onChange={(event) => setEditOrderValue(event.target.value)}
                 />
               </label>
               <label>
                 Ordered On
-                <input name="orderedOn" type="date" defaultValue={editingPurchase.orderedOn ?? ""} />
+                <input
+                  name="orderedOn"
+                  type="date"
+                  value={editOrderedOn}
+                  onChange={(event) => setEditOrderedOn(event.target.value)}
+                />
               </label>
               <label>
                 Received On
-                <input name="receivedOn" type="date" defaultValue={editingPurchase.receivedOn ?? ""} />
+                <input
+                  name="receivedOn"
+                  type="date"
+                  value={editReceivedOn}
+                  onChange={(event) => setEditReceivedOn(event.target.value)}
+                />
               </label>
               <label>
                 Paid On
-                <input name="paidOn" type="date" defaultValue={editingPurchase.paidOn ?? ""} />
+                <input
+                  name="paidOn"
+                  type="date"
+                  value={editPaidOn}
+                  onChange={(event) => setEditPaidOn(event.target.value)}
+                />
               </label>
               <label>
                 Notes
-                <input name="notes" defaultValue={editingPurchase.notes ?? ""} />
+                <input name="notes" value={editNotes} onChange={(event) => setEditNotes(event.target.value)} />
               </label>
               <div className="modalActions">
                 <button type="button" className="tinyButton" onClick={closeEdit}>

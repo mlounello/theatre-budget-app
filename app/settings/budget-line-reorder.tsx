@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { reorderBudgetLinesAction } from "@/app/settings/actions";
+import { useActionState, useMemo, useState } from "react";
+import { reorderBudgetLinesAction, type ActionState } from "@/app/settings/actions";
 
 type Line = {
   id: string;
@@ -17,6 +17,7 @@ export function BudgetLineReorder({ projectId, lines }: Props) {
   const initial = useMemo(() => lines, [lines]);
   const [ordered, setOrdered] = useState<Line[]>(initial);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [state, formAction] = useActionState(reorderBudgetLinesAction, { ok: true, message: "", timestamp: 0 } satisfies ActionState);
 
   function moveLine(fromId: string, toId: string): void {
     if (fromId === toId) return;
@@ -35,7 +36,12 @@ export function BudgetLineReorder({ projectId, lines }: Props) {
   return (
     <details className="reorderDetails">
       <summary>Reorder Budget Lines</summary>
-      <form action={reorderBudgetLinesAction} className="reorderBlock">
+      {state.message ? (
+        <p className={state.ok ? "successNote" : "errorNote"} key={state.timestamp}>
+          {state.message}
+        </p>
+      ) : null}
+      <form action={formAction} className="reorderBlock">
         <input type="hidden" name="projectId" value={projectId} />
         <input type="hidden" name="orderedLineIds" value={JSON.stringify(ordered.map((line) => line.id))} />
         <p className="reorderHint">Drag to reorder, then save.</p>

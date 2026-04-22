@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
 import { getServerAppSchema } from "@/lib/supabase-schema";
@@ -17,6 +16,22 @@ const REQUISITION_PROCUREMENT_STATUSES = [
   "paid",
   "cancelled"
 ] as const;
+
+type ActionState = {
+  ok: boolean;
+  message: string;
+  timestamp: number;
+};
+
+const emptyState: ActionState = { ok: true, message: "", timestamp: 0 };
+
+function ok(message: string): ActionState {
+  return { ok: true, message, timestamp: Date.now() };
+}
+
+function err(message: string): ActionState {
+  return { ok: false, message, timestamp: Date.now() };
+}
 
 type RequisitionProcurementStatus = (typeof REQUISITION_PROCUREMENT_STATUSES)[number];
 
@@ -80,14 +95,6 @@ function rethrowIfRedirect(error: unknown): void {
   }
 }
 
-function ok(message: string): never {
-  redirect(`/?ok=${encodeURIComponent(message)}`);
-}
-
-function fail(message: string): never {
-  redirect(`/?error=${encodeURIComponent(message)}`);
-}
-
 async function ensureProjectPmOrAdminAccess(
   db: Awaited<ReturnType<typeof createSupabaseServerClient>>["schema"] extends (schema: string) => infer T ? T : never,
   userId: string,
@@ -110,8 +117,12 @@ async function ensureProjectPmOrAdminAccess(
   }
 }
 
-export async function updateDashboardRequisitionStatusAction(formData: FormData): Promise<void> {
+export async function updateDashboardRequisitionStatusAction(
+  _prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
   try {
+    void _prevState;
     const supabase = await createSupabaseServerClient();
     const db = supabase.schema(getServerAppSchema());
     const {
@@ -223,9 +234,9 @@ export async function updateDashboardRequisitionStatusAction(formData: FormData)
     revalidatePath("/");
     revalidatePath("/procurement");
     revalidatePath(`/projects/${projectId}`);
-    ok("Requisition status updated.");
+    return ok("Requisition status updated.");
   } catch (error) {
     rethrowIfRedirect(error);
-    fail(getErrorMessage(error, "Could not update requisition status."));
+    return err(getErrorMessage(error, "Could not update requisition status."));
   }
 }

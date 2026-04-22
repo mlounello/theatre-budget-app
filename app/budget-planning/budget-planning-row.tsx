@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useState } from "react";
 import type { AccountCodeOption } from "@/lib/db";
 import type { BudgetPlanMonthRow, BudgetPlanRow, MonthlyActualByOrgAccountRow } from "@/lib/types";
 import { formatCurrency } from "@/lib/format";
@@ -20,6 +20,14 @@ type BudgetPlanningRowProps = {
   fiscalYearId: string;
   organizationId: string;
 };
+
+type ActionState = {
+  ok: boolean;
+  message: string;
+  timestamp: number;
+};
+
+const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
 function formatMonthLabel(dateValue: string): string {
   const date = new Date(`${dateValue}T00:00:00Z`);
@@ -86,13 +94,16 @@ export function BudgetPlanningRow({
   const annualAmount = plan?.annualAmount ?? 0;
   const monthsReady = months.length === 12;
 
+  const [annualState, annualAction] = useActionState(upsertBudgetPlanAnnualAmountAction, initialState);
+  const [monthsState, monthsAction] = useActionState(updateBudgetPlanMonthsAction, initialState);
+
   return (
     <>
       <tr>
         <td>{accountCode.label}</td>
         <td>{formatCurrency(priorTotal)}</td>
         <td>
-          <form action={upsertBudgetPlanAnnualAmountAction} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <form action={annualAction} style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
             <input type="hidden" name="fiscalYearId" value={fiscalYearId} />
             <input type="hidden" name="organizationId" value={organizationId} />
             <input type="hidden" name="accountCodeId" value={accountCode.id} />
@@ -108,6 +119,9 @@ export function BudgetPlanningRow({
             <button className="buttonPrimary" type="submit">
               {plan ? "Save" : "Create"}
             </button>
+            {annualState.message ? (
+              <span className={annualState.ok ? "successNote" : "errorNote"}>{annualState.message}</span>
+            ) : null}
           </form>
         </td>
         <td>{planSource}</td>
@@ -125,7 +139,7 @@ export function BudgetPlanningRow({
               <p className="errorNote">This plan does not have 12 fiscal months yet. Save the annual plan to regenerate.</p>
             )}
             {plan && monthsReady && (
-              <form action={updateBudgetPlanMonthsAction}>
+              <form action={monthsAction}>
                 <input type="hidden" name="budgetPlanId" value={plan.id} />
                 <input type="hidden" name="fiscalYearId" value={fiscalYearId} />
                 <input type="hidden" name="organizationId" value={organizationId} />
@@ -173,9 +187,14 @@ export function BudgetPlanningRow({
                 <p className="helperText">Prior-year monthly total: {formatCurrency(monthlyHistoryTotal)}.</p>
                 <p className="helperText">Current planned total: {formatCurrency(plannedTotal)}.</p>
                 <p className="helperText">Saving monthly changes updates the annual plan total.</p>
-                <button className="buttonPrimary" type="submit">
-                  Save monthly changes
-                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+                  <button className="buttonPrimary" type="submit">
+                    Save monthly changes
+                  </button>
+                  {monthsState.message ? (
+                    <span className={monthsState.ok ? "successNote" : "errorNote"}>{monthsState.message}</span>
+                  ) : null}
+                </div>
               </form>
             )}
           </details>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useMemo, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { deleteContractAction, updateContractDetailsAction, type ActionState } from "@/app/contracts/actions";
 import type { AccountCodeOption, ContractRow, FiscalYearOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
@@ -31,6 +31,13 @@ export function ContractRowActions({
   const [editFiscalYearId, setEditFiscalYearId] = useState(contract.fiscalYearId ?? "");
   const [editOrganizationId, setEditOrganizationId] = useState(contract.organizationId ?? "");
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState(contract.bannerAccountCodeId ?? "");
+  const [editContractorName, setEditContractorName] = useState(contract.contractorName ?? "");
+  const [editContractorEmployeeId, setEditContractorEmployeeId] = useState(contract.contractorEmployeeId ?? "");
+  const [editContractorEmail, setEditContractorEmail] = useState(contract.contractorEmail ?? "");
+  const [editContractorPhone, setEditContractorPhone] = useState(contract.contractorPhone ?? "");
+  const [editContractValue, setEditContractValue] = useState(String(contract.contractValue ?? 0));
+  const [editNotes, setEditNotes] = useState(contract.notes ?? "");
+  const lastEditIdRef = useRef<string | null>(null);
 
   const openEdit = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -45,11 +52,22 @@ export function ContractRowActions({
   }, [pathname, router, searchParams]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      lastEditIdRef.current = null;
+      return;
+    }
+    if (lastEditIdRef.current === contract.id) return;
+    lastEditIdRef.current = contract.id;
     setEditProjectId(contract.projectId);
     setEditFiscalYearId(contract.fiscalYearId ?? "");
     setEditOrganizationId(contract.organizationId ?? "");
     setEditBannerAccountCodeId(contract.bannerAccountCodeId ?? "");
+    setEditContractorName(contract.contractorName ?? "");
+    setEditContractorEmployeeId(contract.contractorEmployeeId ?? "");
+    setEditContractorEmail(contract.contractorEmail ?? "");
+    setEditContractorPhone(contract.contractorPhone ?? "");
+    setEditContractValue(String(contract.contractValue ?? 0));
+    setEditNotes(contract.notes ?? "");
   }, [open, contract]);
 
   useEffect(() => {
@@ -100,23 +118,48 @@ export function ContractRowActions({
               <input type="hidden" name="contractId" value={contract.id} />
               <label>
                 Name
-                <input name="contractorName" defaultValue={contract.contractorName} required />
+                <input
+                  name="contractorName"
+                  value={editContractorName}
+                  onChange={(event) => setEditContractorName(event.target.value)}
+                  required
+                />
               </label>
               <label>
                 Employee ID
-                <input name="contractorEmployeeId" defaultValue={contract.contractorEmployeeId ?? ""} />
+                <input
+                  name="contractorEmployeeId"
+                  value={editContractorEmployeeId}
+                  onChange={(event) => setEditContractorEmployeeId(event.target.value)}
+                />
               </label>
               <label>
                 Email
-                <input name="contractorEmail" type="email" defaultValue={contract.contractorEmail ?? ""} />
+                <input
+                  name="contractorEmail"
+                  type="email"
+                  value={editContractorEmail}
+                  onChange={(event) => setEditContractorEmail(event.target.value)}
+                />
               </label>
               <label>
                 Phone
-                <input name="contractorPhone" defaultValue={contract.contractorPhone ?? ""} />
+                <input
+                  name="contractorPhone"
+                  value={editContractorPhone}
+                  onChange={(event) => setEditContractorPhone(event.target.value)}
+                />
               </label>
               <label>
                 Contract Value
-                <input name="contractValue" type="number" step="0.01" defaultValue={contract.contractValue} required />
+                <input
+                  name="contractValue"
+                  type="number"
+                  step="0.01"
+                  value={editContractValue}
+                  onChange={(event) => setEditContractValue(event.target.value)}
+                  required
+                />
               </label>
               <label>
                 FY
@@ -180,7 +223,7 @@ export function ContractRowActions({
               </label>
               <label>
                 Notes
-                <input name="notes" defaultValue={contract.notes ?? ""} />
+                <input name="notes" value={editNotes} onChange={(event) => setEditNotes(event.target.value)} />
               </label>
               <div className="modalActions">
                 <button type="button" className="tinyButton" onClick={closeEdit}>

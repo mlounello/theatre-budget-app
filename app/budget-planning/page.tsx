@@ -2,8 +2,8 @@ import { getBudgetPlanMonths, getBudgetPlanningData, getBudgetPlans, getHistoric
 import { getAccessContext } from "@/lib/access";
 import { redirect } from "next/navigation";
 import { BudgetPlanningRow } from "@/app/budget-planning/budget-planning-row";
-import { bulkCreateBudgetPlansAction } from "@/app/budget-planning/actions";
 import { BudgetPlanningExportButton } from "@/app/budget-planning/budget-planning-export";
+import { BudgetPlanningBulkActions } from "@/app/budget-planning/budget-planning-bulk-actions";
 
 export default async function BudgetPlanningPage({
   searchParams
@@ -13,8 +13,6 @@ export default async function BudgetPlanningPage({
     organizationId?: string;
     q?: string;
     show?: string;
-    ok?: string;
-    error?: string;
   }>;
 }) {
   const access = await getAccessContext();
@@ -22,8 +20,6 @@ export default async function BudgetPlanningPage({
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const okMessage = resolvedSearchParams?.ok;
-  const errorMessage = resolvedSearchParams?.error;
   const searchQuery = (resolvedSearchParams?.q ?? "").trim().toLowerCase();
   const showFilter = (resolvedSearchParams?.show ?? "").trim().toLowerCase();
 
@@ -122,8 +118,6 @@ export default async function BudgetPlanningPage({
         <p className="heroSubtitle">
           Set an annual plan per account code and adjust monthly values as needed. Historical actuals are provided for guidance.
         </p>
-        {okMessage ? <p className="successNote">{okMessage}</p> : null}
-        {errorMessage ? <p className="errorNote">{errorMessage}</p> : null}
       </header>
 
       <article className="panel">
@@ -278,20 +272,13 @@ export default async function BudgetPlanningPage({
                 filename={`budget_planning_${fiscalYear?.name ?? "fiscal"}_${orgLabel}.csv`}
               />
               {filtered.length > 0 && (
-                <form action={bulkCreateBudgetPlansAction} className="panelGrid">
-                  <input type="hidden" name="fiscalYearId" value={fiscalYearId} />
-                  <input type="hidden" name="organizationId" value={organizationId} />
-                  <input type="hidden" name="sourceFiscalYearId" value={fiscalYearId} />
-                  <input type="hidden" name="bulkPlanAccountCodesJson" value={bulkPlanAccountCodesJson} />
-                  <div>
-                    <button className="buttonPrimary" type="submit" disabled={visibleWithoutPlan.length === 0}>
-                      Create empty plans for visible rows without a plan
-                    </button>
-                    <p className="helperText">
-                      Applies to {visibleWithoutPlan.length} rows. Existing plans are not overwritten.
-                    </p>
-                  </div>
-                </form>
+                <BudgetPlanningBulkActions
+                  fiscalYearId={fiscalYearId}
+                  organizationId={organizationId}
+                  sourceFiscalYearId={fiscalYearId}
+                  bulkPlanAccountCodesJson={bulkPlanAccountCodesJson}
+                  visibleWithoutPlanCount={visibleWithoutPlan.length}
+                />
               )}
               {filtered.length === 0 ? (
                 <p className="helperText">No account codes match the current filters.</p>

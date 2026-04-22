@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { reorderProjectsAction } from "@/app/settings/actions";
+import { useActionState, useMemo, useState } from "react";
+import { reorderProjectsAction, type ActionState } from "@/app/settings/actions";
 
 type Item = {
   id: string;
@@ -12,6 +12,7 @@ export function ProjectReorder({ organizationId, items }: { organizationId: stri
   const initial = useMemo(() => items, [items]);
   const [ordered, setOrdered] = useState<Item[]>(initial);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [state, formAction] = useActionState(reorderProjectsAction, { ok: true, message: "", timestamp: 0 } satisfies ActionState);
 
   if (items.length < 2) return null;
 
@@ -29,7 +30,12 @@ export function ProjectReorder({ organizationId, items }: { organizationId: stri
   return (
     <details className="reorderDetails">
       <summary>Reorder Projects</summary>
-      <form action={reorderProjectsAction} className="reorderBlock">
+      {state.message ? (
+        <p className={state.ok ? "successNote" : "errorNote"} key={state.timestamp}>
+          {state.message}
+        </p>
+      ) : null}
+      <form action={formAction} className="reorderBlock">
         <input type="hidden" name="organizationId" value={organizationId ?? ""} />
         <input type="hidden" name="orderedProjectIds" value={JSON.stringify(ordered.map((item) => item.id))} />
         <p className="reorderHint">Drag to reorder, then save.</p>

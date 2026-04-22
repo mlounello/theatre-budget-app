@@ -62,6 +62,8 @@ export function CcAdminTables({
   const [selectedMonthIds, setSelectedMonthIds] = useState<string[]>([]);
   const [monthSortKey, setMonthSortKey] = useState<MonthSortKey>("statementMonth");
   const [monthSortDirection, setMonthSortDirection] = useState<MonthSortDirection>("desc");
+  const [cardEdits, setCardEdits] = useState<Record<string, { nickname: string; maskedNumber: string; active: boolean }>>({});
+  const [monthEdits, setMonthEdits] = useState<Record<string, { statementMonth: string; creditCardId: string }>>({});
   const selectedCardSet = useMemo(() => new Set(selectedCardIds), [selectedCardIds]);
   const selectedMonthSet = useMemo(() => new Set(selectedMonthIds), [selectedMonthIds]);
   const sortedStatementMonths = useMemo(() => {
@@ -91,6 +93,37 @@ export function CcAdminTables({
       setSelectedMonthIds([]);
     }
   }, [bulkMonthDeleteState]);
+
+  useEffect(() => {
+    setCardEdits((prev) => {
+      const next = { ...prev };
+      for (const card of cards) {
+        if (!next[card.id]) {
+          next[card.id] = {
+            nickname: card.nickname ?? "",
+            maskedNumber: card.maskedNumber ?? "",
+            active: Boolean(card.active)
+          };
+        }
+      }
+      return next;
+    });
+  }, [cards]);
+
+  useEffect(() => {
+    setMonthEdits((prev) => {
+      const next = { ...prev };
+      for (const month of statementMonths) {
+        if (!next[month.id]) {
+          next[month.id] = {
+            statementMonth: month.statementMonth.slice(0, 7),
+            creditCardId: month.creditCardId
+          };
+        }
+      }
+      return next;
+    });
+  }, [statementMonths]);
 
   function toggleMonthSort(key: MonthSortKey): void {
     if (monthSortKey === key) {
@@ -215,10 +248,40 @@ export function CcAdminTables({
                     </summary>
                     <form action={updateCardAction} className="inlineEditForm" style={{ marginTop: "0.4rem" }}>
                       <input type="hidden" name="id" value={card.id} />
-                      <input name="nickname" defaultValue={card.nickname} required />
-                      <input name="maskedNumber" defaultValue={card.maskedNumber ?? ""} placeholder="****1234" />
+                      <input
+                        name="nickname"
+                        value={cardEdits[card.id]?.nickname ?? ""}
+                        onChange={(event) =>
+                          setCardEdits((prev) => ({
+                            ...prev,
+                            [card.id]: { ...(prev[card.id] ?? { nickname: "", maskedNumber: "", active: true }), nickname: event.target.value }
+                          }))
+                        }
+                        required
+                      />
+                      <input
+                        name="maskedNumber"
+                        value={cardEdits[card.id]?.maskedNumber ?? ""}
+                        onChange={(event) =>
+                          setCardEdits((prev) => ({
+                            ...prev,
+                            [card.id]: { ...(prev[card.id] ?? { nickname: "", maskedNumber: "", active: true }), maskedNumber: event.target.value }
+                          }))
+                        }
+                        placeholder="****1234"
+                      />
                       <label className="checkboxLabel">
-                        <input name="active" type="checkbox" defaultChecked={card.active} />
+                        <input
+                          name="active"
+                          type="checkbox"
+                          checked={cardEdits[card.id]?.active ?? false}
+                          onChange={(event) =>
+                            setCardEdits((prev) => ({
+                              ...prev,
+                              [card.id]: { ...(prev[card.id] ?? { nickname: "", maskedNumber: "", active: true }), active: event.target.checked }
+                            }))
+                          }
+                        />
                         Active
                       </label>
                       <button type="submit" className="tinyButton">
@@ -353,8 +416,29 @@ export function CcAdminTables({
                         </summary>
                         <form action={updateMonthAction} className="inlineEditForm" style={{ marginTop: "0.4rem" }}>
                           <input type="hidden" name="id" value={month.id} />
-                          <input type="month" name="statementMonth" defaultValue={month.statementMonth.slice(0, 7)} required />
-                          <select name="creditCardId" defaultValue={month.creditCardId} required>
+                          <input
+                            type="month"
+                            name="statementMonth"
+                            value={monthEdits[month.id]?.statementMonth ?? ""}
+                            onChange={(event) =>
+                              setMonthEdits((prev) => ({
+                                ...prev,
+                                [month.id]: { ...(prev[month.id] ?? { statementMonth: "", creditCardId: "" }), statementMonth: event.target.value }
+                              }))
+                            }
+                            required
+                          />
+                          <select
+                            name="creditCardId"
+                            value={monthEdits[month.id]?.creditCardId ?? ""}
+                            onChange={(event) =>
+                              setMonthEdits((prev) => ({
+                                ...prev,
+                                [month.id]: { ...(prev[month.id] ?? { statementMonth: "", creditCardId: "" }), creditCardId: event.target.value }
+                              }))
+                            }
+                            required
+                          >
                             {cards.map((card) => (
                               <option key={card.id} value={card.id}>
                                 {card.nickname} {card.maskedNumber ? `(${card.maskedNumber})` : ""}

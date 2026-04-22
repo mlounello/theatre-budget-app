@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import {
   addBudgetLineAction,
   createAccountCodeAction,
   createFiscalYearAction,
   createOrganizationAction,
   createProductionCategoryAction,
-  createProjectAction
+  createProjectAction,
+  type ActionState
 } from "@/app/settings/actions";
 import type {
   FiscalYearOption,
@@ -26,8 +27,48 @@ type Props = {
 
 type EntityType = "fiscal_year" | "organization" | "project" | "production_category" | "account_code" | "budget_line";
 
+const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
+
 export function AddEntityPanel({ fiscalYears, organizations, templates, projects, productionCategories }: Props) {
   const [entityType, setEntityType] = useState<EntityType>("project");
+
+  const [fyState, fyAction] = useActionState(createFiscalYearAction, initialState);
+  const [orgState, orgAction] = useActionState(createOrganizationAction, initialState);
+  const [projectState, projectAction] = useActionState(createProjectAction, initialState);
+  const [accountCodeState, accountCodeAction] = useActionState(createAccountCodeAction, initialState);
+  const [categoryState, categoryAction] = useActionState(createProductionCategoryAction, initialState);
+  const [budgetLineState, budgetLineAction] = useActionState(addBudgetLineAction, initialState);
+
+  const fyRef = useRef<HTMLFormElement | null>(null);
+  const orgRef = useRef<HTMLFormElement | null>(null);
+  const projectRef = useRef<HTMLFormElement | null>(null);
+  const accountCodeRef = useRef<HTMLFormElement | null>(null);
+  const categoryRef = useRef<HTMLFormElement | null>(null);
+  const budgetLineRef = useRef<HTMLFormElement | null>(null);
+
+  useEffect(() => {
+    if (fyState.ok && fyState.message) fyRef.current?.reset();
+  }, [fyState]);
+
+  useEffect(() => {
+    if (orgState.ok && orgState.message) orgRef.current?.reset();
+  }, [orgState]);
+
+  useEffect(() => {
+    if (projectState.ok && projectState.message) projectRef.current?.reset();
+  }, [projectState]);
+
+  useEffect(() => {
+    if (accountCodeState.ok && accountCodeState.message) accountCodeRef.current?.reset();
+  }, [accountCodeState]);
+
+  useEffect(() => {
+    if (categoryState.ok && categoryState.message) categoryRef.current?.reset();
+  }, [categoryState]);
+
+  useEffect(() => {
+    if (budgetLineState.ok && budgetLineState.message) budgetLineRef.current?.reset();
+  }, [budgetLineState]);
 
   return (
     <article className="panel panelFull">
@@ -47,7 +88,12 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
       </label>
 
       {entityType === "fiscal_year" ? (
-        <form className="requestForm" action={createFiscalYearAction}>
+        <form className="requestForm" action={fyAction} ref={fyRef}>
+          {fyState.message ? (
+            <p className={fyState.ok ? "successNote" : "errorNote"} key={fyState.timestamp}>
+              {fyState.message}
+            </p>
+          ) : null}
           <label>
             Name
             <input name="name" required placeholder="Ex: FY 2025-2026" />
@@ -67,7 +113,12 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
       ) : null}
 
       {entityType === "organization" ? (
-        <form className="requestForm" action={createOrganizationAction}>
+        <form className="requestForm" action={orgAction} ref={orgRef}>
+          {orgState.message ? (
+            <p className={orgState.ok ? "successNote" : "errorNote"} key={orgState.timestamp}>
+              {orgState.message}
+            </p>
+          ) : null}
           <label>
             Name
             <input name="name" required placeholder="Ex: Theatre Department" />
@@ -83,7 +134,12 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
       ) : null}
 
       {entityType === "project" ? (
-        <form className="requestForm" action={createProjectAction}>
+        <form className="requestForm" action={projectAction} ref={projectRef}>
+          {projectState.message ? (
+            <p className={projectState.ok ? "successNote" : "errorNote"} key={projectState.timestamp}>
+              {projectState.message}
+            </p>
+          ) : null}
           <label>
             Project Name
             <input name="projectName" required placeholder="Ex: Spring Musical 2026" />
@@ -139,7 +195,12 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
       ) : null}
 
       {entityType === "account_code" ? (
-        <form className="requestForm" action={createAccountCodeAction}>
+        <form className="requestForm" action={accountCodeAction} ref={accountCodeRef}>
+          {accountCodeState.message ? (
+            <p className={accountCodeState.ok ? "successNote" : "errorNote"} key={accountCodeState.timestamp}>
+              {accountCodeState.message}
+            </p>
+          ) : null}
           <label>
             Code
             <input name="code" required placeholder="Ex: 11310" />
@@ -167,7 +228,12 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
       ) : null}
 
       {entityType === "production_category" ? (
-        <form className="requestForm" action={createProductionCategoryAction}>
+        <form className="requestForm" action={categoryAction} ref={categoryRef}>
+          {categoryState.message ? (
+            <p className={categoryState.ok ? "successNote" : "errorNote"} key={categoryState.timestamp}>
+              {categoryState.message}
+            </p>
+          ) : null}
           <label>
             Category Name
             <input name="name" required placeholder="Ex: Marketing" />
@@ -187,7 +253,12 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
       ) : null}
 
       {entityType === "budget_line" ? (
-        <form className="requestForm" action={addBudgetLineAction}>
+        <form className="requestForm" action={budgetLineAction} ref={budgetLineRef}>
+          {budgetLineState.message ? (
+            <p className={budgetLineState.ok ? "successNote" : "errorNote"} key={budgetLineState.timestamp}>
+              {budgetLineState.message}
+            </p>
+          ) : null}
           <label>
             Project
             <select name="projectId" required>
@@ -195,10 +266,10 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
               {projects
                 .filter((project) => project.name.trim().toLowerCase() !== "external procurement")
                 .map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name} {project.season ? `(${project.season})` : ""}
-                </option>
-              ))}
+                  <option key={project.id} value={project.id}>
+                    {project.name} {project.season ? `(${project.season})` : ""}
+                  </option>
+                ))}
             </select>
           </label>
           <label>
