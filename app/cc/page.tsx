@@ -241,9 +241,7 @@ export default async function CreditCardPage({
       purchaseStatus: (purchase?.status as string | undefined) ?? "",
       purchaseRequestType: (purchase?.request_type as string | undefined) ?? "",
       purchaseIsCreditCard: Boolean(purchase?.is_credit_card as boolean | null | undefined),
-      statementMonthId:
-        (row.cc_statement_month_id as string | null) ??
-        ((purchase?.cc_statement_month_id as string | null | undefined) ?? statementMonthIdByMatchedPurchaseId.get(purchaseId) ?? null),
+      statementMonthId: (row.cc_statement_month_id as string | null) ?? null,
       projectLabel: `${project?.name ?? "Unknown Project"}${project?.season ? ` (${project.season})` : ""}`,
       budgetLineLabel: `${accountCode?.code ?? budgetLine?.budget_code ?? "-"} | ${productionCategory?.name ?? "-"}`
     };
