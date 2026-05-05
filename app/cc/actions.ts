@@ -663,7 +663,7 @@ export async function unassignReceiptFromStatementAction(
 
     const { data: statementMonth, error: statementMonthError } = await supabase
       .from("cc_statement_months")
-      .select("id, posted_at")
+      .select("id, credit_card_id, posted_at")
       .eq("id", statementMonthId)
       .single();
     if (statementMonthError || !statementMonth) return err("Statement month not found.");
@@ -721,9 +721,10 @@ export async function unassignReceiptFromStatementAction(
     if ((remainingAssignedCount ?? 0) === 0 && (remainingMatchedLines ?? []).length === 0) {
       const { error: purchaseResetError } = await supabase
         .from("purchases")
-        .update({ cc_statement_month_id: null })
+        .update({ cc_statement_month_id: null, credit_card_id: null })
         .eq("id", receiptRow.purchase_id as string)
-        .eq("cc_statement_month_id", statementMonthId);
+        .eq("cc_statement_month_id", statementMonthId)
+        .eq("credit_card_id", statementMonth.credit_card_id as string);
       if (purchaseResetError) return err(purchaseResetError.message);
     }
 

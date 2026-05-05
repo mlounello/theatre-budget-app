@@ -333,8 +333,7 @@ export function CcPageClient({
               !receipt.statementMonthId &&
               receipt.purchaseStatus === "pending_cc" &&
               receipt.purchaseRequestType === "expense" &&
-              receipt.purchaseIsCreditCard &&
-              (receipt.purchaseCreditCardId === month.creditCardId || receipt.purchaseCreditCardId === null)
+              receipt.purchaseIsCreditCard
           );
           const assignedTotal = assignedReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
           return (
