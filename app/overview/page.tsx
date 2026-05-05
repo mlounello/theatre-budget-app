@@ -82,13 +82,13 @@ export default async function OverviewPage({
               <th>Remaining Pool (Not Allocated)</th>
               <th>Requested</th>
               <th>Held</th>
-              <th>ENC</th>
               <th>Pending CC</th>
               <th>YTD</th>
+              <th>ENC</th>
               <th>Remaining (True)</th>
               <th>Remaining (Banner)</th>
               <th>Remaining (+Requests)</th>
-              <th>Remaining (+Request &amp; Holds)</th>
+              <th>Remaining (+Requests &amp; Holds)</th>
             </tr>
           </thead>
           <tbody>
@@ -111,9 +111,9 @@ export default async function OverviewPage({
                 </td>
                 <td>{formatCurrency(row.requestedOpenTotal)}</td>
                 <td>{formatCurrency(row.heldTotal)}</td>
-                <td>{formatCurrency(row.encTotal)}</td>
                 <td>{formatCurrency(row.pendingCcTotal)}</td>
                 <td>{formatCurrency(row.ytdTotal)}</td>
+                <td>{formatCurrency(row.encTotal)}</td>
                 <td className={row.remainingTrue < 0 ? "negative" : "positive"}>{formatCurrency(row.remainingTrue)}</td>
                 <td className={row.remainingBanner < 0 ? "negative" : "positive"}>{formatCurrency(row.remainingBanner)}</td>
                 <td className={row.remainingIfRequestedApproved < 0 ? "negative" : "positive"}>{formatCurrency(row.remainingIfRequestedApproved)}</td>
@@ -138,9 +138,9 @@ export default async function OverviewPage({
                 <th>Department</th>
                 <th>Requested</th>
                 <th>Held</th>
-                <th>ENC</th>
                 <th>Pending CC</th>
                 <th>Posted</th>
+                <th>ENC</th>
                 <th>Obligated</th>
               </tr>
             </thead>
@@ -158,9 +158,9 @@ export default async function OverviewPage({
                   <td>{row.productionCategory}</td>
                   <td>{formatCurrency(row.requestedTotal)}</td>
                   <td>{formatCurrency(row.heldTotal)}</td>
-                  <td>{formatCurrency(row.encTotal)}</td>
                   <td>{formatCurrency(row.pendingCcTotal)}</td>
                   <td>{formatCurrency(row.postedTotal)}</td>
+                  <td>{formatCurrency(row.encTotal)}</td>
                   <td>{formatCurrency(row.obligatedTotal)}</td>
                 </tr>
               ))}
@@ -182,9 +182,9 @@ export default async function OverviewPage({
                 <th>Banner Name</th>
                 <th>Requested</th>
                 <th>Held</th>
-                <th>ENC</th>
                 <th>Pending CC</th>
                 <th>Posted</th>
+                <th>ENC</th>
                 <th>Obligated</th>
               </tr>
             </thead>
@@ -203,9 +203,9 @@ export default async function OverviewPage({
                   <td>{row.bannerName}</td>
                   <td>{formatCurrency(row.requestedTotal)}</td>
                   <td>{formatCurrency(row.heldTotal)}</td>
-                  <td>{formatCurrency(row.encTotal)}</td>
                   <td>{formatCurrency(row.pendingCcTotal)}</td>
                   <td>{formatCurrency(row.postedTotal)}</td>
+                  <td>{formatCurrency(row.encTotal)}</td>
                   <td>{formatCurrency(row.obligatedTotal)}</td>
                 </tr>
               ))}
