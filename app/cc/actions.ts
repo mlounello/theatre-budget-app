@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext, requireProjectRole } from "@/lib/access";
+import { createInstitutionalCommitmentForPurchase } from "@/lib/institutional-budget";
 import type { PurchaseStatus } from "@/lib/types";
 
 type ActionState = {
@@ -810,6 +811,8 @@ export async function submitStatementMonthAction(
         note: `Statement paid ${(statementMonth.statement_month as string).slice(0, 7)}; awaiting accounts posting`
       });
       if (eventError) return err(eventError.message);
+
+      await createInstitutionalCommitmentForPurchase(supabase, purchase.id as string, user.id);
     }
 
     const { data: monthUpdated, error: monthUpdateError } = await supabase
@@ -987,6 +990,8 @@ export async function postStatementMonthToBannerAction(
         note: `Posted to Banner for statement ${(statementMonth.statement_month as string).slice(0, 7)}`
       });
       if (eventError) return err(eventError.message);
+
+      await createInstitutionalCommitmentForPurchase(supabase, purchase.id as string, user.id);
     }
 
     const { data: statementUpdated, error: statementUpdateError } = await supabase
@@ -1092,6 +1097,8 @@ export async function unpostStatementMonthFromBannerAction(
         note: `Unposted from Banner for statement ${(statementMonth.statement_month as string).slice(0, 7)}`
       });
       if (eventError) return err(eventError.message);
+
+      await createInstitutionalCommitmentForPurchase(supabase, purchase.id as string, user.id);
     }
 
     const { data: statementUpdated, error: statementUpdateError } = await supabase
@@ -1189,6 +1196,8 @@ export async function createReimbursementRequestAction(
       reporting_bucket: "direct"
     });
     if (allocationError) return err(allocationError.message);
+
+    await createInstitutionalCommitmentForPurchase(supabase, inserted.id as string, user.id);
 
     const { error: eventError } = await supabase.from("purchase_events").insert({
       purchase_id: inserted.id as string,

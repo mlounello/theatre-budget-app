@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
+import { createInstitutionalCommitmentForPurchase } from "@/lib/institutional-budget";
 import { getServerAppSchema } from "@/lib/supabase-schema";
 import type { PurchaseStatus } from "@/lib/types";
 
@@ -230,6 +231,8 @@ export async function updateDashboardRequisitionStatusAction(
         }
       }
     }
+
+    await createInstitutionalCommitmentForPurchase(db, purchaseId, user.id);
 
     revalidatePath("/");
     revalidatePath("/procurement");

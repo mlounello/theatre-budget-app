@@ -31,6 +31,8 @@ function linksForRole(role: string): Array<{ href: string; label: string }> {
       { href: "/procurement", label: "Procurement" },
       { href: "/contracts", label: "Contracts" },
       { href: "/budget-planning", label: "Budget Planning" },
+      { href: "/institutional-budget", label: "Institutional Budget" },
+      { href: "/variance", label: "Variance" },
       { href: "/income", label: "Income" },
       { href: "/cc", label: "CC" },
       { href: "/settings", label: "Settings" }
@@ -45,6 +47,8 @@ function linksForRole(role: string): Array<{ href: string; label: string }> {
       { href: "/procurement", label: "Procurement" },
       { href: "/contracts", label: "Contracts" },
       { href: "/budget-planning", label: "Budget Planning" },
+      { href: "/institutional-budget", label: "Institutional Budget" },
+      { href: "/variance", label: "Variance" },
       { href: "/income", label: "Income" },
       { href: "/cc", label: "CC" },
       { href: "/settings", label: "Settings" },

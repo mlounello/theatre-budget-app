@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext, requireProjectRole } from "@/lib/access";
+import { createInstitutionalCommitmentForPurchase } from "@/lib/institutional-budget";
 import type { PurchaseStatus } from "@/lib/types";
 
 const PROCUREMENT_STATUSES = [
@@ -124,6 +125,25 @@ function parseMoney(value: FormDataEntryValue | null): number {
   if (typeof value !== "string" || value.trim() === "") return 0;
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseDateInput(value: FormDataEntryValue | null): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : null;
+}
+
+async function syncInstitutionalBudget(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  purchaseId: string,
+  userId: string
+): Promise<ActionState | null> {
+  try {
+    await createInstitutionalCommitmentForPurchase(supabase, purchaseId, userId);
+    return null;
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not sync institutional budget commitment."));
+  }
 }
 
 function parseIdsJson(value: FormDataEntryValue | null): string[] {
@@ -299,6 +319,7 @@ export async function createProcurementOrderAction(
     const poNumber = String(formData.get("poNumber") ?? "").trim();
     const vendorIdRaw = String(formData.get("vendorId") ?? "").trim();
     const newVendorName = String(formData.get("newVendorName") ?? "").trim();
+    const orderDate = parseDateInput(formData.get("orderDate"));
     const requestType = parseProcurementRequestType(formData.get("requestType"));
     const isCreditCard = requestType === "expense" ? formData.get("isCreditCard") === "on" : false;
 
@@ -376,6 +397,7 @@ export async function createProcurementOrderAction(
         cc_workflow_status: computed.ccWorkflowStatus,
         status: computed.status,
         procurement_status: computed.procurementStatus,
+        ordered_on: orderDate,
         posted_date: computed.postedDate
       })
       .select("id, project_id")
@@ -410,6 +432,9 @@ export async function createProcurementOrderAction(
       note: "Procurement order created"
     });
     if (eventError) return err(eventError.message);
+
+    const institutionalSyncError = await syncInstitutionalBudget(supabase, purchase.id as string, user.id);
+    if (institutionalSyncError) return institutionalSyncError;
 
     revalidatePath("/procurement");
     revalidatePath("/requests");
@@ -466,6 +491,7 @@ export async function createProcurementBatchAction(
     const organizationId = String(formData.get("organizationId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
+    const orderDate = parseDateInput(formData.get("orderDate"));
     const lines = parseBatchLinesJson(formData.get("linesJson"));
 
     if (!projectId) return err("Project is required.");
@@ -536,6 +562,7 @@ export async function createProcurementBatchAction(
           cc_workflow_status: computed.ccWorkflowStatus,
           status: computed.status,
           procurement_status: computed.procurementStatus,
+          ordered_on: orderDate,
           posted_date: computed.postedDate
         })
         .select("id")
@@ -571,6 +598,9 @@ export async function createProcurementBatchAction(
         note: "Batch created procurement entry"
       });
       if (eventError) return err(eventError.message);
+
+      const institutionalSyncError = await syncInstitutionalBudget(supabase, purchase.id as string, user.id);
+      if (institutionalSyncError) return institutionalSyncError;
     }
 
     revalidatePath("/procurement");
@@ -769,6 +799,9 @@ export async function updateProcurementAction(
         if (createAllocationError) return err(createAllocationError.message);
       }
     }
+
+    const institutionalSyncError = await syncInstitutionalBudget(supabase, id, user.id);
+    if (institutionalSyncError) return institutionalSyncError;
 
     revalidatePath("/procurement");
     revalidatePath("/requests");
@@ -1270,6 +1303,9 @@ export async function bulkUpdateProcurementAction(
         });
         if (insertAllocError) return err(insertAllocError.message);
       }
+
+      const institutionalSyncError = await syncInstitutionalBudget(supabase, rowId, user.id);
+      if (institutionalSyncError) return institutionalSyncError;
     }
 
     revalidatePath("/procurement");

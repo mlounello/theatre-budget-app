@@ -424,6 +424,10 @@ export function CreateRequestForm({
         Title
         <input name="title" required placeholder="Ex: Scenic hardware" />
       </label>
+      <label>
+        Order Date
+        <input name="orderDate" type="date" />
+      </label>
       {requestType === "requisition" ? (
         <label>
           Requisition #

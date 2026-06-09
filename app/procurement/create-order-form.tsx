@@ -251,6 +251,10 @@ export function CreateOrderForm({
         <input name="title" placeholder="Order title" required />
       </label>
       <label>
+        Order Date
+        <input name="orderDate" type="date" />
+      </label>
+      <label>
         Order Value
         <input name="orderValue" type="number" step="0.01" required />
       </label>

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext, requireProjectRole } from "@/lib/access";
+import { createInstitutionalCommitmentForPurchase } from "@/lib/institutional-budget";
 import type { PurchaseStatus } from "@/lib/types";
 
 const RECEIPT_STORAGE_BUCKET = "purchase-receipts";
@@ -33,6 +34,25 @@ function parseMoney(value: FormDataEntryValue | null): number {
   if (typeof value !== "string" || value.trim() === "") return 0;
   const parsed = Number.parseFloat(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parseDateInput(value: FormDataEntryValue | null): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : null;
+}
+
+async function syncInstitutionalBudget(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  purchaseId: string,
+  userId: string
+): Promise<ActionState | null> {
+  try {
+    await createInstitutionalCommitmentForPurchase(supabase, purchaseId, userId);
+    return null;
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not sync institutional budget commitment."));
+  }
 }
 
 function parseIdsJson(value: FormDataEntryValue | null): string[] {
@@ -176,6 +196,7 @@ export async function createRequest(
     const requisitionNumber = String(formData.get("requisitionNumber") ?? "").trim();
     const estimatedAmount = parseMoney(formData.get("estimatedAmount"));
     const requestedAmount = parseMoney(formData.get("requestedAmount"));
+    const orderDate = parseDateInput(formData.get("orderDate"));
     const requestType = parseRequestType(formData.get("requestType"));
     const isCreditCard = requestType === "expense" ? formData.get("isCreditCard") === "on" : false;
     const allocationsJson = String(formData.get("allocationsJson") ?? "").trim();
@@ -267,6 +288,7 @@ export async function createRequest(
         is_credit_card: isCreditCard,
         cc_workflow_status: computed.ccWorkflowStatus,
         status: computed.status,
+        ordered_on: orderDate,
         posted_date: computed.status === "posted" ? new Date().toISOString().slice(0, 10) : null
       })
       .select("id")
@@ -349,6 +371,9 @@ export async function createRequest(
     if (eventError.error) {
       return err(eventError.error.message);
     }
+
+    const institutionalSyncError = await syncInstitutionalBudget(supabase, inserted.id as string, user.id);
+    if (institutionalSyncError) return institutionalSyncError;
 
     revalidatePath("/requests");
     revalidatePath("/");
@@ -438,6 +463,9 @@ export async function updatePurchaseStatus(
     if (eventError) {
       return err(eventError.message);
     }
+
+    const institutionalSyncError = await syncInstitutionalBudget(supabase, purchaseId, user.id);
+    if (institutionalSyncError) return institutionalSyncError;
 
     revalidatePath("/requests");
     revalidatePath("/");
@@ -797,6 +825,7 @@ export async function updateRequestInline(
     const requisitionNumber = String(formData.get("requisitionNumber") ?? "").trim();
     const estimatedAmount = parseMoney(formData.get("estimatedAmount"));
     const requestedAmount = parseMoney(formData.get("requestedAmount"));
+    const orderDate = parseDateInput(formData.get("orderDate"));
     const requestType = parseRequestType(formData.get("requestType"));
     const isCreditCard = requestType === "expense" ? formData.get("isCreditCard") === "on" : false;
 
@@ -807,7 +836,7 @@ export async function updateRequestInline(
 
     const { data: existing, error: existingError } = await supabase
       .from("purchases")
-      .select("id, project_id, status, budget_line_id, requested_amount, encumbered_amount, pending_cc_amount, posted_amount")
+      .select("id, project_id, status, budget_line_id, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, ordered_on")
       .eq("id", purchaseId)
       .single();
     if (existingError || !existing) return err("Purchase not found.");
@@ -865,7 +894,8 @@ export async function updateRequestInline(
       posted_date: computed.status === "posted" ? new Date().toISOString().slice(0, 10) : null,
       request_type: requestType,
       is_credit_card: isCreditCard,
-      cc_workflow_status: computed.ccWorkflowStatus
+      cc_workflow_status: computed.ccWorkflowStatus,
+      ordered_on: orderDate ?? ((existing.ordered_on as string | null) ?? null)
     };
 
     const { data: updatedRequest, error: updateError } = await supabase
@@ -898,6 +928,9 @@ export async function updateRequestInline(
       reporting_bucket: "direct"
     });
     if (insertAllocationError) return err(insertAllocationError.message);
+
+    const institutionalSyncError = await syncInstitutionalBudget(supabase, purchaseId, user.id);
+    if (institutionalSyncError) return institutionalSyncError;
 
     revalidatePath("/requests");
     revalidatePath("/");
@@ -1197,6 +1230,9 @@ export async function bulkUpdateRequestsAction(
         reporting_bucket: "direct"
       });
       if (insertAllocationError) return err(insertAllocationError.message);
+
+      const institutionalSyncError = await syncInstitutionalBudget(supabase, plan.purchaseId, user.id);
+      if (institutionalSyncError) return institutionalSyncError;
 
       if (plan.oldProjectId !== plan.nextProjectId) {
         revalidatePath(`/projects/${plan.oldProjectId}`);

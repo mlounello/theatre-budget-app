@@ -4,6 +4,7 @@ import { formatCurrency } from "@/lib/format";
 import { getDashboardOpenRequisitions, getDashboardProjects, getMyBudgetData } from "@/lib/db";
 import type { DashboardOpenRequisition, DashboardProject } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
+import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { DashboardRequisitionTable } from "@/app/dashboard-requisition-table";
 
 const REQUISITION_PROCUREMENT_STATUSES = [
@@ -20,6 +21,55 @@ const REQUISITION_PROCUREMENT_STATUSES = [
 function requisitionProcurementLabel(value: string): string {
   const found = REQUISITION_PROCUREMENT_STATUSES.find((status) => status.value === value);
   return found?.label ?? value;
+}
+
+type InstitutionalWarning = {
+  id: string;
+  label: string;
+  amount: number;
+};
+
+async function getInstitutionalDashboardWarnings(): Promise<{
+  overBudgetBuckets: InstitutionalWarning[];
+  pendingVarianceCount: number;
+  approvedPostedVarianceCount: number;
+}> {
+  const supabase = await getSupabaseServerClient();
+  const [{ data: overBudgetData }, { count: pendingVarianceCount }, { count: approvedPostedVarianceCount }] = await Promise.all([
+    supabase
+      .from("v_institutional_monthly_budget_availability")
+      .select("budget_plan_month_id, fiscal_year_name, org_code, account_code, account_name, month_start, official_available_amount")
+      .lt("official_available_amount", 0)
+      .order("official_available_amount", { ascending: true })
+      .limit(6),
+    supabase
+      .from("variance_requests")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["draft", "ready_for_review", "submitted"]),
+    supabase.from("variance_requests").select("id", { count: "exact", head: true }).in("status", ["approved", "posted"])
+  ]);
+
+  const overBudgetBuckets = ((overBudgetData ?? []) as Array<{
+    budget_plan_month_id?: string | null;
+    fiscal_year_name?: string | null;
+    org_code?: string | null;
+    account_code?: string | null;
+    account_name?: string | null;
+    month_start?: string | null;
+    official_available_amount?: string | number | null;
+  }>).map((row) => ({
+    id: row.budget_plan_month_id ?? `${row.org_code}:${row.account_code}:${row.month_start}`,
+    label: [row.fiscal_year_name, row.org_code, row.account_code, row.account_name, row.month_start ? String(row.month_start).slice(0, 7) : null]
+      .filter(Boolean)
+      .join(" | "),
+    amount: Number(row.official_available_amount ?? 0)
+  }));
+
+  return {
+    overBudgetBuckets,
+    pendingVarianceCount: pendingVarianceCount ?? 0,
+    approvedPostedVarianceCount: approvedPostedVarianceCount ?? 0
+  };
 }
 
 export default async function DashboardPage() {
@@ -149,10 +199,19 @@ export default async function DashboardPage() {
 
   let projects: DashboardProject[] = [];
   let openRequisitions: DashboardOpenRequisition[] = [];
+  let institutionalWarnings: Awaited<ReturnType<typeof getInstitutionalDashboardWarnings>> = {
+    overBudgetBuckets: [],
+    pendingVarianceCount: 0,
+    approvedPostedVarianceCount: 0
+  };
   let loadError: string | null = null;
 
   try {
-    [projects, openRequisitions] = await Promise.all([getDashboardProjects(), getDashboardOpenRequisitions()]);
+    [projects, openRequisitions, institutionalWarnings] = await Promise.all([
+      getDashboardProjects(),
+      getDashboardOpenRequisitions(),
+      getInstitutionalDashboardWarnings()
+    ]);
   } catch {
     loadError = "Unable to load project data. Check Supabase view grants and migration status.";
   }
@@ -169,6 +228,61 @@ export default async function DashboardPage() {
       </div>
 
       <DashboardRequisitionTable openRequisitions={openRequisitions} />
+
+      <article className="panel">
+        <div className="sectionHeader compactHeader">
+          <div>
+            <p className="eyebrow">Institutional Budget</p>
+            <h2>Monthly Budget Warnings</h2>
+          </div>
+          <div className="inlineActions">
+            <Link href="/institutional-budget" className="buttonLink">
+              Monthly View
+            </Link>
+            <Link href="/variance" className="buttonLink">
+              Variance Center
+            </Link>
+          </div>
+        </div>
+        <dl className="metricGrid">
+          <div>
+            <dt>Over-Budget Buckets</dt>
+            <dd className={institutionalWarnings.overBudgetBuckets.length > 0 ? "negative" : "positive"}>
+              {institutionalWarnings.overBudgetBuckets.length}
+            </dd>
+          </div>
+          <div>
+            <dt>Pending Variances</dt>
+            <dd>{institutionalWarnings.pendingVarianceCount}</dd>
+          </div>
+          <div>
+            <dt>Approved/Posted Variances</dt>
+            <dd>{institutionalWarnings.approvedPostedVarianceCount}</dd>
+          </div>
+        </dl>
+        {institutionalWarnings.overBudgetBuckets.length > 0 ? (
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Bucket</th>
+                  <th>Official Available</th>
+                </tr>
+              </thead>
+              <tbody>
+                {institutionalWarnings.overBudgetBuckets.map((bucket) => (
+                  <tr key={bucket.id}>
+                    <td>{bucket.label}</td>
+                    <td className="negative">{formatCurrency(bucket.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="heroSubtitle">No over-budget institutional monthly buckets.</p>
+        )}
+      </article>
 
       <div className="gridCards">
         {loadError ? (

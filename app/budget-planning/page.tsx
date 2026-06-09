@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { BudgetPlanningRow } from "@/app/budget-planning/budget-planning-row";
 import { BudgetPlanningExportButton } from "@/app/budget-planning/budget-planning-export";
 import { BudgetPlanningBulkActions } from "@/app/budget-planning/budget-planning-bulk-actions";
+import { InstitutionalAllocationImportPanel } from "@/app/budget-planning/institutional-allocation-import-panel";
 
 export default async function BudgetPlanningPage({
   searchParams
@@ -18,6 +19,7 @@ export default async function BudgetPlanningPage({
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
+  const isAdmin = access.role === "admin";
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const searchQuery = (resolvedSearchParams?.q ?? "").trim().toLowerCase();
@@ -119,6 +121,8 @@ export default async function BudgetPlanningPage({
           Set an annual plan per account code and adjust monthly values as needed. Historical actuals are provided for guidance.
         </p>
       </header>
+
+      {isAdmin ? <InstitutionalAllocationImportPanel /> : null}
 
       <article className="panel">
         <h2>Filters</h2>

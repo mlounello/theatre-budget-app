@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
+import { createInstitutionalCommitmentForPurchase } from "@/lib/institutional-budget";
 import type { PurchaseStatus } from "@/lib/types";
 
 type ActionState = {
@@ -243,6 +244,8 @@ export async function createContractAction(
         status: "planned"
       });
       if (installmentError) return err(installmentError.message);
+
+      await createInstitutionalCommitmentForPurchase(supabase, purchase.id as string, user.id);
     }
 
     revalidatePath("/contracts");
@@ -453,6 +456,8 @@ export async function updateContractDetailsAction(
         .limit(1);
       if (allocationUpdateError) return err(allocationUpdateError.message);
       if (!allocationUpdated || allocationUpdated.length === 0) return err("Linked allocation update was not applied.");
+
+      await createInstitutionalCommitmentForPurchase(supabase, purchaseId, user.id);
     }
 
     revalidatePath("/contracts");
@@ -590,6 +595,8 @@ export async function updateContractInstallmentStatusAction(
         note: `Contract installment marked ${nextStatus}`
       });
       if (eventError) return err(eventError.message);
+
+      await createInstitutionalCommitmentForPurchase(supabase, installment.purchase_id as string, user.id);
     }
 
     const today = new Date().toISOString().slice(0, 10);
