@@ -2036,7 +2036,7 @@ export async function getOrganizationOverviewRows(): Promise<OrganizationOvervie
       .order("org_code", { ascending: true }),
     supabase
       .from("organizations")
-      .select("id, org_code, fiscal_year_id")
+      .select("id, name, org_code, fiscal_year_id")
   ]);
 
   if (error) throw error;
@@ -2046,86 +2046,153 @@ export async function getOrganizationOverviewRows(): Promise<OrganizationOvervie
     string,
     {
       id: string;
+      name: string | null;
       org_code: string | null;
       fiscal_year_id: string | null;
     }
   >();
 
-  const fiscalYearSpecificOrgCodes = new Set<string>();
-
   for (const organization of organizationsData ?? []) {
-    const id = organization.id as string;
-    const orgCode = (organization.org_code as string | null) ?? null;
-    const fiscalYearId = (organization.fiscal_year_id as string | null) ?? null;
-
-    organizationById.set(id, {
-      id,
-      org_code: orgCode,
-      fiscal_year_id: fiscalYearId
+    organizationById.set(organization.id as string, {
+      id: organization.id as string,
+      name: (organization.name as string | null) ?? null,
+      org_code: (organization.org_code as string | null) ?? null,
+      fiscal_year_id: (organization.fiscal_year_id as string | null) ?? null
     });
+  }
 
-    if (orgCode && fiscalYearId) {
-      fiscalYearSpecificOrgCodes.add(`${fiscalYearId}|${orgCode}`);
+  type GroupedOrganizationOverviewRow = {
+    organizationId: string;
+    organizationName: string;
+    orgCode: string;
+    fiscalYearId: string | null;
+    fiscalYearName: string | null;
+    allocatedTotal: number;
+    requestedOpenTotal: number;
+    heldTotal: number;
+    encTotal: number;
+    pendingCcTotal: number;
+    ytdTotal: number;
+    obligatedTotal: number;
+    startingBudgetTotal: number;
+    additionalIncomeTotal: number;
+    fundingPoolTotal: number;
+    fundingPoolAvailable: number;
+    incomeTotal: number;
+    usesFiscalYearSpecificOrganization: boolean;
+  };
+
+  const grouped = new Map<string, GroupedOrganizationOverviewRow>();
+
+  for (const row of data ?? []) {
+    const organizationId = row.organization_id as string;
+    const organization = organizationById.get(organizationId);
+    const orgCode = (row.org_code as string | null) ?? organization?.org_code ?? "UNKNOWN";
+    const fiscalYearId = (row.fiscal_year_id as string | null) ?? null;
+    const fiscalYearName = (row.fiscal_year_name as string | null) ?? null;
+    const key = `${fiscalYearId ?? "none"}|${orgCode}`;
+
+    const rowUsesFiscalYearSpecificOrganization = Boolean(
+      fiscalYearId && organization?.fiscal_year_id === fiscalYearId
+    );
+
+    const existing = grouped.get(key);
+
+    if (!existing) {
+      grouped.set(key, {
+        organizationId,
+        organizationName: (row.organization_name as string | null) ?? organization?.name ?? orgCode,
+        orgCode,
+        fiscalYearId,
+        fiscalYearName,
+        allocatedTotal: asNumber(row.allocated_total as string | number | null),
+        requestedOpenTotal: asNumber(row.requested_open_total as string | number | null),
+        heldTotal: asNumber(row.held_total as string | number | null),
+        encTotal: asNumber(row.enc_total as string | number | null),
+        pendingCcTotal: asNumber(row.pending_cc_total as string | number | null),
+        ytdTotal: asNumber(row.ytd_total as string | number | null),
+        obligatedTotal: asNumber(row.obligated_total as string | number | null),
+        startingBudgetTotal: asNumber(row.starting_budget_total as string | number | null),
+        additionalIncomeTotal: asNumber(row.additional_income_total as string | number | null),
+        fundingPoolTotal: asNumber(row.funding_pool_total as string | number | null),
+        fundingPoolAvailable: asNumber(row.funding_pool_available as string | number | null),
+        incomeTotal: asNumber(row.income_total as string | number | null),
+        usesFiscalYearSpecificOrganization: rowUsesFiscalYearSpecificOrganization
+      });
+      continue;
+    }
+
+    existing.allocatedTotal += asNumber(row.allocated_total as string | number | null);
+    existing.requestedOpenTotal += asNumber(row.requested_open_total as string | number | null);
+    existing.heldTotal += asNumber(row.held_total as string | number | null);
+    existing.encTotal += asNumber(row.enc_total as string | number | null);
+    existing.pendingCcTotal += asNumber(row.pending_cc_total as string | number | null);
+    existing.ytdTotal += asNumber(row.ytd_total as string | number | null);
+    existing.obligatedTotal += asNumber(row.obligated_total as string | number | null);
+    existing.startingBudgetTotal += asNumber(row.starting_budget_total as string | number | null);
+    existing.additionalIncomeTotal += asNumber(row.additional_income_total as string | number | null);
+    existing.fundingPoolTotal += asNumber(row.funding_pool_total as string | number | null);
+    existing.fundingPoolAvailable += asNumber(row.funding_pool_available as string | number | null);
+    existing.incomeTotal += asNumber(row.income_total as string | number | null);
+
+    // Prefer displaying the fiscal-year-specific organization identity/name when duplicate
+    // global and FY-specific org rows exist for the same FY/org code.
+    if (rowUsesFiscalYearSpecificOrganization && !existing.usesFiscalYearSpecificOrganization) {
+      existing.organizationId = organizationId;
+      existing.organizationName = (row.organization_name as string | null) ?? organization?.name ?? orgCode;
+      existing.usesFiscalYearSpecificOrganization = true;
     }
   }
 
-  const filteredData = (data ?? []).filter((row) => {
-    const organizationId = row.organization_id as string;
-    const fiscalYearId = (row.fiscal_year_id as string | null) ?? null;
-    const orgCode = (row.org_code as string | null) ?? null;
-    const organization = organizationById.get(organizationId);
+  return Array.from(grouped.values())
+    .map((row) => {
+      const fundingPoolTotal = row.fundingPoolTotal;
+      const requestedOpenTotal = row.requestedOpenTotal;
+      const heldTotal = row.heldTotal;
+      const encTotal = row.encTotal;
+      const pendingCcTotal = row.pendingCcTotal;
+      const ytdTotal = row.ytdTotal;
 
-    if (!fiscalYearId || !orgCode || !organization) return true;
+      // Canonical remaining formulas for org overview:
+      // True = funding - (ENC + YTD + Pending CC)
+      // Banner = funding - (ENC + YTD)
+      // +Requests = funding - (ENC + Pending CC + YTD + Requested)
+      // +Request & Holds = funding - (ENC + Pending CC + YTD + Requested + Held)
+      const remainingTrue = fundingPoolTotal - (encTotal + pendingCcTotal + ytdTotal);
+      const remainingBanner = fundingPoolTotal - (encTotal + ytdTotal);
+      const remainingIfRequestedApproved = fundingPoolTotal - (encTotal + pendingCcTotal + ytdTotal + requestedOpenTotal);
+      const remainingIfRequestedAndHeldApproved =
+        fundingPoolTotal - (encTotal + pendingCcTotal + ytdTotal + requestedOpenTotal + heldTotal);
 
-    const rowUsesGlobalOrganization = organization.fiscal_year_id === null;
-    const fiscalYearSpecificOrgExists = fiscalYearSpecificOrgCodes.has(`${fiscalYearId}|${orgCode}`);
-
-    return !(rowUsesGlobalOrganization && fiscalYearSpecificOrgExists);
-  });
-
-  return filteredData.map((row) => {
-    const requestedOpenTotal = asNumber(row.requested_open_total as string | number | null);
-    const heldTotal = asNumber(row.held_total as string | number | null);
-    const encTotal = asNumber(row.enc_total as string | number | null);
-    const pendingCcTotal = asNumber(row.pending_cc_total as string | number | null);
-    const ytdTotal = asNumber(row.ytd_total as string | number | null);
-    const fundingPoolTotal = asNumber(row.funding_pool_total as string | number | null);
-
-    // Canonical remaining formulas for org overview:
-    // True = funding - (ENC + YTD + Pending CC)
-    // Banner = funding - (ENC + YTD)
-    // +Requests = funding - (ENC + Pending CC + YTD + Requested)
-    // +Request & Holds = funding - (ENC + Pending CC + YTD + Requested + Held)
-    const remainingTrue = fundingPoolTotal - (encTotal + pendingCcTotal + ytdTotal);
-    const remainingBanner = fundingPoolTotal - (encTotal + ytdTotal);
-    const remainingIfRequestedApproved = fundingPoolTotal - (encTotal + pendingCcTotal + ytdTotal + requestedOpenTotal);
-    const remainingIfRequestedAndHeldApproved =
-      fundingPoolTotal - (encTotal + pendingCcTotal + ytdTotal + requestedOpenTotal + heldTotal);
-
-    return {
-      organizationId: row.organization_id as string,
-      organizationName: row.organization_name as string,
-      orgCode: row.org_code as string,
-      fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
-      fiscalYearName: (row.fiscal_year_name as string | null) ?? null,
-      allocatedTotal: asNumber(row.allocated_total as string | number | null),
-      requestedOpenTotal,
-      heldTotal,
-      encTotal,
-      pendingCcTotal,
-      ytdTotal,
-      obligatedTotal: asNumber(row.obligated_total as string | number | null),
-      remainingTrue,
-      remainingBanner,
-      remainingIfRequestedApproved,
-      remainingIfRequestedAndHeldApproved,
-      startingBudgetTotal: asNumber(row.starting_budget_total as string | number | null),
-      additionalIncomeTotal: asNumber(row.additional_income_total as string | number | null),
-      fundingPoolTotal,
-      fundingPoolAvailable: asNumber(row.funding_pool_available as string | number | null),
-      incomeTotal: asNumber(row.income_total as string | number | null)
-    };
-  });
+      return {
+        organizationId: row.organizationId,
+        organizationName: row.organizationName,
+        orgCode: row.orgCode,
+        fiscalYearId: row.fiscalYearId,
+        fiscalYearName: row.fiscalYearName,
+        allocatedTotal: row.allocatedTotal,
+        requestedOpenTotal,
+        heldTotal,
+        encTotal,
+        pendingCcTotal,
+        ytdTotal,
+        obligatedTotal: row.obligatedTotal,
+        remainingTrue,
+        remainingBanner,
+        remainingIfRequestedApproved,
+        remainingIfRequestedAndHeldApproved,
+        startingBudgetTotal: row.startingBudgetTotal,
+        additionalIncomeTotal: row.additionalIncomeTotal,
+        fundingPoolTotal,
+        fundingPoolAvailable: fundingPoolTotal - row.allocatedTotal,
+        incomeTotal: row.incomeTotal
+      };
+    })
+    .sort((a, b) => {
+      const fy = (a.fiscalYearName ?? "").localeCompare(b.fiscalYearName ?? "");
+      if (fy !== 0) return fy;
+      return a.orgCode.localeCompare(b.orgCode);
+    });
 }
 
 export async function getCategoryActualRows(): Promise<CategoryActualRow[]> {
