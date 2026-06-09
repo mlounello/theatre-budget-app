@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { createVarianceFromBucketAction } from "@/app/institutional-budget/actions";
 import { getAccessContext } from "@/lib/access";
 import { formatCurrency } from "@/lib/format";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
@@ -12,9 +13,13 @@ type MonthlyBudgetRow = {
   organization_name?: string | null;
   account_code_id?: string | null;
   account_code?: string | null;
+  account_category?: string | null;
   account_name?: string | null;
+  budget_plan_month_id?: string | null;
   month_start?: string | null;
+  fiscal_month_index?: string | number | null;
   monthly_allocation?: string | number | null;
+  commitment_count?: string | number | null;
   submitted_commitments_amount?: string | number | null;
   approved_incoming_variance_amount?: string | number | null;
   approved_outgoing_variance_amount?: string | number | null;
@@ -27,6 +32,13 @@ function asNumber(value: string | number | null | undefined): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function monthLabel(value: string | null | undefined): string {
+  if (!value) return "-";
+  const [year, month] = value.split("-");
+  const date = new Date(Number(year), Number(month) - 1, 1);
+  return date.toLocaleString("en-US", { month: "short", year: "numeric" });
+}
+
 export default async function InstitutionalBudgetPage({
   searchParams
 }: {
@@ -34,6 +46,7 @@ export default async function InstitutionalBudgetPage({
     fiscalYearId?: string;
     organizationId?: string;
     q?: string;
+    negativeOnly?: string;
   }>;
 }) {
   const access = await getAccessContext();
@@ -44,6 +57,7 @@ export default async function InstitutionalBudgetPage({
   const fiscalYearId = (resolvedSearchParams?.fiscalYearId ?? "").trim();
   const organizationId = (resolvedSearchParams?.organizationId ?? "").trim();
   const queryText = (resolvedSearchParams?.q ?? "").trim().toLowerCase();
+  const negativeOnly = resolvedSearchParams?.negativeOnly === "1";
 
   const supabase = await getSupabaseServerClient();
   const [{ data: fiscalYearData, error: fiscalYearError }, { data: organizationData, error: organizationError }] = await Promise.all([
@@ -60,7 +74,7 @@ export default async function InstitutionalBudgetPage({
   let query = supabase
     .from("v_institutional_monthly_budget_availability")
     .select(
-      "fiscal_year_id, fiscal_year_name, organization_id, org_code, organization_name, account_code_id, account_code, account_name, month_start, monthly_allocation, submitted_commitments_amount, approved_incoming_variance_amount, approved_outgoing_variance_amount, official_available_amount, projected_available_amount"
+      "fiscal_year_id, fiscal_year_name, organization_id, org_code, organization_name, account_code_id, account_code, account_category, account_name, budget_plan_month_id, month_start, fiscal_month_index, monthly_allocation, commitment_count, submitted_commitments_amount, approved_incoming_variance_amount, approved_outgoing_variance_amount, official_available_amount, projected_available_amount"
     )
     .order("fiscal_year_name", { ascending: true })
     .order("org_code", { ascending: true })
@@ -80,6 +94,9 @@ export default async function InstitutionalBudgetPage({
       .join(" ")
       .toLowerCase()
       .includes(queryText);
+  }).filter((row) => {
+    if (!negativeOnly) return true;
+    return asNumber(row.official_available_amount) < 0 || asNumber(row.projected_available_amount) < 0;
   });
 
   const fiscalYearOptions = ((fiscalYearData ?? []) as Array<{ id?: string; name?: string | null }>).filter((fy) => fy.id);
@@ -89,6 +106,45 @@ export default async function InstitutionalBudgetPage({
     name?: string | null;
     fiscal_year_id?: string | null;
   }>).filter((org) => org.id && (!fiscalYearId || org.fiscal_year_id === fiscalYearId || org.fiscal_year_id === null));
+  const monthColumns = Array.from(
+    new Map(
+      rows
+        .filter((row) => row.month_start)
+        .sort((a, b) => asNumber(a.fiscal_month_index) - asNumber(b.fiscal_month_index) || String(a.month_start).localeCompare(String(b.month_start)))
+        .map((row) => [String(row.month_start), { monthStart: String(row.month_start), label: monthLabel(String(row.month_start)) }] as const)
+    ).values()
+  );
+  const groupedRows = rows.reduce((map, row) => {
+    const key = [row.fiscal_year_id, row.organization_id, row.account_code_id].join(":");
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        fiscalYearName: row.fiscal_year_name ?? "-",
+        orgCode: row.org_code ?? "-",
+        organizationName: row.organization_name ?? "-",
+        accountCode: row.account_code ?? "-",
+        accountName: row.account_name ?? "-",
+        accountCategory: row.account_category ?? "",
+        cells: new Map<string, MonthlyBudgetRow>()
+      });
+    }
+    if (row.month_start) map.get(key)!.cells.set(String(row.month_start), row);
+    return map;
+  }, new Map<string, {
+    key: string;
+    fiscalYearName: string;
+    orgCode: string;
+    organizationName: string;
+    accountCode: string;
+    accountName: string;
+    accountCategory: string;
+    cells: Map<string, MonthlyBudgetRow>;
+  }>());
+  const gridRows = Array.from(groupedRows.values()).sort((a, b) =>
+    a.fiscalYearName.localeCompare(b.fiscalYearName) ||
+    a.orgCode.localeCompare(b.orgCode) ||
+    a.accountCode.localeCompare(b.accountCode)
+  );
 
   return (
     <section>
@@ -129,6 +185,10 @@ export default async function InstitutionalBudgetPage({
             Search
             <input name="q" defaultValue={resolvedSearchParams?.q ?? ""} placeholder="Account, org, or month" />
           </label>
+          <label className="checkboxLabel">
+            <input name="negativeOnly" type="checkbox" value="1" defaultChecked={negativeOnly} />
+            Needs variance
+          </label>
           <button className="buttonLink" type="submit">
             Apply
           </button>
@@ -138,56 +198,73 @@ export default async function InstitutionalBudgetPage({
       <article className="panel">
         <div className="sectionHeader compactHeader">
           <div>
-            <p className="eyebrow">FY / Org / Account / Month</p>
+            <p className="eyebrow">FY / Org / Account</p>
             <h2>Institutional Availability</h2>
           </div>
           <Link className="buttonLink" href="/variance">
             Open Variance Center
           </Link>
         </div>
-        <div className="tableWrap">
-          <table>
+        <div className="tableWrap institutionalGridWrap">
+          <table className="institutionalGrid">
             <thead>
               <tr>
-                <th>FY</th>
-                <th>Org</th>
-                <th>Account</th>
-                <th>Month</th>
-                <th>Allocation</th>
-                <th>Commitments</th>
-                <th>Approved In</th>
-                <th>Approved Out</th>
-                <th>Official Available</th>
-                <th>Projected Available</th>
+                <th className="stickyCol stickyCol1">FY</th>
+                <th className="stickyCol stickyCol2">Org</th>
+                <th className="stickyCol stickyCol3">Account</th>
+                <th className="stickyCol stickyCol4">Category</th>
+                {monthColumns.map((month) => (
+                  <th key={month.monthStart} className="monthHeader">
+                    {month.label}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 ? (
+              {gridRows.length === 0 ? (
                 <tr>
-                  <td colSpan={10}>No institutional monthly budget rows found.</td>
+                  <td colSpan={4 + Math.max(monthColumns.length, 1)}>No institutional monthly budget rows found.</td>
                 </tr>
               ) : null}
-              {rows.map((row) => {
-                const officialAvailable = asNumber(row.official_available_amount);
-                const projectedAvailable = asNumber(row.projected_available_amount);
+              {gridRows.map((gridRow) => {
                 return (
-                  <tr key={`${row.fiscal_year_id}:${row.organization_id}:${row.account_code_id}:${row.month_start}`}>
-                    <td>{row.fiscal_year_name ?? "-"}</td>
-                    <td>
-                      {row.org_code ?? "-"}
-                      <div>{row.organization_name ?? ""}</div>
+                  <tr key={gridRow.key}>
+                    <td className="stickyCol stickyCol1">{gridRow.fiscalYearName}</td>
+                    <td className="stickyCol stickyCol2">
+                      <strong>{gridRow.orgCode}</strong>
+                      <div className="muted">{gridRow.organizationName}</div>
                     </td>
-                    <td>
-                      {row.account_code ?? "-"}
-                      <div>{row.account_name ?? ""}</div>
+                    <td className="stickyCol stickyCol3">
+                      <strong>{gridRow.accountCode}</strong>
+                      <div className="muted">{gridRow.accountName}</div>
                     </td>
-                    <td>{row.month_start ? String(row.month_start).slice(0, 7) : "-"}</td>
-                    <td>{formatCurrency(asNumber(row.monthly_allocation))}</td>
-                    <td>{formatCurrency(asNumber(row.submitted_commitments_amount))}</td>
-                    <td>{formatCurrency(asNumber(row.approved_incoming_variance_amount))}</td>
-                    <td>{formatCurrency(asNumber(row.approved_outgoing_variance_amount))}</td>
-                    <td className={officialAvailable < 0 ? "negative" : "positive"}>{formatCurrency(officialAvailable)}</td>
-                    <td className={projectedAvailable < 0 ? "negative" : "positive"}>{formatCurrency(projectedAvailable)}</td>
+                    <td className="stickyCol stickyCol4">{gridRow.accountCategory || "-"}</td>
+                    {monthColumns.map((month) => {
+                      const cell = gridRow.cells.get(month.monthStart);
+                      if (!cell) return <td key={month.monthStart} className="budgetMonthCell emptyMonthCell">-</td>;
+                      const officialAvailable = asNumber(cell.official_available_amount);
+                      const projectedAvailable = asNumber(cell.projected_available_amount);
+                      const isNegative = officialAvailable < 0 || projectedAvailable < 0;
+                      return (
+                        <td key={month.monthStart} className={isNegative ? "budgetMonthCell negativeMonthCell" : "budgetMonthCell"}>
+                          <div className={officialAvailable < 0 ? "negative monthAvailable" : "positive monthAvailable"}>
+                            {formatCurrency(officialAvailable)}
+                          </div>
+                          <div className="monthMeta">
+                            <span>Alloc {formatCurrency(asNumber(cell.monthly_allocation))}</span>
+                            <span>Commit {formatCurrency(asNumber(cell.submitted_commitments_amount))}</span>
+                          </div>
+                          {isNegative && cell.budget_plan_month_id ? (
+                            <form action={createVarianceFromBucketAction} className="inlineEditForm">
+                              <input type="hidden" name="budgetPlanMonthId" value={cell.budget_plan_month_id} />
+                              <button type="submit" className="tinyButton">
+                                Create variance
+                              </button>
+                            </form>
+                          ) : null}
+                        </td>
+                      );
+                    })}
                   </tr>
                 );
               })}

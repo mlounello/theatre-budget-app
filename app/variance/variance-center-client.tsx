@@ -17,12 +17,15 @@ export type VarianceRow = {
   purchaseTitle: string | null;
   projectName: string | null;
   fiscalYearName: string | null;
+  targetOrganizationId: string | null;
+  targetLabel: string | null;
   lineCount: number;
   generatedFileUrl: string | null;
 };
 
 export type SourceCandidate = {
   budgetPlanMonthId: string;
+  organizationId: string | null;
   label: string;
   available: number;
   crossesTargetOrg: boolean;
@@ -50,6 +53,11 @@ function money(value: number): string {
 function SourceLineForm({ variance, sourceCandidates }: { variance: VarianceRow; sourceCandidates: SourceCandidate[] }) {
   const [state, action] = useActionState(addVarianceSourceLineAction, initialState);
   if (!["draft", "ready_for_review"].includes(variance.status)) return null;
+  const sortedCandidates = [...sourceCandidates].sort((a, b) => {
+    const aSameOrg = variance.targetOrganizationId && a.organizationId === variance.targetOrganizationId ? 0 : 1;
+    const bSameOrg = variance.targetOrganizationId && b.organizationId === variance.targetOrganizationId ? 0 : 1;
+    return aSameOrg - bSameOrg || b.available - a.available || a.label.localeCompare(b.label);
+  });
 
   return (
     <form className="panelGrid" action={action}>
@@ -58,12 +66,15 @@ function SourceLineForm({ variance, sourceCandidates }: { variance: VarianceRow;
         Source Bucket
         <select name="fromBudgetPlanMonthId" required>
           <option value="">Choose source</option>
-          {sourceCandidates.map((candidate) => (
-            <option key={candidate.budgetPlanMonthId} value={candidate.budgetPlanMonthId}>
-              {candidate.label} | {money(candidate.available)}
-              {candidate.crossesTargetOrg ? " | Cross-org" : ""}
-            </option>
-          ))}
+          {sortedCandidates.map((candidate) => {
+            const crossesTarget = Boolean(variance.targetOrganizationId && candidate.organizationId !== variance.targetOrganizationId);
+            return (
+              <option key={candidate.budgetPlanMonthId} value={candidate.budgetPlanMonthId}>
+                {candidate.label} | {money(candidate.available)}
+                {crossesTarget || candidate.crossesTargetOrg ? " | Cross-org" : ""}
+              </option>
+            );
+          })}
         </select>
       </label>
       <label>
@@ -153,6 +164,7 @@ export function VarianceCenterClient({ variances, sourceCandidates, canApprove }
                     {variance.projectName ?? "Unassigned project"} | shortage {money(variance.totalTransferAmount)} | {variance.lineCount} source line
                     {variance.lineCount === 1 ? "" : "s"}
                   </p>
+                  {variance.targetLabel ? <p className="helperText">To bucket: {variance.targetLabel}</p> : null}
                   {variance.reason ? <p>{variance.reason}</p> : null}
                 </div>
                 <SourceLineForm variance={variance} sourceCandidates={sourceCandidates} />

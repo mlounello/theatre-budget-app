@@ -292,6 +292,14 @@ export function SettingsPageClient({
     organizationId: "",
     active: "true"
   });
+
+  const projectOrganizationOptions = useMemo(() => {
+    if (!projectForm.fiscalYearId) return organizations;
+    const yearSpecific = organizations.filter((org) => org.fiscalYearId === projectForm.fiscalYearId);
+    return yearSpecific.length > 0
+      ? yearSpecific
+      : organizations.filter((org) => org.fiscalYearId === projectForm.fiscalYearId || org.fiscalYearId === null);
+  }, [organizations, projectForm.fiscalYearId]);
   const lastFiscalYearIdRef = useRef<string | null>(null);
   const lastOrganizationIdRef = useRef<string | null>(null);
   const lastProjectIdRef = useRef<string | null>(null);
@@ -358,6 +366,12 @@ export function SettingsPageClient({
       active: editingLine.budgetLineActive ? "on" : "off"
     });
   }, [editingLine]);
+
+  useEffect(() => {
+    if (!projectForm.organizationId) return;
+    if (projectOrganizationOptions.some((org) => org.id === projectForm.organizationId)) return;
+    setProjectForm((prev) => ({ ...prev, organizationId: "" }));
+  }, [projectForm.organizationId, projectOrganizationOptions]);
 
   useEffect(() => {
     if (!editingAccountCode) {
@@ -1354,7 +1368,7 @@ export function SettingsPageClient({
                 <select
                   name="fiscalYearId"
                   value={projectForm.fiscalYearId}
-                  onChange={(event) => setProjectForm((prev) => ({ ...prev, fiscalYearId: event.target.value }))}
+                  onChange={(event) => setProjectForm((prev) => ({ ...prev, fiscalYearId: event.target.value, organizationId: "" }))}
                 >
                   <option value="">No fiscal year</option>
                   {fiscalYears.map((fy) => (
@@ -1372,7 +1386,7 @@ export function SettingsPageClient({
                   onChange={(event) => setProjectForm((prev) => ({ ...prev, organizationId: event.target.value }))}
                 >
                   <option value="">No organization</option>
-                  {organizations.map((orgOption) => (
+                  {projectOrganizationOptions.map((orgOption) => (
                     <option key={orgOption.id} value={orgOption.id}>
                       {orgOption.label}
                     </option>

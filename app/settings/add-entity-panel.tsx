@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import {
   addBudgetLineAction,
   createAccountCodeAction,
@@ -31,6 +31,7 @@ const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
 export function AddEntityPanel({ fiscalYears, organizations, templates, projects, productionCategories }: Props) {
   const [entityType, setEntityType] = useState<EntityType>("project");
+  const [projectFiscalYearId, setProjectFiscalYearId] = useState("");
 
   const [fyState, fyAction] = useActionState(createFiscalYearAction, initialState);
   const [orgState, orgAction] = useActionState(createOrganizationAction, initialState);
@@ -55,7 +56,10 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
   }, [orgState]);
 
   useEffect(() => {
-    if (projectState.ok && projectState.message) projectRef.current?.reset();
+    if (projectState.ok && projectState.message) {
+      projectRef.current?.reset();
+      setProjectFiscalYearId("");
+    }
   }, [projectState]);
 
   useEffect(() => {
@@ -69,6 +73,14 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
   useEffect(() => {
     if (budgetLineState.ok && budgetLineState.message) budgetLineRef.current?.reset();
   }, [budgetLineState]);
+
+  const projectOrganizationOptions = useMemo(() => {
+    if (!projectFiscalYearId) return organizations;
+    const yearSpecific = organizations.filter((org) => org.fiscalYearId === projectFiscalYearId);
+    return yearSpecific.length > 0
+      ? yearSpecific
+      : organizations.filter((org) => org.fiscalYearId === projectFiscalYearId || org.fiscalYearId === null);
+  }, [organizations, projectFiscalYearId]);
 
   return (
     <article className="panel panelFull">
@@ -150,7 +162,7 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
           </label>
           <label>
             Fiscal Year
-            <select name="fiscalYearId">
+            <select name="fiscalYearId" value={projectFiscalYearId} onChange={(event) => setProjectFiscalYearId(event.target.value)}>
               <option value="">No fiscal year</option>
               {fiscalYears.map((fy) => (
                 <option key={fy.id} value={fy.id}>
@@ -163,7 +175,7 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
             Organization
             <select name="organizationId">
               <option value="">No organization</option>
-              {organizations.map((org) => (
+              {projectOrganizationOptions.map((org) => (
                 <option key={org.id} value={org.id}>
                   {org.label}
                 </option>

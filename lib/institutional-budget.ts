@@ -37,11 +37,11 @@ type FiscalYearRow = {
 type PurchaseForInstitutionalBudget = {
   id: string;
   project_id: string;
+  budget_line_id: string | null;
   organization_id: string | null;
   banner_account_code_id: string | null;
   ordered_on: string | null;
   purchase_date?: string | null;
-  posted_date: string | null;
   created_at: string | null;
   status: string | null;
   request_type: string | null;
@@ -54,12 +54,19 @@ type PurchaseForInstitutionalBudget = {
   projects?: {
     organization_id?: string | null;
   } | null;
+  project_budget_lines?: {
+    account_code_id?: string | null;
+  } | null;
 };
 
 type AllocationForInstitutionalBudget = {
   id: string;
   account_code_id: string | null;
+  reporting_budget_line_id: string | null;
   amount: string | number | null;
+  project_budget_lines?: {
+    account_code_id?: string | null;
+  } | null;
 };
 
 type BudgetBucket = {
@@ -111,10 +118,13 @@ export function determineInstitutionalOrderDate(purchase: PurchaseForInstitution
   return (
     toIsoDateOnly(purchase.ordered_on) ??
     toIsoDateOnly(purchase.purchase_date ?? null) ??
-    toIsoDateOnly(purchase.posted_date) ??
     toIsoDateOnly(purchase.created_at) ??
     new Date().toISOString().slice(0, 10)
   );
+}
+
+function warnInstitutionalSync(purchaseId: string, reason: string, details?: Record<string, unknown>): void {
+  console.warn("[institutional-budget] commitment sync skipped", { purchaseId, reason, ...(details ?? {}) });
 }
 
 export async function determineFiscalYearFromDate(
@@ -203,16 +213,6 @@ function activeCommitmentAmount(purchase: PurchaseForInstitutionalBudget): numbe
   return asNumber(purchase.requested_amount) || asNumber(purchase.estimated_amount) || asNumber(purchase.posted_amount);
 }
 
-function allocationCommitmentAmount(
-  purchaseAmount: number,
-  allocation: AllocationForInstitutionalBudget,
-  allocationTotal: number
-): number {
-  const allocationAmount = asNumber(allocation.amount);
-  if (allocationTotal === 0) return allocationAmount;
-  return Number(((purchaseAmount * allocationAmount) / allocationTotal).toFixed(2));
-}
-
 export async function detectVarianceRequirement(
   supabase: unknown,
   budgetPlanMonthIds: string[]
@@ -240,20 +240,22 @@ export async function createDraftVarianceRequest(
   params: {
     fiscalYearId: string;
     triggeringPurchaseId: string;
+    targetBudgetPlanMonthId?: string | null;
     shortageAmount: number;
     userId: string | null;
     reason: string;
   }
 ): Promise<void> {
   const db = asDb(supabase);
-  const { data: existing, error: existingError } = await db
+  let existingQuery = db
     .from("variance_requests")
     .select("id")
     .eq("triggering_purchase_id", params.triggeringPurchaseId)
     .in("status", ["draft", "ready_for_review", "submitted", "approved"])
     .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(1);
+  if (params.targetBudgetPlanMonthId) existingQuery = existingQuery.eq("target_budget_plan_month_id", params.targetBudgetPlanMonthId);
+  const { data: existing, error: existingError } = await existingQuery.maybeSingle();
   if (existingError) throw new Error(existingError.message);
   const existingRow = existing as { id?: string } | null;
 
@@ -263,6 +265,7 @@ export async function createDraftVarianceRequest(
       .update({
         fiscal_year_id: params.fiscalYearId,
         reason: params.reason,
+        target_budget_plan_month_id: params.targetBudgetPlanMonthId ?? null,
         total_transfer_amount: params.shortageAmount
       })
       .eq("id", existingRow.id);
@@ -275,6 +278,7 @@ export async function createDraftVarianceRequest(
     .insert({
       fiscal_year_id: params.fiscalYearId,
       triggering_purchase_id: params.triggeringPurchaseId,
+      target_budget_plan_month_id: params.targetBudgetPlanMonthId ?? null,
       status: "draft",
       reason: params.reason,
       total_transfer_amount: params.shortageAmount,
@@ -301,13 +305,11 @@ export async function createInstitutionalCommitmentForPurchase(
   userId: string | null = null
 ): Promise<InstitutionalSyncResult> {
   const db = asDb(supabase);
-  const { error: deleteError } = await db.from("institutional_budget_commitments").delete().eq("purchase_id", purchaseId);
-  if (deleteError) throw new Error(deleteError.message);
 
   const { data: purchase, error: purchaseError } = await db
     .from("purchases")
     .select(
-      "id, project_id, organization_id, banner_account_code_id, ordered_on, purchase_date, posted_date, created_at, status, request_type, title, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, projects(organization_id)"
+      "id, project_id, budget_line_id, organization_id, banner_account_code_id, ordered_on, purchase_date, created_at, status, request_type, title, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, projects(organization_id), project_budget_lines(account_code_id)"
     )
     .eq("id", purchaseId)
     .single();
@@ -315,32 +317,61 @@ export async function createInstitutionalCommitmentForPurchase(
 
   const purchaseRow = purchase as PurchaseForInstitutionalBudget;
   const purchaseAmount = activeCommitmentAmount(purchaseRow);
-  if (purchaseAmount === 0) return { ok: true, skippedReason: "zero_or_cancelled_amount", commitmentCount: 0, committedAmount: 0, varianceRequired: false, shortageAmount: 0 };
+  if (purchaseAmount === 0) {
+    const { error: cancelError } = await db
+      .from("institutional_budget_commitments")
+      .update({ commitment_status: "cancelled", updated_at: new Date().toISOString() })
+      .eq("purchase_id", purchaseId);
+    if (cancelError) throw new Error(cancelError.message);
+    return { ok: true, skippedReason: "zero_or_cancelled_amount", commitmentCount: 0, committedAmount: 0, varianceRequired: false, shortageAmount: 0 };
+  }
 
   const organizationId = purchaseRow.organization_id ?? purchaseRow.projects?.organization_id ?? null;
-  if (!organizationId) return { ok: true, skippedReason: "missing_organization", commitmentCount: 0, committedAmount: 0, varianceRequired: false, shortageAmount: 0 };
+  if (!organizationId) {
+    warnInstitutionalSync(purchaseId, "missing_organization");
+    return { ok: true, skippedReason: "missing_organization", commitmentCount: 0, committedAmount: 0, varianceRequired: false, shortageAmount: 0 };
+  }
 
   const orderDate = determineInstitutionalOrderDate(purchaseRow);
   const fiscalYear = await determineFiscalYearFromDate(db, orderDate);
-  if (!fiscalYear) return { ok: true, skippedReason: "missing_fiscal_year", commitmentCount: 0, committedAmount: 0, varianceRequired: false, shortageAmount: 0 };
+  if (!fiscalYear) {
+    warnInstitutionalSync(purchaseId, "missing_fiscal_year", { orderDate });
+    return { ok: true, skippedReason: "missing_fiscal_year", commitmentCount: 0, committedAmount: 0, varianceRequired: false, shortageAmount: 0 };
+  }
 
   const { data: allocations, error: allocationsError } = await db
     .from("purchase_allocations")
-    .select("id, account_code_id, amount")
+    .select("id, account_code_id, reporting_budget_line_id, amount, project_budget_lines(account_code_id)")
     .eq("purchase_id", purchaseId);
   if (allocationsError) throw new Error(allocationsError.message);
 
-  const allocationRows = ((allocations ?? []) as AllocationForInstitutionalBudget[]).filter(
-    (allocation) => allocation.account_code_id ?? purchaseRow.banner_account_code_id
-  );
-  if (allocationRows.length === 0) return { ok: true, skippedReason: "missing_account_code", commitmentCount: 0, committedAmount: 0, varianceRequired: false, shortageAmount: 0 };
+  const allocationRows = (allocations ?? []) as AllocationForInstitutionalBudget[];
+  if (allocationRows.length === 0 && !purchaseRow.project_budget_lines?.account_code_id) {
+    warnInstitutionalSync(purchaseId, "missing_allocations");
+    return { ok: true, skippedReason: "missing_account_code", commitmentCount: 0, committedAmount: 0, varianceRequired: false, shortageAmount: 0 };
+  }
 
-  const allocationTotal = allocationRows.reduce((sum, allocation) => sum + Math.abs(asNumber(allocation.amount)), 0);
   const commitments: Array<Record<string, unknown>> = [];
-  for (const allocation of allocationRows) {
-    const accountCodeId = allocation.account_code_id ?? purchaseRow.banner_account_code_id;
+  const allocationInputs =
+    allocationRows.length > 0
+      ? allocationRows
+      : [
+          {
+            id: null,
+            account_code_id: purchaseRow.project_budget_lines?.account_code_id ?? null,
+            reporting_budget_line_id: purchaseRow.budget_line_id,
+            amount: purchaseAmount,
+            project_budget_lines: purchaseRow.project_budget_lines ?? null
+          }
+        ];
+
+  for (const allocation of allocationInputs) {
+    const accountCodeId =
+      allocation.account_code_id ??
+      allocation.project_budget_lines?.account_code_id ??
+      (allocationRows.length === 0 ? purchaseRow.project_budget_lines?.account_code_id ?? null : null);
     if (!accountCodeId) continue;
-    const committedAmount = allocationCommitmentAmount(purchaseAmount, allocation, allocationTotal);
+    const committedAmount = asNumber(allocation.amount);
     if (committedAmount === 0) continue;
     const bucket = await resolveInstitutionalBudgetBucket(db, {
       fiscalYearId: fiscalYear.id,
@@ -348,7 +379,15 @@ export async function createInstitutionalCommitmentForPurchase(
       accountCodeId,
       orderDate
     });
-    if (!bucket) continue;
+    if (!bucket) {
+      warnInstitutionalSync(purchaseId, "missing_budget_bucket", {
+        fiscalYearId: fiscalYear.id,
+        organizationId,
+        accountCodeId,
+        orderDate
+      });
+      continue;
+    }
     commitments.push({
       purchase_id: purchaseId,
       purchase_allocation_id: allocation.id,
@@ -362,10 +401,66 @@ export async function createInstitutionalCommitmentForPurchase(
     });
   }
 
-  if (commitments.length === 0) return { ok: true, skippedReason: "missing_budget_bucket", commitmentCount: 0, committedAmount: 0, varianceRequired: false, shortageAmount: 0 };
+  const currentAllocationIds = commitments
+    .map((commitment) => commitment.purchase_allocation_id)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
 
-  const { error: insertError } = await db.from("institutional_budget_commitments").insert(commitments);
-  if (insertError) throw new Error(insertError.message);
+  const { data: existingCommitments, error: existingCommitmentsError } = await db
+    .from("institutional_budget_commitments")
+    .select("id, purchase_allocation_id")
+    .eq("purchase_id", purchaseId);
+  if (existingCommitmentsError) throw new Error(existingCommitmentsError.message);
+
+  for (const existing of (existingCommitments ?? []) as Array<{ id?: string; purchase_allocation_id?: string | null }>) {
+    const allocationId = existing.purchase_allocation_id ?? null;
+    if (!existing.id || (allocationId && currentAllocationIds.includes(allocationId))) continue;
+    const { error: staleError } = await db
+      .from("institutional_budget_commitments")
+      .update({ commitment_status: "cancelled", updated_at: new Date().toISOString() })
+      .eq("id", existing.id);
+    if (staleError) throw new Error(staleError.message);
+  }
+
+  if (commitments.length === 0) {
+    warnInstitutionalSync(purchaseId, "missing_budget_bucket");
+    return { ok: true, skippedReason: "missing_budget_bucket", commitmentCount: 0, committedAmount: 0, varianceRequired: false, shortageAmount: 0 };
+  }
+
+  for (const commitment of commitments) {
+    const allocationId = commitment.purchase_allocation_id as string | null;
+    let existingId: string | null = null;
+    if (allocationId) {
+      const { data: existing, error: existingError } = await db
+        .from("institutional_budget_commitments")
+        .select("id")
+        .eq("purchase_allocation_id", allocationId)
+        .maybeSingle();
+      if (existingError) throw new Error(existingError.message);
+      existingId = ((existing as { id?: string } | null)?.id as string | undefined) ?? null;
+    }
+
+    if (!existingId) {
+      const { data: existing, error: existingError } = await db
+        .from("institutional_budget_commitments")
+        .select("id")
+        .eq("purchase_id", purchaseId)
+        .eq("budget_plan_month_id", commitment.budget_plan_month_id as string)
+        .maybeSingle();
+      if (existingError) throw new Error(existingError.message);
+      existingId = ((existing as { id?: string } | null)?.id as string | undefined) ?? null;
+    }
+
+    if (existingId) {
+      const { error: updateError } = await db
+        .from("institutional_budget_commitments")
+        .update({ ...commitment, updated_at: new Date().toISOString() })
+        .eq("id", existingId);
+      if (updateError) throw new Error(updateError.message);
+    } else {
+      const { error: insertError } = await db.from("institutional_budget_commitments").insert(commitment);
+      if (insertError) throw new Error(insertError.message);
+    }
+  }
 
   const committedAmount = commitments.reduce((sum, row) => sum + asNumber(row.committed_amount as number), 0);
   const variance = await detectVarianceRequirement(
@@ -376,6 +471,7 @@ export async function createInstitutionalCommitmentForPurchase(
     await createDraftVarianceRequest(db, {
       fiscalYearId: variance.fiscalYearId,
       triggeringPurchaseId: purchaseId,
+      targetBudgetPlanMonthId: commitments[0]?.budget_plan_month_id as string | undefined,
       shortageAmount: variance.shortageAmount,
       userId,
       reason: `Institutional monthly budget shortage for ${purchaseRow.title ?? "purchase"} (${purchaseId}).`

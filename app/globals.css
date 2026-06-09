@@ -288,6 +288,10 @@ th {
   scrollbar-gutter: stable both-edges;
 }
 
+.institutionalGridWrap {
+  max-height: 72vh;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -305,6 +309,90 @@ td {
 th {
   font-family: "Gudea", "Arial", sans-serif;
   background: #f3f7f4;
+}
+
+.institutionalGrid {
+  min-width: 1680px;
+}
+
+.institutionalGrid th,
+.institutionalGrid td {
+  vertical-align: top;
+}
+
+.institutionalGrid thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+}
+
+.stickyCol {
+  position: sticky;
+  background: var(--surface);
+  z-index: 3;
+  box-shadow: 1px 0 0 #e6ebe6;
+}
+
+.institutionalGrid thead .stickyCol {
+  background: #f3f7f4;
+  z-index: 5;
+}
+
+.stickyCol1 {
+  left: 0;
+  min-width: 92px;
+  width: 92px;
+}
+
+.stickyCol2 {
+  left: 92px;
+  min-width: 160px;
+  width: 160px;
+}
+
+.stickyCol3 {
+  left: 252px;
+  min-width: 190px;
+  width: 190px;
+}
+
+.stickyCol4 {
+  left: 442px;
+  min-width: 130px;
+  width: 130px;
+}
+
+.monthHeader {
+  min-width: 150px;
+  text-align: right;
+}
+
+.budgetMonthCell {
+  min-width: 150px;
+  text-align: right;
+  background: #ffffff;
+}
+
+.emptyMonthCell {
+  color: var(--text-muted);
+}
+
+.negativeMonthCell {
+  background: #fff4f1;
+  outline: 1px solid #f0b0a1;
+  outline-offset: -1px;
+}
+
+.monthAvailable {
+  font-weight: 800;
+}
+
+.monthMeta {
+  display: grid;
+  gap: 0.12rem;
+  margin: 0.25rem 0;
+  color: var(--text-muted);
+  font-size: 0.74rem;
 }
 
 .compactHeaderCell {

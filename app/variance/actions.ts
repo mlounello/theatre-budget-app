@@ -69,7 +69,7 @@ export async function addVarianceSourceLineAction(
 
     const { data: variance, error: varianceError } = await supabase
       .from("variance_requests")
-      .select("id, status, triggering_purchase_id, total_transfer_amount")
+      .select("id, status, triggering_purchase_id, target_budget_plan_month_id, total_transfer_amount")
       .eq("id", varianceRequestId)
       .single();
     if (varianceError || !variance) return err("Variance request not found.");
@@ -77,24 +77,28 @@ export async function addVarianceSourceLineAction(
       return err("Source lines can only be edited while a variance is Draft or Ready for Review.");
     }
 
-    const triggeringPurchaseId = (variance.triggering_purchase_id as string | null) ?? "";
-    if (!triggeringPurchaseId) return err("This variance is not linked to a triggering purchase yet.");
+    let targetBudgetPlanMonthId = (variance.target_budget_plan_month_id as string | null) ?? null;
+    if (!targetBudgetPlanMonthId) {
+      const triggeringPurchaseId = (variance.triggering_purchase_id as string | null) ?? "";
+      if (!triggeringPurchaseId) return err("This variance does not have a target bucket yet.");
 
-    const { data: targetCommitment, error: targetError } = await supabase
-      .from("institutional_budget_commitments")
-      .select("budget_plan_month_id, organization_id, account_code_id")
-      .eq("purchase_id", triggeringPurchaseId)
-      .neq("commitment_status", "cancelled")
-      .order("committed_amount", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (targetError) return err(targetError.message);
-    if (!targetCommitment) return err("No institutional target bucket is linked to the triggering purchase.");
+      const { data: targetCommitment, error: targetError } = await supabase
+        .from("institutional_budget_commitments")
+        .select("budget_plan_month_id")
+        .eq("purchase_id", triggeringPurchaseId)
+        .neq("commitment_status", "cancelled")
+        .order("committed_amount", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (targetError) return err(targetError.message);
+      targetBudgetPlanMonthId = (targetCommitment?.budget_plan_month_id as string | null) ?? null;
+      if (!targetBudgetPlanMonthId) return err("No institutional target bucket is linked to this variance.");
+    }
 
     const { data: targetBucket, error: targetBucketError } = await supabase
       .from("v_institutional_monthly_budget_availability")
-      .select("month_start")
-      .eq("budget_plan_month_id", targetCommitment.budget_plan_month_id as string)
+      .select("budget_plan_month_id, organization_id, account_code_id, month_start")
+      .eq("budget_plan_month_id", targetBudgetPlanMonthId)
       .maybeSingle();
     if (targetBucketError) return err(targetBucketError.message);
     if (!targetBucket) return err("Target budget month not found.");
@@ -108,7 +112,7 @@ export async function addVarianceSourceLineAction(
     if (!sourceBucket) return err("Source bucket not found.");
 
     const sourceOrgId = sourceBucket.organization_id as string;
-    const targetOrgId = targetCommitment.organization_id as string;
+    const targetOrgId = targetBucket.organization_id as string;
     if (sourceOrgId !== targetOrgId && !crossOrgOverride) {
       return err("Cross-org variance requires the manual override checkbox.");
     }
@@ -121,12 +125,12 @@ export async function addVarianceSourceLineAction(
     const { error: insertError } = await supabase.from("variance_request_lines").insert({
       variance_request_id: varianceRequestId,
       from_budget_plan_month_id: fromBudgetPlanMonthId,
-      to_budget_plan_month_id: targetCommitment.budget_plan_month_id as string,
+      to_budget_plan_month_id: targetBucket.budget_plan_month_id as string,
       from_organization_id: sourceOrgId,
       from_account_code_id: sourceBucket.account_code_id as string,
       from_month_start: sourceBucket.month_start as string,
       to_organization_id: targetOrgId,
-      to_account_code_id: targetCommitment.account_code_id as string,
+      to_account_code_id: targetBucket.account_code_id as string,
       to_month_start: (targetBucket.month_start as string | null) ?? "",
       transfer_amount: transferAmount,
       narrative: narrative || null,
@@ -134,7 +138,14 @@ export async function addVarianceSourceLineAction(
     });
     if (insertError) return err(insertError.message);
 
-    const nextTotal = Number(Number(variance.total_transfer_amount ?? 0) + transferAmount).toFixed(2);
+    const { data: lineTotals, error: lineTotalError } = await supabase
+      .from("variance_request_lines")
+      .select("transfer_amount")
+      .eq("variance_request_id", varianceRequestId);
+    if (lineTotalError) return err(lineTotalError.message);
+    const nextTotal = ((lineTotals ?? []) as Array<{ transfer_amount?: string | number | null }>)
+      .reduce((sum, line) => sum + Number(line.transfer_amount ?? 0), 0)
+      .toFixed(2);
     const { error: updateError } = await supabase
       .from("variance_requests")
       .update({ total_transfer_amount: nextTotal })

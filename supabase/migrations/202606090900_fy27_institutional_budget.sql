@@ -47,6 +47,7 @@ create table if not exists app_theatre_budget.variance_requests (
   id uuid primary key default gen_random_uuid(),
   fiscal_year_id uuid not null references app_theatre_budget.fiscal_years (id) on delete restrict,
   triggering_purchase_id uuid references app_theatre_budget.purchases (id) on delete set null,
+  target_budget_plan_month_id uuid references app_theatre_budget.budget_plan_months (id) on delete restrict,
   status text not null default 'draft',
   reason text,
   total_transfer_amount numeric(12, 2) not null default 0,
@@ -68,6 +69,9 @@ create index if not exists idx_variance_requests_fiscal_year
 
 create index if not exists idx_variance_requests_triggering_purchase
   on app_theatre_budget.variance_requests (triggering_purchase_id);
+
+create index if not exists idx_variance_requests_target_bucket
+  on app_theatre_budget.variance_requests (target_budget_plan_month_id);
 
 create index if not exists idx_variance_requests_status
   on app_theatre_budget.variance_requests (status);

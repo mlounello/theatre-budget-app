@@ -128,6 +128,49 @@ async function requireProjectSettingsWrite(
   }
 }
 
+async function validateProjectOrganizationFiscalYear(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  params: { fiscalYearId: string | null; organizationId: string | null }
+): Promise<void> {
+  if (!params.fiscalYearId || !params.organizationId) return;
+
+  const { data: organization, error } = await supabase
+    .from("organizations")
+    .select("id, name, org_code, fiscal_year_id")
+    .eq("id", params.organizationId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!organization?.id) throw new Error("Selected organization was not found.");
+
+  const orgFiscalYearId = (organization.fiscal_year_id as string | null) ?? null;
+  if (orgFiscalYearId === params.fiscalYearId) return;
+
+  const orgCode = String(organization.org_code ?? "").trim();
+  if (!orgFiscalYearId && orgCode) {
+    const { count, error: matchError } = await supabase
+      .from("organizations")
+      .select("id", { count: "exact", head: true })
+      .eq("fiscal_year_id", params.fiscalYearId)
+      .eq("org_code", orgCode);
+    if (matchError) throw new Error(matchError.message);
+    if ((count ?? 0) > 0) {
+      throw new Error(
+        `Selected organization ${orgCode} is a legacy/global row. Choose the organization row for the selected fiscal year.`
+      );
+    }
+  }
+
+  const { count: yearOrgCount, error: yearOrgError } = await supabase
+    .from("organizations")
+    .select("id", { count: "exact", head: true })
+    .eq("fiscal_year_id", params.fiscalYearId);
+  if (yearOrgError) throw new Error(yearOrgError.message);
+
+  if ((yearOrgCount ?? 0) > 0) {
+    throw new Error("Selected organization does not belong to the selected project fiscal year.");
+  }
+}
+
 function settingsSuccess(message: string): ActionState {
   return ok(message);
 }
@@ -202,6 +245,10 @@ export async function createProjectAction(_prevState: ActionState = emptyState, 
       !isExternalProcurementProjectName(projectName) && formData.get("planningRequestsEnabled") === "on";
 
     if (!projectName) throw new Error("Project name is required.");
+    await validateProjectOrganizationFiscalYear(supabase, {
+      fiscalYearId: fiscalYearId || null,
+      organizationId: organizationId || null
+    });
 
     const newProjectId = await createProjectViaRpc(supabase, {
       name: projectName,
@@ -752,6 +799,10 @@ export async function updateProjectAction(_prevState: ActionState = emptyState, 
 
     if (!id || !name) throw new Error("Project id and name are required.");
     await requireProjectSettingsWrite(supabase, id);
+    await validateProjectOrganizationFiscalYear(supabase, {
+      fiscalYearId: fiscalYearId || null,
+      organizationId: organizationId || null
+    });
 
     const { data: updated, error } = await supabase
       .from("projects")
@@ -1143,10 +1194,12 @@ export async function importHierarchyCsvAction(_prevState: ActionState = emptySt
 
       let organizationId: string | null = null;
       if (organizationName && orgCode) {
-        let orgLookup = supabase.from("organizations").select("id, name");
-        orgLookup = orgLookup.eq("org_code", orgCode);
-
-        const { data: orgMatches, error: orgLookupError } = await orgLookup;
+        const { data: orgMatches, error: orgLookupError } = await supabase
+          .from("organizations")
+          .select("id, name")
+          .eq("fiscal_year_id", fiscalYearId)
+          .eq("org_code", orgCode)
+          .limit(1);
         if (orgLookupError) throw new Error(orgLookupError.message);
 
         const orgExisting = (orgMatches ?? [])[0];
@@ -1164,7 +1217,8 @@ export async function importHierarchyCsvAction(_prevState: ActionState = emptySt
             .from("organizations")
             .insert({
               name: organizationName,
-              org_code: orgCode
+              org_code: orgCode,
+              fiscal_year_id: fiscalYearId
             })
             .select("id")
             .single();
@@ -1183,6 +1237,7 @@ export async function importHierarchyCsvAction(_prevState: ActionState = emptySt
       let projectId: string;
       if (projectExisting?.id) {
         projectId = projectExisting.id as string;
+        await validateProjectOrganizationFiscalYear(supabase, { fiscalYearId, organizationId });
         await supabase
           .from("projects")
           .update({
@@ -1191,6 +1246,7 @@ export async function importHierarchyCsvAction(_prevState: ActionState = emptySt
           })
           .eq("id", projectId);
       } else {
+        await validateProjectOrganizationFiscalYear(supabase, { fiscalYearId, organizationId });
         projectId = await createProjectViaRpc(supabase, {
           name: projectName,
           season,

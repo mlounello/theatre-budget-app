@@ -30,12 +30,38 @@ export default async function VariancePage({
   let varianceQuery = supabase
     .from("variance_requests")
     .select(
-      "id, status, reason, total_transfer_amount, generated_file_url, created_at, fiscal_years(name), purchases(id, title, projects(name)), variance_request_lines(id)"
+      "id, status, reason, total_transfer_amount, generated_file_url, created_at, target_budget_plan_month_id, fiscal_years(name), purchases(id, title, projects(name)), variance_request_lines(id)"
     )
     .order("created_at", { ascending: false });
   if (fiscalYearId) varianceQuery = varianceQuery.eq("fiscal_year_id", fiscalYearId);
   const { data: varianceData, error: varianceError } = await varianceQuery;
   if (varianceError) throw varianceError;
+
+  const targetBucketIds = [
+    ...new Set(
+      (varianceData ?? [])
+        .map((row) => (row.target_budget_plan_month_id as string | null) ?? null)
+        .filter((id): id is string => Boolean(id))
+    )
+  ];
+  const { data: targetBucketData, error: targetBucketError } =
+    targetBucketIds.length > 0
+      ? await supabase
+          .from("v_institutional_monthly_budget_availability")
+          .select("budget_plan_month_id, organization_id, org_code, account_code, account_name, month_start")
+          .in("budget_plan_month_id", targetBucketIds)
+      : { data: [], error: null };
+  if (targetBucketError) throw targetBucketError;
+  const targetBucketById = new Map(
+    ((targetBucketData ?? []) as Array<{
+      budget_plan_month_id?: string | null;
+      organization_id?: string | null;
+      org_code?: string | null;
+      account_code?: string | null;
+      account_name?: string | null;
+      month_start?: string | null;
+    }>).map((row) => [row.budget_plan_month_id as string, row] as const)
+  );
 
   const { data: fiscalYearData, error: fiscalYearError } = await supabase
     .from("fiscal_years")
@@ -55,6 +81,7 @@ export default async function VariancePage({
     const fiscalYear = row.fiscal_years as { name?: string | null } | null;
     const purchase = row.purchases as { title?: string | null; projects?: { name?: string | null } | null } | null;
     const lines = (row.variance_request_lines as Array<{ id?: string }> | null) ?? [];
+    const targetBucket = targetBucketById.get((row.target_budget_plan_month_id as string | null) ?? "");
     return {
       id: row.id as string,
       status: (row.status as string | null) ?? "draft",
@@ -64,6 +91,12 @@ export default async function VariancePage({
       purchaseTitle: (purchase?.title as string | null | undefined) ?? null,
       projectName: (purchase?.projects?.name as string | null | undefined) ?? null,
       fiscalYearName: (fiscalYear?.name as string | null | undefined) ?? null,
+      targetOrganizationId: (targetBucket?.organization_id as string | null | undefined) ?? null,
+      targetLabel: targetBucket
+        ? [targetBucket.org_code, targetBucket.account_code, targetBucket.account_name, targetBucket.month_start ? String(targetBucket.month_start).slice(0, 7) : null]
+            .filter(Boolean)
+            .join(" | ")
+        : null,
       lineCount: lines.length,
       generatedFileUrl: (row.generated_file_url as string | null) ?? null
     };
@@ -71,6 +104,7 @@ export default async function VariancePage({
 
   type SourceCandidateRow = {
     budget_plan_month_id?: string | null;
+    organization_id?: string | null;
     official_available_amount?: string | number | null;
     crosses_target_org?: boolean | null;
     fiscal_year_name?: string | null;
@@ -82,6 +116,7 @@ export default async function VariancePage({
 
   const sourceCandidates: SourceCandidate[] = ((sourceData ?? []) as SourceCandidateRow[]).map((row) => ({
     budgetPlanMonthId: row.budget_plan_month_id as string,
+    organizationId: (row.organization_id as string | null) ?? null,
     available: moneyLabel(row.official_available_amount as string | number | null),
     crossesTargetOrg: Boolean(row.crosses_target_org),
     label: [
