@@ -13,6 +13,7 @@ export type DashboardProject = {
   projectId: string;
   projectName: string;
   season: string | null;
+  fiscalYearId: string | null;
   allocatedTotal: number;
   requestedOpenTotal: number;
   heldTotal: number;
@@ -28,6 +29,7 @@ export type DashboardProject = {
 export type DashboardOpenRequisition = {
   id: string;
   projectId: string;
+  fiscalYearId: string | null;
   projectName: string;
   season: string | null;
   title: string;
@@ -538,7 +540,7 @@ export type SettingsProjectMembershipRow = {
   role: "admin" | "project_manager" | "buyer" | "viewer" | "procurement_tracker";
 };
 
-export async function getDashboardProjects(): Promise<DashboardProject[]> {
+export async function getDashboardProjects(params: { fiscalYearId?: string } = {}): Promise<DashboardProject[]> {
   const supabase = await getSupabaseServerClient();
   const debugAccess = process.env.DEBUG_DASHBOARD_ACCESS === "true";
   if (debugAccess) {
@@ -552,12 +554,16 @@ export async function getDashboardProjects(): Promise<DashboardProject[]> {
     });
   }
 
-  const { data: projectsData, error: projectsError } = await supabase
+  let projectsQuery = supabase
     .from("projects")
-    .select("id, name, season, sort_order")
+    .select("id, name, season, sort_order, fiscal_year_id")
     .not("name", "ilike", "external procurement")
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
+
+  if (params.fiscalYearId) projectsQuery = projectsQuery.eq("fiscal_year_id", params.fiscalYearId);
+
+  const { data: projectsData, error: projectsError } = await projectsQuery;
   if (debugAccess) {
     console.info(
       `[dashboard:getDashboardProjects] projects error=${projectsError?.message ?? "null"} rows=${projectsData?.length ?? 0}`
@@ -641,6 +647,7 @@ export async function getDashboardProjects(): Promise<DashboardProject[]> {
       projectId,
       projectName: (row.name as string) ?? "Untitled Project",
       season: (row.season as string | null) ?? null,
+      fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
       allocatedTotal: summary?.allocated ?? 0,
       requestedOpenTotal: totals?.requested ?? 0,
       heldTotal: totals?.held ?? 0,
@@ -655,13 +662,13 @@ export async function getDashboardProjects(): Promise<DashboardProject[]> {
   });
 }
 
-export async function getDashboardOpenRequisitions(): Promise<DashboardOpenRequisition[]> {
+export async function getDashboardOpenRequisitions(params: { fiscalYearId?: string } = {}): Promise<DashboardOpenRequisition[]> {
   const supabase = await getSupabaseServerClient();
 
-  const { data, error } = await supabase
+  let query = supabase
     .from("purchases")
     .select(
-      "id, project_id, title, requisition_number, po_number, procurement_status, estimated_amount, requested_amount, encumbered_amount, posted_amount, projects!inner(name, season), vendors(name)"
+      "id, project_id, title, requisition_number, po_number, procurement_status, estimated_amount, requested_amount, encumbered_amount, posted_amount, projects!inner(name, season, fiscal_year_id), vendors(name)"
     )
     .eq("request_type", "requisition")
     .neq("procurement_status", "paid")
@@ -670,10 +677,14 @@ export async function getDashboardOpenRequisitions(): Promise<DashboardOpenRequi
     .order("created_at", { ascending: false })
     .limit(100);
 
+  if (params.fiscalYearId) query = query.eq("projects.fiscal_year_id", params.fiscalYearId);
+
+  const { data, error } = await query;
+
   if (error) throw error;
 
   return ((data as Array<Record<string, unknown>> | null) ?? []).map((row) => {
-    const project = row.projects as { name?: string; season?: string | null } | null;
+    const project = row.projects as { name?: string; season?: string | null; fiscal_year_id?: string | null } | null;
     const vendor = row.vendors as { name?: string } | null;
     const estimated = asNumber(row.estimated_amount as string | number | null);
     const requested = asNumber(row.requested_amount as string | number | null);
@@ -684,6 +695,7 @@ export async function getDashboardOpenRequisitions(): Promise<DashboardOpenRequi
     return {
       id: row.id as string,
       projectId: row.project_id as string,
+      fiscalYearId: project?.fiscal_year_id ?? null,
       projectName: project?.name ?? "Unknown Project",
       season: project?.season ?? null,
       title: (row.title as string) ?? "Untitled",
@@ -2622,6 +2634,7 @@ export async function getMyBudgetData(): Promise<{
       openRequisitions.push({
         id: row.id as string,
         projectId,
+        fiscalYearId: project.fiscalYearId,
         projectName: project.name,
         season: project.season,
         title: (row.title as string) ?? "Untitled",

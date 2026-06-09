@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { createProcurementOrderAction, type ActionState } from "@/app/procurement/actions";
+import { GLOBAL_FISCAL_YEAR_STORAGE_KEY } from "@/lib/fiscal-year-context";
 import type {
   AccountCodeOption,
   OrganizationOption,
@@ -47,7 +48,9 @@ export function CreateOrderForm({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const fy = window.localStorage.getItem("tba_procurement_fiscal_year_id");
+    const fy =
+      window.localStorage.getItem("tba_procurement_fiscal_year_id") ||
+      window.localStorage.getItem(GLOBAL_FISCAL_YEAR_STORAGE_KEY);
     const org = window.localStorage.getItem("tba_procurement_org_id");
     const project = window.localStorage.getItem("tba_procurement_project_id");
     const vendor = window.localStorage.getItem("tba_procurement_vendor_id");

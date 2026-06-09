@@ -30,6 +30,7 @@ import { BudgetLineReorder } from "@/app/settings/budget-line-reorder";
 import { FiscalYearReorder } from "@/app/settings/fiscal-year-reorder";
 import { HierarchyTreeControls } from "@/app/settings/hierarchy-tree-controls";
 import { OrganizationReorder } from "@/app/settings/organization-reorder";
+import { ProjectAllocationEditor } from "@/app/settings/project-allocation-editor";
 import { ProjectReorder } from "@/app/settings/project-reorder";
 import type {
   AccountCodeAdminRow,
@@ -499,6 +500,13 @@ export function SettingsPageClient({
         <p className="eyebrow">{isAdmin ? "Admin" : "Project Manager"}</p>
         <h1>Settings</h1>
       </header>
+
+      <ProjectAllocationEditor
+        fiscalYears={fiscalYears}
+        organizations={organizations}
+        hierarchyRows={hierarchyRows}
+        accountCodes={allAccountCodes}
+      />
 
       <div className="panelGrid">
         <article className="panel panelFull">

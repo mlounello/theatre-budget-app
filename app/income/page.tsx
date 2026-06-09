@@ -3,19 +3,20 @@ import { IncomeTable } from "@/app/income/income-table";
 import { formatCurrency } from "@/lib/format";
 import { getAccountCodeOptions, getFiscalYearOptions, getIncomeRows, getOrganizationOptions, getProductionCategoryOptions } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
+import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
 import { redirect } from "next/navigation";
 
 export default async function IncomePage({
   searchParams
 }: {
-  searchParams?: Promise<{ fy?: string; org?: string }>;
+  searchParams?: Promise<{ fiscalYearId?: string; fy?: string; org?: string }>;
 }) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const selectedFiscalYearId = (resolvedSearchParams?.fy ?? "").trim();
+  const requestedFiscalYearId = (resolvedSearchParams?.fiscalYearId ?? resolvedSearchParams?.fy ?? "").trim();
   const selectedOrganizationId = (resolvedSearchParams?.org ?? "").trim();
 
   const [organizations, rows, accountCodeOptions, productionCategoryOptions, fiscalYearOptions] = await Promise.all([
@@ -25,19 +26,21 @@ export default async function IncomePage({
     getProductionCategoryOptions(),
     getFiscalYearOptions()
   ]);
+  const selectedFiscalYearId = resolveRequestedFiscalYearId(fiscalYearOptions, requestedFiscalYearId, { allowAll: true });
+  const showAllFiscalYears = selectedFiscalYearId === "all";
 
   const organizationById = new Map(organizations.map((organization) => [organization.id, organization]));
   const revenueAccountCodes = accountCodeOptions.filter((accountCode) => accountCode.isRevenue);
   const otherAccountCodes = accountCodeOptions.filter((accountCode) => !accountCode.isRevenue);
   const orgIdsInSelectedFy = new Set(
     rows
-      .filter((row) => !selectedFiscalYearId || row.fiscalYearId === selectedFiscalYearId)
+      .filter((row) => showAllFiscalYears || !selectedFiscalYearId || row.fiscalYearId === selectedFiscalYearId)
       .map((row) => row.organizationId)
       .filter((id): id is string => Boolean(id))
   );
 
   const filteredRows = rows.filter((row) => {
-    if (selectedFiscalYearId && row.fiscalYearId !== selectedFiscalYearId) return false;
+    if (!showAllFiscalYears && selectedFiscalYearId && row.fiscalYearId !== selectedFiscalYearId) return false;
     if (selectedOrganizationId && row.organizationId !== selectedOrganizationId) return false;
     return true;
   });
@@ -104,8 +107,8 @@ export default async function IncomePage({
         <form method="get" className="requestForm">
           <label>
             Fiscal Year
-            <select name="fy" defaultValue={selectedFiscalYearId}>
-              <option value="">All fiscal years</option>
+            <select name="fiscalYearId" defaultValue={selectedFiscalYearId}>
+              <option value="all">All fiscal years</option>
               {fiscalYearOptions.map((fy) => (
                 <option key={fy.id} value={fy.id}>
                   {fy.name}
@@ -118,7 +121,7 @@ export default async function IncomePage({
             <select name="org" defaultValue={selectedOrganizationId}>
               <option value="">All organizations</option>
               {organizations
-                .filter((organization) => !selectedFiscalYearId || orgIdsInSelectedFy.has(organization.id))
+                .filter((organization) => showAllFiscalYears || !selectedFiscalYearId || orgIdsInSelectedFy.has(organization.id))
                 .map((organization) => (
                   <option key={organization.id} value={organization.id}>
                     {organization.label}

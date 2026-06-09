@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { createContractAction, type ActionState } from "@/app/contracts/actions";
+import { GLOBAL_FISCAL_YEAR_STORAGE_KEY } from "@/lib/fiscal-year-context";
 import type { AccountCodeOption, FiscalYearOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
@@ -26,7 +27,9 @@ export function CreateContractForm({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const fy = window.localStorage.getItem("tba_contracts_fiscal_year_id");
+    const fy =
+      window.localStorage.getItem("tba_contracts_fiscal_year_id") ||
+      window.localStorage.getItem(GLOBAL_FISCAL_YEAR_STORAGE_KEY);
     const org = window.localStorage.getItem("tba_contracts_org_id");
     const project = window.localStorage.getItem("tba_contracts_project_id");
     const banner = window.localStorage.getItem("tba_contracts_banner_account_code_id");

@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { formatCurrency } from "@/lib/format";
-import { getDashboardOpenRequisitions, getDashboardProjects, getMyBudgetData } from "@/lib/db";
+import { getDashboardOpenRequisitions, getDashboardProjects, getFiscalYearOptions, getMyBudgetData } from "@/lib/db";
 import type { DashboardOpenRequisition, DashboardProject } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
+import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { DashboardRequisitionTable } from "@/app/dashboard-requisition-table";
 
@@ -29,24 +30,37 @@ type InstitutionalWarning = {
   amount: number;
 };
 
-async function getInstitutionalDashboardWarnings(): Promise<{
+async function getInstitutionalDashboardWarnings(fiscalYearId: string): Promise<{
   overBudgetBuckets: InstitutionalWarning[];
   pendingVarianceCount: number;
   approvedPostedVarianceCount: number;
 }> {
   const supabase = await getSupabaseServerClient();
-  const [{ data: overBudgetData }, { count: pendingVarianceCount }, { count: approvedPostedVarianceCount }] = await Promise.all([
-    supabase
+  let overBudgetQuery = supabase
       .from("v_institutional_monthly_budget_availability")
       .select("budget_plan_month_id, fiscal_year_name, org_code, account_code, account_name, month_start, official_available_amount")
       .lt("official_available_amount", 0)
       .order("official_available_amount", { ascending: true })
-      .limit(6),
-    supabase
-      .from("variance_requests")
-      .select("id", { count: "exact", head: true })
-      .in("status", ["draft", "ready_for_review", "submitted"]),
-    supabase.from("variance_requests").select("id", { count: "exact", head: true }).in("status", ["approved", "posted"])
+      .limit(6);
+  let pendingVarianceQuery = supabase
+    .from("variance_requests")
+    .select("id", { count: "exact", head: true })
+    .in("status", ["draft", "ready_for_review", "submitted"]);
+  let approvedPostedVarianceQuery = supabase
+    .from("variance_requests")
+    .select("id", { count: "exact", head: true })
+    .in("status", ["approved", "posted"]);
+
+  if (fiscalYearId) {
+    overBudgetQuery = overBudgetQuery.eq("fiscal_year_id", fiscalYearId);
+    pendingVarianceQuery = pendingVarianceQuery.eq("fiscal_year_id", fiscalYearId);
+    approvedPostedVarianceQuery = approvedPostedVarianceQuery.eq("fiscal_year_id", fiscalYearId);
+  }
+
+  const [{ data: overBudgetData }, { count: pendingVarianceCount }, { count: approvedPostedVarianceCount }] = await Promise.all([
+    overBudgetQuery,
+    pendingVarianceQuery,
+    approvedPostedVarianceQuery
   ]);
 
   const overBudgetBuckets = ((overBudgetData ?? []) as Array<{
@@ -72,7 +86,11 @@ async function getInstitutionalDashboardWarnings(): Promise<{
   };
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ fiscalYearId?: string }>;
+}) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
   if (access.role === "procurement_tracker") {
@@ -197,6 +215,10 @@ export default async function DashboardPage() {
     );
   }
 
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const fiscalYears = await getFiscalYearOptions();
+  const fiscalYearId = resolveRequestedFiscalYearId(fiscalYears, resolvedSearchParams?.fiscalYearId);
+
   let projects: DashboardProject[] = [];
   let openRequisitions: DashboardOpenRequisition[] = [];
   let institutionalWarnings: Awaited<ReturnType<typeof getInstitutionalDashboardWarnings>> = {
@@ -208,9 +230,9 @@ export default async function DashboardPage() {
 
   try {
     [projects, openRequisitions, institutionalWarnings] = await Promise.all([
-      getDashboardProjects(),
-      getDashboardOpenRequisitions(),
-      getInstitutionalDashboardWarnings()
+      getDashboardProjects({ fiscalYearId }),
+      getDashboardOpenRequisitions({ fiscalYearId }),
+      getInstitutionalDashboardWarnings(fiscalYearId)
     ]);
   } catch {
     loadError = "Unable to load project data. Check Supabase view grants and migration status.";

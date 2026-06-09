@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createVarianceFromBucketAction } from "@/app/institutional-budget/actions";
 import { getAccessContext } from "@/lib/access";
 import { formatCurrency } from "@/lib/format";
+import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 type MonthlyBudgetRow = {
@@ -54,14 +55,18 @@ export default async function InstitutionalBudgetPage({
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const fiscalYearId = (resolvedSearchParams?.fiscalYearId ?? "").trim();
+  const requestedFiscalYearId = (resolvedSearchParams?.fiscalYearId ?? "").trim();
   const organizationId = (resolvedSearchParams?.organizationId ?? "").trim();
   const queryText = (resolvedSearchParams?.q ?? "").trim().toLowerCase();
   const negativeOnly = resolvedSearchParams?.negativeOnly === "1";
 
   const supabase = await getSupabaseServerClient();
   const [{ data: fiscalYearData, error: fiscalYearError }, { data: organizationData, error: organizationError }] = await Promise.all([
-    supabase.from("fiscal_years").select("id, name").order("sort_order", { ascending: true }).order("name", { ascending: true }),
+    supabase
+      .from("fiscal_years")
+      .select("id, name, start_date, end_date, sort_order")
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true }),
     supabase
       .from("organizations")
       .select("id, org_code, name, fiscal_year_id")
@@ -70,6 +75,25 @@ export default async function InstitutionalBudgetPage({
   ]);
   if (fiscalYearError) throw fiscalYearError;
   if (organizationError) throw organizationError;
+
+  const fiscalYearOptions = ((fiscalYearData ?? []) as Array<{
+    id?: string;
+    name?: string | null;
+    start_date?: string | null;
+    end_date?: string | null;
+    sort_order?: number | null;
+  }>)
+    .filter((fy): fy is { id: string; name?: string | null; start_date?: string | null; end_date?: string | null; sort_order?: number | null } =>
+      Boolean(fy.id)
+    )
+    .map((fy) => ({
+      id: fy.id,
+      name: fy.name ?? "Fiscal Year",
+      startDate: fy.start_date ?? null,
+      endDate: fy.end_date ?? null,
+      sortOrder: fy.sort_order ?? 0
+    }));
+  const fiscalYearId = resolveRequestedFiscalYearId(fiscalYearOptions, requestedFiscalYearId);
 
   let query = supabase
     .from("v_institutional_monthly_budget_availability")
@@ -99,7 +123,6 @@ export default async function InstitutionalBudgetPage({
     return asNumber(row.official_available_amount) < 0 || asNumber(row.projected_available_amount) < 0;
   });
 
-  const fiscalYearOptions = ((fiscalYearData ?? []) as Array<{ id?: string; name?: string | null }>).filter((fy) => fy.id);
   const organizationOptions = ((organizationData ?? []) as Array<{
     id?: string;
     org_code?: string | null;
@@ -165,7 +188,7 @@ export default async function InstitutionalBudgetPage({
               <option value="">All fiscal years</option>
               {fiscalYearOptions.map((fy) => (
                 <option key={fy.id} value={fy.id}>
-                  {fy.name ?? "Fiscal Year"}
+                  {fy.name}
                 </option>
               ))}
             </select>

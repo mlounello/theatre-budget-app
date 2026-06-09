@@ -2,6 +2,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { signOut } from "@/app/auth/actions";
 import { getAccessContext } from "@/lib/access";
+import { getFiscalYearOptions } from "@/lib/db";
+import { resolveCurrentFiscalYearId } from "@/lib/fiscal-year-context";
+import { GlobalFiscalYearPicker } from "@/components/global-fiscal-year-picker";
 
 function linksForRole(role: string): Array<{ href: string; label: string }> {
   if (role === "procurement_tracker") {
@@ -63,12 +66,19 @@ export async function TopNav() {
   let userEmail: string | null = null;
   let hasUser = false;
   let role = "none";
+  let fiscalYears: Array<{ id: string; name: string }> = [];
+  let defaultFiscalYearId = "";
 
   try {
     const context = await getAccessContext();
     hasUser = Boolean(context.userId);
     userEmail = context.email;
     role = context.role;
+    if (hasUser) {
+      const fiscalYearOptions = await getFiscalYearOptions();
+      fiscalYears = fiscalYearOptions.map((fy) => ({ id: fy.id, name: fy.name }));
+      defaultFiscalYearId = resolveCurrentFiscalYearId(fiscalYearOptions);
+    }
   } catch {
     hasUser = false;
     userEmail = null;
@@ -93,6 +103,7 @@ export async function TopNav() {
               {link.label}
             </Link>
           ))}
+          {hasUser ? <GlobalFiscalYearPicker fiscalYears={fiscalYears} defaultFiscalYearId={defaultFiscalYearId} /> : null}
           {hasUser ? (
             <form action={signOut}>
               <button className="navButton" type="submit">

@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { createRequest, type ActionState } from "@/app/requests/actions";
+import { GLOBAL_FISCAL_YEAR_STORAGE_KEY } from "@/lib/fiscal-year-context";
 import type { AccountCodeOption, ProcurementProjectOption, ProductionCategoryOption, ProjectBudgetLineOption } from "@/lib/db";
 
 type AllocationRow = {
@@ -76,7 +77,9 @@ export function CreateRequestForm({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const fy = window.localStorage.getItem("tba_requests_fiscal_year_id");
+    const fy =
+      window.localStorage.getItem("tba_requests_fiscal_year_id") ||
+      window.localStorage.getItem(GLOBAL_FISCAL_YEAR_STORAGE_KEY);
     const org = window.localStorage.getItem("tba_requests_org_id");
     const project = window.localStorage.getItem("tba_requests_project_id");
     const productionCategory = window.localStorage.getItem("tba_requests_production_category_id");

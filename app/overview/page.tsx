@@ -1,6 +1,7 @@
 import { getBannerCodeActualRows, getCategoryActualRows, getFiscalYearOptions, getOrganizationOverviewRows } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
 import { getAccessContext } from "@/lib/access";
+import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
 import { redirect } from "next/navigation";
 
 export default async function OverviewPage({
@@ -20,14 +21,7 @@ export default async function OverviewPage({
     getFiscalYearOptions()
   ]);
 
-  const today = new Date();
-  const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-  const inferredCurrentFiscalYearId =
-    fiscalYears.find((fy) => Boolean(fy.startDate) && Boolean(fy.endDate) && fy.startDate! <= todayYmd && todayYmd <= fy.endDate!)?.id ??
-    fiscalYears.find((fy) => Boolean(fy.startDate) && !fy.endDate && fy.startDate! <= todayYmd)?.id ??
-    fiscalYears.find((fy) => !fy.startDate && Boolean(fy.endDate) && todayYmd <= fy.endDate!)?.id ??
-    "";
-  const selectedFiscalYearId = requestedFiscalYearId || inferredCurrentFiscalYearId;
+  const selectedFiscalYearId = resolveRequestedFiscalYearId(fiscalYears, requestedFiscalYearId, { allowAll: true });
   const showAllFiscalYears = selectedFiscalYearId === "all";
 
   const filteredRows = !showAllFiscalYears && selectedFiscalYearId

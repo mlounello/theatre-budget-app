@@ -5,6 +5,7 @@ import { BudgetPlanningRow } from "@/app/budget-planning/budget-planning-row";
 import { BudgetPlanningExportButton } from "@/app/budget-planning/budget-planning-export";
 import { BudgetPlanningBulkActions } from "@/app/budget-planning/budget-planning-bulk-actions";
 import { InstitutionalAllocationImportPanel } from "@/app/budget-planning/institutional-allocation-import-panel";
+import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
 
 export default async function BudgetPlanningPage({
   searchParams
@@ -43,8 +44,7 @@ export default async function BudgetPlanningPage({
   }
 
   const requestedFiscalYearId = (resolvedSearchParams?.fiscalYearId ?? "").trim();
-  const fallbackFiscalYearId = fiscalYears[0]?.id ?? "";
-  const fiscalYearId = fiscalYears.some((fy) => fy.id === requestedFiscalYearId) ? requestedFiscalYearId : fallbackFiscalYearId;
+  const fiscalYearId = resolveRequestedFiscalYearId(fiscalYears, requestedFiscalYearId);
 
   const orgOptions = organizations.filter((org) => !org.fiscalYearId || org.fiscalYearId === fiscalYearId);
   const requestedOrganizationId = (resolvedSearchParams?.organizationId ?? "").trim();

@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getAccessContext } from "@/lib/access";
+import { getFiscalYearOptions } from "@/lib/db";
+import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { VarianceCenterClient, type SourceCandidate, type VarianceRow } from "@/app/variance/variance-center-client";
 
@@ -22,9 +24,12 @@ export default async function VariancePage({
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const fiscalYearId = (resolvedSearchParams?.fiscalYearId ?? "").trim();
+  const requestedFiscalYearId = (resolvedSearchParams?.fiscalYearId ?? "").trim();
   const sourceSearch = (resolvedSearchParams?.sourceSearch ?? "").trim();
   const allowCrossOrg = resolvedSearchParams?.allowCrossOrg === "1";
+
+  const fiscalYearOptions = await getFiscalYearOptions();
+  const fiscalYearId = resolveRequestedFiscalYearId(fiscalYearOptions, requestedFiscalYearId, { allowAll: true });
 
   const supabase = await getSupabaseServerClient();
   let varianceQuery = supabase
@@ -33,7 +38,7 @@ export default async function VariancePage({
       "id, status, reason, total_transfer_amount, generated_file_url, created_at, target_budget_plan_month_id, fiscal_years(name), purchases(id, title, projects(name)), variance_request_lines(id)"
     )
     .order("created_at", { ascending: false });
-  if (fiscalYearId) varianceQuery = varianceQuery.eq("fiscal_year_id", fiscalYearId);
+  if (fiscalYearId && fiscalYearId !== "all") varianceQuery = varianceQuery.eq("fiscal_year_id", fiscalYearId);
   const { data: varianceData, error: varianceError } = await varianceQuery;
   if (varianceError) throw varianceError;
 
@@ -127,15 +132,8 @@ export default async function VariancePage({
     linesByVarianceId.get(varianceRequestId)!.push(sourceLine);
   }
 
-  const { data: fiscalYearData, error: fiscalYearError } = await supabase
-    .from("fiscal_years")
-    .select("id, name")
-    .order("sort_order", { ascending: true })
-    .order("name", { ascending: true });
-  if (fiscalYearError) throw fiscalYearError;
-
   const { data: sourceData, error: sourceError } = await supabase.rpc("get_institutional_source_candidates", {
-    p_fiscal_year_id: fiscalYearId || null,
+    p_fiscal_year_id: fiscalYearId && fiscalYearId !== "all" ? fiscalYearId : null,
     p_search: sourceSearch || null,
     p_allow_cross_org: allowCrossOrg
   });
@@ -228,10 +226,10 @@ export default async function VariancePage({
           <label>
             Fiscal Year
             <select name="fiscalYearId" defaultValue={fiscalYearId}>
-              <option value="">All fiscal years</option>
-              {(fiscalYearData ?? []).map((fy) => (
-                <option key={fy.id as string} value={fy.id as string}>
-                  {fy.name as string}
+              <option value="all">All fiscal years</option>
+              {fiscalYearOptions.map((fy) => (
+                <option key={fy.id} value={fy.id}>
+                  {fy.name}
                 </option>
               ))}
             </select>

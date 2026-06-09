@@ -5,6 +5,7 @@ import { ContractInstallmentControl, ContractWorkflowControl } from "@/app/contr
 import { formatCurrency } from "@/lib/format";
 import { getContractsData } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
+import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
 import { redirect } from "next/navigation";
 
 function workflowLabel(value: string): string {
@@ -33,16 +34,27 @@ function installmentClass(value: string): string {
   return "status-requested";
 }
 
-export default async function ContractsPage() {
+export default async function ContractsPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ fiscalYearId?: string }>;
+}) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
 
   const { contracts, installments, fiscalYearOptions, organizationOptions, projectOptions, accountCodeOptions, canManageContracts } =
     await getContractsData();
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const selectedFiscalYearId = resolveRequestedFiscalYearId(fiscalYearOptions, resolvedSearchParams?.fiscalYearId);
+  const visibleContracts = selectedFiscalYearId
+    ? contracts.filter((contract) => contract.fiscalYearId === selectedFiscalYearId)
+    : contracts;
+  const visibleContractIds = new Set(visibleContracts.map((contract) => contract.id));
+  const visibleInstallments = installments.filter((installment) => visibleContractIds.has(installment.contractId));
 
   const installmentByContract = new Map<string, typeof installments>();
-  for (const installment of installments) {
+  for (const installment of visibleInstallments) {
     const list = installmentByContract.get(installment.contractId) ?? [];
     list.push(installment);
     installmentByContract.set(installment.contractId, list);
@@ -100,12 +112,12 @@ export default async function ContractsPage() {
               </tr>
             </thead>
             <tbody>
-              {contracts.length === 0 ? (
+              {visibleContracts.length === 0 ? (
                 <tr>
                   <td colSpan={10}>No contracts yet.</td>
                 </tr>
               ) : (
-                contracts.map((contract) => {
+                visibleContracts.map((contract) => {
                   const rows = (installmentByContract.get(contract.id) ?? []).sort(
                     (a, b) => a.installmentNumber - b.installmentNumber
                   );

@@ -6,7 +6,7 @@ import { getAccessContext } from "@/lib/access";
 import { APP_ID } from "@/lib/supabase-schema";
 import { syncAppUsers, syncAppUsersSafe } from "@/lib/app-user-sync";
 
-type ActionState = {
+export type ActionState = {
   ok: boolean;
   message: string;
   timestamp: number;
@@ -901,6 +901,90 @@ export async function updateBudgetLineAction(_prevState: ActionState = emptyStat
   }
 }
 
+export async function updateAllocationLineInlineAction(
+  _prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void _prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const id = String(formData.get("id") ?? "").trim();
+    const projectId = String(formData.get("projectId") ?? "").trim();
+    const allocatedAmount = parseMoney(formData.get("allocatedAmount"));
+    const active = formData.get("active") === "on";
+
+    if (!id || !projectId) throw new Error("Budget line and project are required.");
+    await requireProjectSettingsWrite(supabase, projectId);
+
+    const { data: updated, error } = await supabase
+      .from("project_budget_lines")
+      .update({ allocated_amount: allocatedAmount, active })
+      .eq("id", id)
+      .eq("project_id", projectId)
+      .select("id")
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!updated?.id) throw new Error("Budget line update was not applied.");
+
+    revalidatePath("/settings");
+    revalidatePath("/");
+    revalidatePath("/requests");
+    revalidatePath("/procurement");
+    revalidatePath(`/projects/${projectId}`);
+    return settingsSuccess("Allocation line saved.");
+  } catch (error) {
+    return settingsError(getErrorMessage(error, "Could not save allocation line."));
+  }
+}
+
+export async function deleteAllocationLineAction(
+  _prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void _prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const id = String(formData.get("id") ?? "").trim();
+    const projectId = String(formData.get("projectId") ?? "").trim();
+
+    if (!id || !projectId) throw new Error("Budget line and project are required.");
+    await requireProjectSettingsWrite(supabase, projectId);
+
+    const [
+      { count: purchaseCount, error: purchaseCountError },
+      { count: allocationCount, error: allocationCountError }
+    ] = await Promise.all([
+      supabase.from("purchases").select("id", { head: true, count: "exact" }).eq("budget_line_id", id),
+      supabase.from("purchase_allocations").select("id", { head: true, count: "exact" }).eq("reporting_budget_line_id", id)
+    ]);
+    if (purchaseCountError) throw new Error(purchaseCountError.message);
+    if (allocationCountError) throw new Error(allocationCountError.message);
+
+    if ((purchaseCount ?? 0) > 0 || (allocationCount ?? 0) > 0) {
+      throw new Error("This line is already used by purchases or allocations. Deactivate it instead of deleting it.");
+    }
+
+    const { data: deleted, error } = await supabase
+      .from("project_budget_lines")
+      .delete()
+      .eq("id", id)
+      .eq("project_id", projectId)
+      .select("id")
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!deleted?.id) throw new Error("Budget line delete was not applied.");
+
+    revalidatePath("/settings");
+    revalidatePath("/");
+    revalidatePath("/requests");
+    revalidatePath("/procurement");
+    revalidatePath(`/projects/${projectId}`);
+    return settingsSuccess("Allocation line deleted.");
+  } catch (error) {
+    return settingsError(getErrorMessage(error, "Could not delete allocation line."));
+  }
+}
+
 export async function addBudgetLineAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
   void _prevState;
   try {
@@ -1650,5 +1734,3 @@ export async function syncAppUsersAction(_prevState: ActionState = emptyState, _
     return settingsError((error as Error).message || "User sync failed.");
   }
 }
-
-export type { ActionState };

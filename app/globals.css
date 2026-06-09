@@ -120,6 +120,32 @@ th {
   margin: 0;
 }
 
+.globalFyPicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--siena-white);
+  font-family: "Gudea", "Arial", sans-serif;
+}
+
+.globalFyPicker span {
+  font-size: 0.78rem;
+  opacity: 0.9;
+}
+
+.globalFyPicker select {
+  min-height: 2.2rem;
+  border: 1px solid #ffffff52;
+  border-radius: 999px;
+  background: #ffffff12;
+  color: var(--siena-white);
+  padding: 0.35rem 0.6rem;
+}
+
+.globalFyPicker option {
+  color: var(--text-main);
+}
+
 .navLink {
   display: inline-flex;
   align-items: center;
@@ -1136,6 +1162,97 @@ th {
   display: inline-block;
   margin-right: 0.45rem;
   color: var(--text-muted);
+}
+
+.allocationEditorPanel {
+  margin-bottom: 1.5rem;
+}
+
+.allocationSummary {
+  border: 1px solid #cfd9d3;
+  border-radius: 999px;
+  background: #f8fbf9;
+  padding: 0.35rem 0.7rem;
+  color: var(--siena-dark-green);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-weight: 700;
+}
+
+.allocationEditorFilters {
+  margin-bottom: 1rem;
+}
+
+.allocationMatrix {
+  display: grid;
+  gap: 1rem;
+}
+
+.allocationProjectGroup {
+  border: 1px solid #d7ddd7;
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.allocationProjectGroup > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.8rem 1rem;
+  background: #f6f8f7;
+  border-bottom: 1px solid #d7ddd7;
+}
+
+.allocationProjectGroup h3 {
+  margin: 0;
+  color: var(--siena-dark-green);
+}
+
+.allocationEditorTable th,
+.allocationEditorTable td {
+  vertical-align: middle;
+}
+
+.allocationLineName {
+  min-width: 13rem;
+}
+
+.allocationInlineForm {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.allocationInlineForm input[type="number"] {
+  width: 9rem;
+}
+
+.inlineCheckbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: "Gudea", "Arial", sans-serif;
+  color: var(--text-main);
+}
+
+.allocationDirtyRow {
+  background: #fff8e8;
+}
+
+.compactNote {
+  margin: 0.35rem 0 0;
+  padding: 0.35rem 0.5rem;
+}
+
+.dangerButton {
+  border-color: #b34040;
+  color: #8f2525;
+}
+
+.dangerButton:hover {
+  background: #fff0f0;
 }
 
 /* Keep scrollbars visible and easy to grab for mouse users */

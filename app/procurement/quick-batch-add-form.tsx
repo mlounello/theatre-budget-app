@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { createProcurementBatchAction, type ActionState } from "@/app/procurement/actions";
+import { GLOBAL_FISCAL_YEAR_STORAGE_KEY } from "@/lib/fiscal-year-context";
 import type {
   AccountCodeOption,
   OrganizationOption,
@@ -59,7 +60,9 @@ export function QuickBatchAddForm({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const fy = window.localStorage.getItem("tba_batch_fiscal_year_id");
+    const fy =
+      window.localStorage.getItem("tba_batch_fiscal_year_id") ||
+      window.localStorage.getItem(GLOBAL_FISCAL_YEAR_STORAGE_KEY);
     const org = window.localStorage.getItem("tba_batch_org_id");
     const project = window.localStorage.getItem("tba_batch_project_id");
     const category = window.localStorage.getItem("tba_batch_production_category_id");
