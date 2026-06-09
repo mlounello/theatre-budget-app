@@ -2025,15 +2025,65 @@ export async function getHistoricalMonthlyActuals(params: {
 
 export async function getOrganizationOverviewRows(): Promise<OrganizationOverviewRow[]> {
   const supabase = await getSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("v_organization_totals")
-    .select(
-      "organization_id, organization_name, org_code, fiscal_year_id, fiscal_year_name, allocated_total, requested_open_total, held_total, enc_total, pending_cc_total, ytd_total, obligated_total, remaining_true, remaining_if_requested_approved, starting_budget_total, additional_income_total, funding_pool_total, funding_pool_available, income_total"
-    )
-    .order("fiscal_year_name", { ascending: true })
-    .order("org_code", { ascending: true });
+
+  const [{ data, error }, { data: organizationsData, error: organizationsError }] = await Promise.all([
+    supabase
+      .from("v_organization_totals")
+      .select(
+        "organization_id, organization_name, org_code, fiscal_year_id, fiscal_year_name, allocated_total, requested_open_total, held_total, enc_total, pending_cc_total, ytd_total, obligated_total, remaining_true, remaining_if_requested_approved, starting_budget_total, additional_income_total, funding_pool_total, funding_pool_available, income_total"
+      )
+      .order("fiscal_year_name", { ascending: true })
+      .order("org_code", { ascending: true }),
+    supabase
+      .from("organizations")
+      .select("id, org_code, fiscal_year_id")
+  ]);
+
   if (error) throw error;
-  return (data ?? []).map((row) => {
+  if (organizationsError) throw organizationsError;
+
+  const organizationById = new Map<
+    string,
+    {
+      id: string;
+      org_code: string | null;
+      fiscal_year_id: string | null;
+    }
+  >();
+
+  const fiscalYearSpecificOrgCodes = new Set<string>();
+
+  for (const organization of organizationsData ?? []) {
+    const id = organization.id as string;
+    const orgCode = (organization.org_code as string | null) ?? null;
+    const fiscalYearId = (organization.fiscal_year_id as string | null) ?? null;
+
+    organizationById.set(id, {
+      id,
+      org_code: orgCode,
+      fiscal_year_id: fiscalYearId
+    });
+
+    if (orgCode && fiscalYearId) {
+      fiscalYearSpecificOrgCodes.add(`${fiscalYearId}|${orgCode}`);
+    }
+  }
+
+  const filteredData = (data ?? []).filter((row) => {
+    const organizationId = row.organization_id as string;
+    const fiscalYearId = (row.fiscal_year_id as string | null) ?? null;
+    const orgCode = (row.org_code as string | null) ?? null;
+    const organization = organizationById.get(organizationId);
+
+    if (!fiscalYearId || !orgCode || !organization) return true;
+
+    const rowUsesGlobalOrganization = organization.fiscal_year_id === null;
+    const fiscalYearSpecificOrgExists = fiscalYearSpecificOrgCodes.has(`${fiscalYearId}|${orgCode}`);
+
+    return !(rowUsesGlobalOrganization && fiscalYearSpecificOrgExists);
+  });
+
+  return filteredData.map((row) => {
     const requestedOpenTotal = asNumber(row.requested_open_total as string | number | null);
     const heldTotal = asNumber(row.held_total as string | number | null);
     const encTotal = asNumber(row.enc_total as string | number | null);
