@@ -96,6 +96,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ var
       fromAccount: fromAccount?.code ?? "",
       fromAccountDescription: [fromAccount?.category, fromAccount?.name].filter(Boolean).join(" | "),
       fromAmountMonth: amount,
+      fromMonthStart: (line.from_month_start as string | null) ?? undefined,
       toFund: "",
       toFundDescription: "",
       toOrg: toOrg?.org_code ?? "",
@@ -103,11 +104,24 @@ export async function GET(_request: Request, { params }: { params: Promise<{ var
       toAccount: toAccount?.code ?? "",
       toAccountDescription: [toAccount?.category, toAccount?.name].filter(Boolean).join(" | "),
       toAmountMonth: amount,
+      toMonthStart: (line.to_month_start as string | null) ?? undefined,
       narrative
     };
   });
 
-  const buffer = await generateVarianceWorkbook(workbookLines);
+  let buffer: Buffer;
+  try {
+    buffer = await generateVarianceWorkbook(workbookLines);
+  } catch (error) {
+    console.error("[variance-workbook] generation failed", {
+      varianceId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return NextResponse.json(
+      { error: "Variance template file is missing or could not be loaded. Please contact an administrator." },
+      { status: 500 }
+    );
+  }
   return new Response(new Uint8Array(buffer), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

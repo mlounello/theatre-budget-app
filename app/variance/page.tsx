@@ -48,20 +48,84 @@ export default async function VariancePage({
     targetBucketIds.length > 0
       ? await supabase
           .from("v_institutional_monthly_budget_availability")
-          .select("budget_plan_month_id, organization_id, org_code, account_code, account_name, month_start")
+          .select("budget_plan_month_id, fiscal_year_id, organization_id, org_code, account_code, account_name, month_start, official_available_amount")
           .in("budget_plan_month_id", targetBucketIds)
       : { data: [], error: null };
   if (targetBucketError) throw targetBucketError;
   const targetBucketById = new Map(
     ((targetBucketData ?? []) as Array<{
       budget_plan_month_id?: string | null;
+      fiscal_year_id?: string | null;
       organization_id?: string | null;
+      org_code?: string | null;
+      account_code?: string | null;
+      account_name?: string | null;
+      month_start?: string | null;
+      official_available_amount?: string | number | null;
+    }>).map((row) => [row.budget_plan_month_id as string, row] as const)
+  );
+
+  const varianceIds = ((varianceData ?? []) as Array<{ id?: string | null }>).map((row) => row.id).filter((id): id is string => Boolean(id));
+  const { data: sourceLineData, error: sourceLineError } =
+    varianceIds.length > 0
+      ? await supabase
+          .from("variance_request_lines")
+          .select("id, variance_request_id, from_budget_plan_month_id, transfer_amount, narrative, cross_org_override, created_at")
+          .in("variance_request_id", varianceIds)
+          .order("created_at", { ascending: true })
+      : { data: [], error: null };
+  if (sourceLineError) throw sourceLineError;
+
+  const sourceLineBucketIds = [
+    ...new Set(
+      ((sourceLineData ?? []) as Array<{ from_budget_plan_month_id?: string | null }>)
+        .map((row) => row.from_budget_plan_month_id ?? null)
+        .filter((id): id is string => Boolean(id))
+    )
+  ];
+  const { data: sourceLineBucketData, error: sourceLineBucketError } =
+    sourceLineBucketIds.length > 0
+      ? await supabase
+          .from("v_institutional_monthly_budget_availability")
+          .select("budget_plan_month_id, org_code, account_code, account_name, month_start")
+          .in("budget_plan_month_id", sourceLineBucketIds)
+      : { data: [], error: null };
+  if (sourceLineBucketError) throw sourceLineBucketError;
+  const sourceLineBucketById = new Map(
+    ((sourceLineBucketData ?? []) as Array<{
+      budget_plan_month_id?: string | null;
       org_code?: string | null;
       account_code?: string | null;
       account_name?: string | null;
       month_start?: string | null;
     }>).map((row) => [row.budget_plan_month_id as string, row] as const)
   );
+  const linesByVarianceId = new Map<string, VarianceRow["sourceLines"]>();
+  for (const line of (sourceLineData ?? []) as Array<{
+    id?: string | null;
+    variance_request_id?: string | null;
+    from_budget_plan_month_id?: string | null;
+    transfer_amount?: string | number | null;
+    narrative?: string | null;
+    cross_org_override?: boolean | null;
+  }>) {
+    const varianceRequestId = line.variance_request_id ?? "";
+    const bucket = sourceLineBucketById.get(line.from_budget_plan_month_id ?? "");
+    const sourceLine = {
+      id: line.id ?? "",
+      budgetPlanMonthId: line.from_budget_plan_month_id ?? "",
+      label: bucket
+        ? [bucket.org_code, bucket.account_code, bucket.account_name, bucket.month_start ? String(bucket.month_start).slice(0, 7) : null]
+            .filter(Boolean)
+            .join(" | ")
+        : "Source bucket",
+      amount: moneyLabel(line.transfer_amount),
+      narrative: line.narrative ?? null,
+      crossOrgOverride: Boolean(line.cross_org_override)
+    };
+    if (!linesByVarianceId.has(varianceRequestId)) linesByVarianceId.set(varianceRequestId, []);
+    linesByVarianceId.get(varianceRequestId)!.push(sourceLine);
+  }
 
   const { data: fiscalYearData, error: fiscalYearError } = await supabase
     .from("fiscal_years")
@@ -82,15 +146,23 @@ export default async function VariancePage({
     const purchase = row.purchases as { title?: string | null; projects?: { name?: string | null } | null } | null;
     const lines = (row.variance_request_lines as Array<{ id?: string }> | null) ?? [];
     const targetBucket = targetBucketById.get((row.target_budget_plan_month_id as string | null) ?? "");
+    const targetShortage = targetBucket
+      ? Math.abs(Math.min(moneyLabel(targetBucket.official_available_amount), 0))
+      : moneyLabel(row.total_transfer_amount as string | number | null);
+    const sourceLines = linesByVarianceId.get(row.id as string) ?? [];
+    const totalSourced = sourceLines.reduce((sum, line) => sum + line.amount, 0);
     return {
       id: row.id as string,
       status: (row.status as string | null) ?? "draft",
       reason: (row.reason as string | null) ?? null,
       totalTransferAmount: moneyLabel(row.total_transfer_amount as string | number | null),
+      targetShortage,
+      totalSourced,
       createdAt: (row.created_at as string | null) ?? "",
       purchaseTitle: (purchase?.title as string | null | undefined) ?? null,
       projectName: (purchase?.projects?.name as string | null | undefined) ?? null,
       fiscalYearName: (fiscalYear?.name as string | null | undefined) ?? null,
+      targetFiscalYearId: (targetBucket?.fiscal_year_id as string | null | undefined) ?? null,
       targetOrganizationId: (targetBucket?.organization_id as string | null | undefined) ?? null,
       targetLabel: targetBucket
         ? [targetBucket.org_code, targetBucket.account_code, targetBucket.account_name, targetBucket.month_start ? String(targetBucket.month_start).slice(0, 7) : null]
@@ -98,25 +170,35 @@ export default async function VariancePage({
             .join(" | ")
         : null,
       lineCount: lines.length,
+      sourceLines,
       generatedFileUrl: (row.generated_file_url as string | null) ?? null
     };
   });
 
   type SourceCandidateRow = {
     budget_plan_month_id?: string | null;
-    organization_id?: string | null;
-    official_available_amount?: string | number | null;
-    crosses_target_org?: boolean | null;
+    fiscal_year_id?: string | null;
     fiscal_year_name?: string | null;
+    organization_id?: string | null;
     org_code?: string | null;
+    organization_name?: string | null;
     account_code?: string | null;
     account_name?: string | null;
     month_start?: string | null;
+    official_available_amount?: string | number | null;
+    crosses_target_org?: boolean | null;
   };
 
   const sourceCandidates: SourceCandidate[] = ((sourceData ?? []) as SourceCandidateRow[]).map((row) => ({
     budgetPlanMonthId: row.budget_plan_month_id as string,
+    fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
+    fiscalYearName: (row.fiscal_year_name as string | null) ?? null,
     organizationId: (row.organization_id as string | null) ?? null,
+    orgCode: (row.org_code as string | null) ?? null,
+    organizationName: (row.organization_name as string | null) ?? null,
+    accountCode: (row.account_code as string | null) ?? null,
+    accountName: (row.account_name as string | null) ?? null,
+    monthStart: (row.month_start as string | null) ?? null,
     available: moneyLabel(row.official_available_amount as string | number | null),
     crossesTargetOrg: Boolean(row.crosses_target_org),
     label: [

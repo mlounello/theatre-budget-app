@@ -26,6 +26,11 @@ function parseMoney(value: FormDataEntryValue | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function asNumber(value: string | number | null | undefined): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message.trim().length > 0) return error.message;
   return fallback;
@@ -49,6 +54,61 @@ async function requireVarianceAccess(targetStatus?: string): Promise<{ userId: s
   return { userId: access.userId, role: access.role };
 }
 
+async function getVarianceFundingState(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  varianceRequestId: string
+): Promise<{ status: string; targetShortage: number; totalSourced: number; targetBudgetPlanMonthId: string | null }> {
+  const { data: variance, error: varianceError } = await supabase
+    .from("variance_requests")
+    .select("id, status, total_transfer_amount, target_budget_plan_month_id")
+    .eq("id", varianceRequestId)
+    .single();
+  if (varianceError || !variance) throw new Error("Variance request not found.");
+
+  const targetBudgetPlanMonthId = (variance.target_budget_plan_month_id as string | null) ?? null;
+  let targetShortage = asNumber(variance.total_transfer_amount as string | number | null);
+  if (targetBudgetPlanMonthId) {
+    const { data: bucket, error: bucketError } = await supabase
+      .from("v_institutional_monthly_budget_availability")
+      .select("official_available_amount")
+      .eq("budget_plan_month_id", targetBudgetPlanMonthId)
+      .maybeSingle();
+    if (bucketError) throw new Error(bucketError.message);
+    const officialAvailable = asNumber(bucket?.official_available_amount as string | number | null);
+    if (officialAvailable < 0) targetShortage = Math.abs(officialAvailable);
+  }
+
+  const { data: lines, error: linesError } = await supabase
+    .from("variance_request_lines")
+    .select("transfer_amount")
+    .eq("variance_request_id", varianceRequestId);
+  if (linesError) throw new Error(linesError.message);
+  const totalSourced = ((lines ?? []) as Array<{ transfer_amount?: string | number | null }>).reduce(
+    (sum, line) => sum + asNumber(line.transfer_amount),
+    0
+  );
+
+  return {
+    status: String(variance.status ?? "draft"),
+    targetShortage: Number(targetShortage.toFixed(2)),
+    totalSourced: Number(totalSourced.toFixed(2)),
+    targetBudgetPlanMonthId
+  };
+}
+
+async function updateVarianceSourceTotal(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  varianceRequestId: string
+): Promise<number> {
+  const state = await getVarianceFundingState(supabase, varianceRequestId);
+  const { error } = await supabase
+    .from("variance_requests")
+    .update({ total_transfer_amount: state.totalSourced.toFixed(2) })
+    .eq("id", varianceRequestId);
+  if (error) throw new Error(error.message);
+  return state.totalSourced;
+}
+
 export async function addVarianceSourceLineAction(
   prevState: ActionState = emptyState,
   formData: FormData
@@ -66,6 +126,11 @@ export async function addVarianceSourceLineAction(
 
     if (!varianceRequestId || !fromBudgetPlanMonthId) return err("Variance and source bucket are required.");
     if (transferAmount <= 0) return err("Transfer amount must be greater than zero.");
+
+    const fundingState = await getVarianceFundingState(supabase, varianceRequestId);
+    if (fundingState.totalSourced >= fundingState.targetShortage && fundingState.targetShortage > 0) {
+      return err("This variance is already fully sourced. Remove a source line before adding another.");
+    }
 
     const { data: variance, error: varianceError } = await supabase
       .from("variance_requests")
@@ -122,6 +187,14 @@ export async function addVarianceSourceLineAction(
       return err("Transfer amount exceeds the selected source bucket's official available amount.");
     }
 
+    const { count: duplicateCount, error: duplicateError } = await supabase
+      .from("variance_request_lines")
+      .select("id", { count: "exact", head: true })
+      .eq("variance_request_id", varianceRequestId)
+      .eq("from_budget_plan_month_id", fromBudgetPlanMonthId);
+    if (duplicateError) return err(duplicateError.message);
+    if ((duplicateCount ?? 0) > 0) return err("That source bucket is already attached to this variance.");
+
     const { error: insertError } = await supabase.from("variance_request_lines").insert({
       variance_request_id: varianceRequestId,
       from_budget_plan_month_id: fromBudgetPlanMonthId,
@@ -138,19 +211,7 @@ export async function addVarianceSourceLineAction(
     });
     if (insertError) return err(insertError.message);
 
-    const { data: lineTotals, error: lineTotalError } = await supabase
-      .from("variance_request_lines")
-      .select("transfer_amount")
-      .eq("variance_request_id", varianceRequestId);
-    if (lineTotalError) return err(lineTotalError.message);
-    const nextTotal = ((lineTotals ?? []) as Array<{ transfer_amount?: string | number | null }>)
-      .reduce((sum, line) => sum + Number(line.transfer_amount ?? 0), 0)
-      .toFixed(2);
-    const { error: updateError } = await supabase
-      .from("variance_requests")
-      .update({ total_transfer_amount: nextTotal })
-      .eq("id", varianceRequestId);
-    if (updateError) return err(updateError.message);
+    await updateVarianceSourceTotal(supabase, varianceRequestId);
 
     const { error: eventError } = await supabase.from("variance_events").insert({
       variance_request_id: varianceRequestId,
@@ -168,6 +229,75 @@ export async function addVarianceSourceLineAction(
   }
 }
 
+export async function deleteVarianceSourceLineAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    const { userId } = await requireVarianceAccess();
+    const supabase = await getSupabaseServerClient();
+    const varianceRequestId = String(formData.get("varianceRequestId") ?? "").trim();
+    const lineId = String(formData.get("lineId") ?? "").trim();
+    if (!varianceRequestId || !lineId) return err("Variance and source line are required.");
+
+    const fundingState = await getVarianceFundingState(supabase, varianceRequestId);
+    if (!["draft", "ready_for_review"].includes(fundingState.status)) {
+      return err("Source lines can only be deleted while a variance is Draft or Ready for Review.");
+    }
+
+    const { error: deleteError } = await supabase
+      .from("variance_request_lines")
+      .delete()
+      .eq("id", lineId)
+      .eq("variance_request_id", varianceRequestId);
+    if (deleteError) return err(deleteError.message);
+
+    await updateVarianceSourceTotal(supabase, varianceRequestId);
+
+    const { error: eventError } = await supabase.from("variance_events").insert({
+      variance_request_id: varianceRequestId,
+      from_status: fundingState.status,
+      to_status: fundingState.status,
+      changed_by_user_id: userId,
+      note: "Source bucket line removed"
+    });
+    if (eventError) return err(eventError.message);
+
+    revalidatePath("/variance");
+    return ok("Source bucket removed.");
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not remove variance source."));
+  }
+}
+
+export async function deleteVarianceDraftAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    await requireVarianceAccess();
+    const supabase = await getSupabaseServerClient();
+    const varianceRequestId = String(formData.get("varianceRequestId") ?? "").trim();
+    if (!varianceRequestId) return err("Variance request is required.");
+
+    const fundingState = await getVarianceFundingState(supabase, varianceRequestId);
+    if (!["draft", "ready_for_review"].includes(fundingState.status)) {
+      return err("Only Draft or Ready for Review variances can be deleted.");
+    }
+
+    const { error: deleteError } = await supabase.from("variance_requests").delete().eq("id", varianceRequestId);
+    if (deleteError) return err(deleteError.message);
+
+    revalidatePath("/variance");
+    revalidatePath("/institutional-budget");
+    return ok("Variance draft deleted.");
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not delete variance draft."));
+  }
+}
+
 export async function updateVarianceStatusAction(
   prevState: ActionState = emptyState,
   formData: FormData
@@ -179,7 +309,16 @@ export async function updateVarianceStatusAction(
     const supabase = await getSupabaseServerClient();
     const varianceRequestId = String(formData.get("varianceRequestId") ?? "").trim();
     const note = String(formData.get("note") ?? "").trim();
+    const allowOverSourced = formData.get("allowOverSourced") === "on";
     if (!varianceRequestId) return err("Variance request is required.");
+
+    const fundingState = await getVarianceFundingState(supabase, varianceRequestId);
+    if (nextStatus === "ready_for_review" && fundingState.totalSourced > fundingState.targetShortage && !allowOverSourced) {
+      return err("Total sourced exceeds the target shortage. Check the override box to move this variance to Ready for Review.");
+    }
+    if (nextStatus === "ready_for_review" && fundingState.totalSourced <= 0) {
+      return err("Add at least one source line before moving this variance to Ready for Review.");
+    }
 
     const { data: existing, error: existingError } = await supabase
       .from("variance_requests")

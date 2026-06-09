@@ -109,10 +109,21 @@ th {
 
 .mainNav {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
 }
 
+.mainNav form {
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+
 .navLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.2rem;
   color: var(--siena-white);
   text-decoration: none;
   font-family: "Gudea", "Arial", sans-serif;
@@ -126,6 +137,9 @@ th {
 }
 
 .navButton {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.2rem;
   color: var(--siena-white);
   text-decoration: none;
   font-family: "Gudea", "Arial", sans-serif;
@@ -261,13 +275,21 @@ th {
 }
 
 .buttonLink {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   text-decoration: none;
   font-family: "Gudea", "Arial", sans-serif;
   color: var(--siena-dark-green);
   border: 1px solid var(--siena-dark-green);
   border-radius: 999px;
   padding: 0.45rem 0.85rem;
+}
+
+.buttonLink:disabled,
+.tinyButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .buttonPrimary {
@@ -739,12 +761,156 @@ th {
 }
 
 .tinyButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--siena-dark-green);
   border-radius: 999px;
   background: transparent;
   padding: 0.35rem 0.65rem;
   font-family: "Gudea", "Arial", sans-serif;
   cursor: pointer;
+}
+
+.varianceCenter {
+  gap: 1rem;
+}
+
+.varianceStatusPanel {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.varianceCard {
+  display: grid;
+  gap: 0.9rem;
+  padding: 1rem;
+  border: 1px solid #dfe7e1;
+  border-radius: 8px;
+  background: #fbfdfb;
+}
+
+.varianceFundingGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.6rem;
+}
+
+.varianceFundingGrid div {
+  padding: 0.65rem;
+  border: 1px solid #dfe7e1;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.varianceFundingGrid span,
+.sourceCandidate small {
+  display: block;
+  color: var(--text-muted);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.78rem;
+}
+
+.varianceFundingGrid strong {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 1.05rem;
+}
+
+.varianceAlert {
+  grid-column: 1 / -1;
+}
+
+.varianceSourceForm,
+.varianceControlForm {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid #e2e8e3;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.varianceSourceForm label,
+.varianceControlForm label,
+.sourcePicker label {
+  display: grid;
+  gap: 0.3rem;
+  font-family: "Gudea", "Arial", sans-serif;
+}
+
+.varianceSourceForm input,
+.varianceControlForm input,
+.varianceControlForm select,
+.sourcePicker input {
+  width: 100%;
+  border: 1px solid #cbd6ce;
+  border-radius: 8px;
+  padding: 0.48rem 0.55rem;
+  background: #ffffff;
+  color: var(--text-main);
+}
+
+.sourcePicker {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.sourceCandidateList {
+  display: grid;
+  gap: 0.45rem;
+  max-height: 320px;
+  overflow: auto;
+  padding-right: 0.25rem;
+}
+
+.sourceCandidate {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 0.6rem;
+  align-items: center;
+  width: 100%;
+  border: 1px solid #d7e0d9;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 0.55rem 0.65rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sourceCandidate.selected {
+  border-color: var(--siena-green);
+  box-shadow: 0 0 0 2px #006b5421;
+}
+
+.sourceCandidate em {
+  color: var(--siena-red);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.75rem;
+  font-style: normal;
+}
+
+.sourceLineList {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.sourceLineRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.65rem;
+  border: 1px solid #dfe7e1;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.varianceActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .dangerButton {
