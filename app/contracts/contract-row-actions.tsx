@@ -36,6 +36,7 @@ export function ContractRowActions({
   const [editContractorEmail, setEditContractorEmail] = useState(contract.contractorEmail ?? "");
   const [editContractorPhone, setEditContractorPhone] = useState(contract.contractorPhone ?? "");
   const [editContractValue, setEditContractValue] = useState(String(contract.contractValue ?? 0));
+  const [editInstallmentCount, setEditInstallmentCount] = useState(String(contract.installmentCount ?? 1));
   const [editNotes, setEditNotes] = useState(contract.notes ?? "");
   const lastEditIdRef = useRef<string | null>(null);
 
@@ -67,6 +68,7 @@ export function ContractRowActions({
     setEditContractorEmail(contract.contractorEmail ?? "");
     setEditContractorPhone(contract.contractorPhone ?? "");
     setEditContractValue(String(contract.contractValue ?? 0));
+    setEditInstallmentCount(String(contract.installmentCount ?? 1));
     setEditNotes(contract.notes ?? "");
   }, [open, contract]);
 
@@ -160,6 +162,19 @@ export function ContractRowActions({
                   onChange={(event) => setEditContractValue(event.target.value)}
                   required
                 />
+              </label>
+              <label>
+                Payment Installments
+                <select
+                  name="installmentCount"
+                  value={editInstallmentCount}
+                  onChange={(event) => setEditInstallmentCount(event.target.value)}
+                >
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                  <option value="4">4</option>
+                </select>
               </label>
               <label>
                 FY

@@ -328,6 +328,7 @@ export async function updateContractDetailsAction(
     const contractorEmail = String(formData.get("contractorEmail") ?? "").trim();
     const contractorPhone = String(formData.get("contractorPhone") ?? "").trim();
     const contractValue = parseMoney(formData.get("contractValue"));
+    const installmentCount = parseInstallmentCount(formData.get("installmentCount"));
     const notes = String(formData.get("notes") ?? "").trim();
 
     if (!contractId) return err("Contract id is required.");
@@ -366,6 +367,39 @@ export async function updateContractDetailsAction(
     });
     if (lineError || !reportingBudgetLineId) return err(lineError?.message ?? "Could not resolve reporting line.");
 
+    const { data: installments, error: installmentsError } = await supabase
+      .from("contract_installments")
+      .select("id, purchase_id, installment_number, status")
+      .eq("contract_id", contractId)
+      .order("installment_number", { ascending: true });
+    if (installmentsError) return err(installmentsError.message);
+
+    const installmentsList = installments ?? [];
+    const removedInstallments = installmentsList.filter((installment) => Number(installment.installment_number ?? 1) > installmentCount);
+    const removedPurchaseIds = removedInstallments
+      .map((installment) => (installment.purchase_id as string | null) ?? null)
+      .filter((id): id is string => Boolean(id));
+
+    if (removedInstallments.some((installment) => ((installment.status as string | null) ?? "planned") !== "planned")) {
+      return err("Cannot reduce installments after an extra installment has been submitted or paid.");
+    }
+
+    if (removedPurchaseIds.length > 0) {
+      const { data: removedPurchases, error: removedPurchasesError } = await supabase
+        .from("purchases")
+        .select("id, status, procurement_status")
+        .in("id", removedPurchaseIds);
+      if (removedPurchasesError) return err(removedPurchasesError.message);
+      const unsafePurchase = (removedPurchases ?? []).find(
+        (purchase) =>
+          String(purchase.status ?? "requested") !== "requested" ||
+          String(purchase.procurement_status ?? "requested") !== "requested"
+      );
+      if (unsafePurchase) {
+        return err("Cannot reduce installments after an extra linked payment row has moved beyond requested status.");
+      }
+    }
+
     const { data: contractUpdated, error: contractUpdateError } = await supabase
       .from("contracts")
       .update({
@@ -378,6 +412,7 @@ export async function updateContractDetailsAction(
         contractor_email: contractorEmail || null,
         contractor_phone: contractorPhone || null,
         contract_value: contractValue,
+        installment_count: installmentCount,
         notes: notes || null
       })
       .eq("id", contractId)
@@ -386,17 +421,86 @@ export async function updateContractDetailsAction(
     if (contractUpdateError) return err(contractUpdateError.message);
     if (!contractUpdated?.id) return err("Contract update was not applied.");
 
-    const { data: installments, error: installmentsError } = await supabase
+    for (const installment of removedInstallments) {
+      const purchaseId = (installment.purchase_id as string | null) ?? null;
+      const { error: installmentDeleteError } = await supabase
+        .from("contract_installments")
+        .delete()
+        .eq("id", installment.id as string);
+      if (installmentDeleteError) return err(installmentDeleteError.message);
+
+      if (purchaseId) {
+        const { error: purchaseDeleteError } = await supabase.from("purchases").delete().eq("id", purchaseId);
+        if (purchaseDeleteError) return err(purchaseDeleteError.message);
+      }
+    }
+
+    const retainedInstallments = installmentsList.filter((installment) => Number(installment.installment_number ?? 1) <= installmentCount);
+    const existingNumbers = new Set(retainedInstallments.map((installment) => Number(installment.installment_number ?? 1)));
+    const parts = splitAmounts(contractValue, installmentCount);
+
+    for (let installmentNumber = 1; installmentNumber <= installmentCount; installmentNumber += 1) {
+      if (existingNumbers.has(installmentNumber)) continue;
+      const installmentAmount = parts[installmentNumber - 1] ?? 0;
+      const installmentTitle = `${contractorName} Contract Payment ${installmentNumber}/${installmentCount}`;
+
+      const { data: purchase, error: purchaseError } = await supabase
+        .from("purchases")
+        .insert({
+          project_id: projectId,
+          organization_id: resolvedOrganizationId,
+          budget_line_id: reportingBudgetLineId as string,
+          production_category_id: productionCategoryId,
+          banner_account_code_id: bannerAccountCodeId,
+          budget_tracked: true,
+          entered_by_user_id: user.id,
+          title: installmentTitle,
+          estimated_amount: installmentAmount,
+          requested_amount: 0,
+          encumbered_amount: 0,
+          pending_cc_amount: 0,
+          posted_amount: 0,
+          status: "requested",
+          request_type: "contract_payment",
+          is_credit_card: false,
+          procurement_status: "requested",
+          notes: `Contract installment ${installmentNumber}/${installmentCount}`
+        })
+        .select("id")
+        .single();
+      if (purchaseError || !purchase) return err(purchaseError?.message ?? "Could not create linked payment row.");
+
+      const { error: allocationError } = await supabase.from("purchase_allocations").insert({
+        purchase_id: purchase.id,
+        reporting_budget_line_id: reportingBudgetLineId as string,
+        account_code_id: bannerAccountCodeId,
+        production_category_id: productionCategoryId,
+        amount: installmentAmount,
+        reporting_bucket: "direct",
+        note: "Contract installment allocation"
+      });
+      if (allocationError) return err(allocationError.message);
+
+      const { error: installmentError } = await supabase.from("contract_installments").insert({
+        contract_id: contractId,
+        purchase_id: purchase.id,
+        installment_number: installmentNumber,
+        installment_amount: installmentAmount,
+        status: "planned"
+      });
+      if (installmentError) return err(installmentError.message);
+
+      await createInstitutionalCommitmentForPurchase(supabase, purchase.id as string, user.id);
+    }
+
+    const { data: updatedInstallments, error: updatedInstallmentsError } = await supabase
       .from("contract_installments")
       .select("id, purchase_id, installment_number, status")
       .eq("contract_id", contractId)
       .order("installment_number", { ascending: true });
-    if (installmentsError) return err(installmentsError.message);
+    if (updatedInstallmentsError) return err(updatedInstallmentsError.message);
 
-    const count = Number(existing.installment_count ?? 1);
-    const parts = splitAmounts(contractValue, count);
-
-    for (const installment of installments ?? []) {
+    for (const installment of updatedInstallments ?? []) {
       const index = Number(installment.installment_number ?? 1) - 1;
       const installmentAmount = parts[index] ?? 0;
       const installmentStatus = ((installment.status as string | null) ?? "planned") as InstallmentStatus;
@@ -427,7 +531,7 @@ export async function updateContractDetailsAction(
           budget_line_id: reportingBudgetLineId as string,
           production_category_id: productionCategoryId,
           banner_account_code_id: bannerAccountCodeId,
-          title: `${contractorName} Contract Payment ${installment.installment_number as number}/${count}`,
+          title: `${contractorName} Contract Payment ${installment.installment_number as number}/${installmentCount}`,
           estimated_amount: installmentAmount,
           requested_amount: requestedAmount,
           encumbered_amount: encumberedAmount,
