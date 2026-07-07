@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { updateContractInstallmentCheckRequestAction, type ActionState } from "@/app/contracts/actions";
+import { SensitiveTextInput } from "@/components/sensitive-text-input";
 import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
 import type { ContractInstallmentRow, FoapalOption } from "@/lib/db";
 
@@ -84,7 +85,7 @@ export function InstallmentCheckRequestActions({
           </label>
           <label>
             Tax ID / SSN
-            <input name="taxIdOrSsn" type="password" autoComplete="off" placeholder="Leave blank to keep saved value" />
+            <SensitiveTextInput name="taxIdOrSsn" placeholder="Leave blank to keep saved value" />
             {installment.taxIdLast4 ? <span className="helperText">Saved encrypted value ending in {installment.taxIdLast4}.</span> : null}
           </label>
           <label className="checkboxLabel">

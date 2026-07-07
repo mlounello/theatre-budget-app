@@ -3,6 +3,7 @@
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { deleteContractAction, updateContractDetailsAction, type ActionState } from "@/app/contracts/actions";
+import { SensitiveTextInput } from "@/components/sensitive-text-input";
 import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
 import type {
   AccountCodeOption,
@@ -311,7 +312,7 @@ export function ContractRowActions({
               </label>
               <label>
                 Tax ID / SSN
-                <input name="taxIdOrSsn" type="password" autoComplete="off" placeholder="Leave blank to keep saved value" />
+                <SensitiveTextInput name="taxIdOrSsn" placeholder="Leave blank to keep saved value" />
                 <span className="helperText">
                   {contract.taxIdLast4 ? `Saved encrypted value ending in ${contract.taxIdLast4}. ` : ""}
                   Saving this contract overwrites all installment check-request snapshots.

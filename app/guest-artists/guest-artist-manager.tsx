@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { createGuestArtistAction, updateGuestArtistAction, type ActionState } from "@/app/guest-artists/actions";
+import { SensitiveTextInput } from "@/components/sensitive-text-input";
 import type { FoapalOption, GuestArtistOption } from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
@@ -77,7 +78,7 @@ function GuestArtistFields({
       </label>
       <label>
         Tax ID / SSN
-        <input name="taxIdOrSsn" type="password" autoComplete="off" placeholder={artist ? "Leave blank to keep saved value" : ""} />
+        <SensitiveTextInput name="taxIdOrSsn" placeholder={artist ? "Leave blank to keep saved value" : ""} />
         <span className="helperText">
           {artist?.taxIdLast4 ? `Saved encrypted value ending in ${artist.taxIdLast4}. ` : ""}
           Stored encrypted and copied to contract snapshots only on save.

@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { createContractAction, type ActionState } from "@/app/contracts/actions";
+import { SensitiveTextInput } from "@/components/sensitive-text-input";
 import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
 import { GLOBAL_FISCAL_YEAR_STORAGE_KEY } from "@/lib/fiscal-year-context";
 import type { AccountCodeOption, FiscalYearOption, FoapalOption, GuestArtistOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
@@ -255,7 +256,7 @@ export function CreateContractForm({
       </label>
       <label>
         Tax ID / SSN
-        <input name="taxIdOrSsn" type="password" autoComplete="off" />
+        <SensitiveTextInput name="taxIdOrSsn" />
         <span className="helperText">Stored encrypted and only decrypted during check request PDF export.</span>
       </label>
       <div className="contractInstallmentDates">
