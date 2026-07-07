@@ -3,6 +3,7 @@ import path from "node:path";
 import { NextResponse } from "next/server";
 import { PDFCheckBox, PDFDocument, PDFTextField } from "pdf-lib";
 import { getAccessContext } from "@/lib/access";
+import { decryptSensitiveValue } from "@/lib/sensitive-encryption";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
@@ -46,6 +47,19 @@ function checkBox(form: ReturnType<PDFDocument["getForm"]>, fieldName: string): 
   }
 }
 
+function buildDescription(params: {
+  contractNumber: string | null;
+  installmentNumber: number;
+  contractorName: string;
+  projectName: string;
+  season: string | null;
+  role: string | null;
+}): string {
+  const contractPart = params.contractNumber ? `Contract #${params.contractNumber}` : "Contract";
+  const productionPart = [params.projectName, params.season, params.role].filter(Boolean).join(", ");
+  return `${contractPart} payment #${params.installmentNumber} for ${params.contractorName} - ${productionPart}`;
+}
+
 export async function GET(_request: Request, { params }: RouteParams) {
   const access = await getAccessContext();
   if (!access.userId) return NextResponse.redirect(new URL("/login", _request.url));
@@ -56,14 +70,24 @@ export async function GET(_request: Request, { params }: RouteParams) {
   const { contractId, installmentId } = await params;
   const supabase = await getSupabaseServerClient();
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("contract_installments")
     .select(
-      "id, contract_id, installment_number, installment_amount, due_date, ap_receive_by, mail_by, contracts!inner(id, project_id, organization_id, banner_account_code_id, contractor_name, contractor_employee_id, notes, projects(name, season), organizations(org_code, name), account_codes(code, name))"
+      "id, contract_id, installment_number, installment_amount, due_date, ap_receive_by, mail_by, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_encrypted, contracts!inner(id, project_id, organization_id, banner_account_code_id, contractor_name, contractor_employee_id, contract_number, contract_role, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_encrypted, notes, projects(name, season), organizations(org_code, name), account_codes(code, name))"
     )
     .eq("id", installmentId)
     .eq("contract_id", contractId)
     .single();
+  if (error && error.message.toLowerCase().includes("due_date")) {
+    ({ data, error } = await supabase
+      .from("contract_installments")
+      .select(
+        "id, contract_id, installment_number, installment_amount, contracts!inner(id, project_id, organization_id, banner_account_code_id, contractor_name, contractor_employee_id, notes, projects(name, season), organizations(org_code, name), account_codes(code, name))"
+      )
+      .eq("id", installmentId)
+      .eq("contract_id", contractId)
+      .single());
+  }
   if (error || !data) {
     return new NextResponse("Check request installment not found.", { status: 404 });
   }
@@ -72,8 +96,19 @@ export async function GET(_request: Request, { params }: RouteParams) {
     | {
         id?: string;
         project_id?: string;
+        organization_id?: string | null;
+        banner_account_code_id?: string | null;
         contractor_name?: string | null;
         contractor_employee_id?: string | null;
+        contract_number?: string | null;
+        contract_role?: string | null;
+        check_request_foapal_id?: string | null;
+        check_request_handling?: string | null;
+        check_request_other_location?: string | null;
+        vendor_address1?: string | null;
+        vendor_address2?: string | null;
+        vendor_address3?: string | null;
+        tax_id_encrypted?: string | null;
         notes?: string | null;
         projects?: { name?: string | null; season?: string | null } | null;
         organizations?: { org_code?: string | null; name?: string | null } | null;
@@ -99,27 +134,70 @@ export async function GET(_request: Request, { params }: RouteParams) {
   const installmentNumber = Number(data.installment_number ?? 1);
   const amount = data.installment_amount as string | number | null;
   const projectName = contractJoin?.projects?.name ?? "Project";
-  const season = contractJoin?.projects?.season ? ` (${contractJoin.projects.season})` : "";
-  const orgCode = contractJoin?.organizations?.org_code ?? "";
+  const season = contractJoin?.projects?.season ?? null;
+  let orgCode = contractJoin?.organizations?.org_code ?? "";
+  let fundCode = "";
+  let programCode = "";
   const accountCode = contractJoin?.account_codes?.code ?? "";
   const submissionDate = (data.mail_by as string | null) ?? (data.ap_receive_by as string | null) ?? null;
-  const description = [
-    `Contract payment ${installmentNumber} for ${contractorName}`,
-    `${projectName}${season}`,
-    data.due_date ? `Due ${formatDate(data.due_date as string)}` : null
-  ]
-    .filter(Boolean)
-    .join(" - ");
+  const foapalId = ((data.check_request_foapal_id as string | null) ?? contractJoin?.check_request_foapal_id ?? "").trim();
+  if (foapalId) {
+    const { data: foapal } = await supabase
+      .from("foapals")
+      .select("funds(code), organizations(org_code), programs(code)")
+      .eq("id", foapalId)
+      .maybeSingle();
+    const fund = foapal?.funds as { code?: string | null } | null | undefined;
+    const organization = foapal?.organizations as { org_code?: string | null } | null | undefined;
+    const program = foapal?.programs as { code?: string | null } | null | undefined;
+    fundCode = fund?.code ?? "";
+    orgCode = organization?.org_code ?? orgCode;
+    programCode = program?.code ?? "";
+  }
+  const handling = ((data.check_request_handling as string | null) ?? contractJoin?.check_request_handling ?? "mail") as
+    | "mail"
+    | "business_affairs_pickup"
+    | "other";
+  const otherLocation = (data.check_request_other_location as string | null) ?? contractJoin?.check_request_other_location ?? "";
+  const encryptedTaxId = (data.tax_id_encrypted as string | null) ?? contractJoin?.tax_id_encrypted ?? null;
+  let taxIdOrSsn = "";
+  if (encryptedTaxId) {
+    try {
+      taxIdOrSsn = decryptSensitiveValue(encryptedTaxId);
+    } catch {
+      return new NextResponse("Tax ID/SSN could not be decrypted. Please contact an administrator.", { status: 500 });
+    }
+  }
+  const description = buildDescription({
+    contractNumber: contractJoin?.contract_number ?? null,
+    installmentNumber,
+    contractorName,
+    projectName,
+    season,
+    role: contractJoin?.contract_role ?? null
+  });
 
   fillText(form, "VendorName", contractorName);
   fillText(form, "Date", formatDate(submissionDate));
   fillText(form, "VendorNumber", contractJoin?.contractor_employee_id ?? "");
-  fillText(form, "TaxOrSSN", "");
+  fillText(form, "TaxOrSSN", taxIdOrSsn);
+  fillText(form, "VendorAddress1", (data.vendor_address1 as string | null) ?? contractJoin?.vendor_address1 ?? "");
+  fillText(form, "VendorAddress2", (data.vendor_address2 as string | null) ?? contractJoin?.vendor_address2 ?? "");
+  fillText(form, "VendorAddress3", (data.vendor_address3 as string | null) ?? contractJoin?.vendor_address3 ?? "");
+  fillText(form, "FND1", fundCode);
   fillText(form, "ORG1", orgCode);
   fillText(form, "ACT1", accountCode);
+  fillText(form, "PRG1", programCode);
   fillText(form, "Amount1", formatMoney(amount));
   fillText(form, "Description", description);
-  checkBox(form, "MailChq");
+  if (handling === "business_affairs_pickup") {
+    checkBox(form, "BusAffairsChq");
+  } else if (handling === "other") {
+    checkBox(form, "OtherChq");
+    fillText(form, "OtherLocation", otherLocation);
+  } else {
+    checkBox(form, "MailChq");
+  }
 
   form.flatten();
   const pdfBytes = await pdfDoc.save();

@@ -4,7 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { createContractAction, type ActionState } from "@/app/contracts/actions";
 import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
 import { GLOBAL_FISCAL_YEAR_STORAGE_KEY } from "@/lib/fiscal-year-context";
-import type { AccountCodeOption, FiscalYearOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
+import type { AccountCodeOption, FiscalYearOption, FoapalOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
@@ -12,12 +12,14 @@ export function CreateContractForm({
   fiscalYearOptions,
   organizationOptions,
   projectOptions,
-  accountCodeOptions
+  accountCodeOptions,
+  foapalOptions
 }: {
   fiscalYearOptions: FiscalYearOption[];
   organizationOptions: OrganizationOption[];
   projectOptions: ProcurementProjectOption[];
   accountCodeOptions: AccountCodeOption[];
+  foapalOptions: FoapalOption[];
 }) {
   const [state, formAction] = useActionState(createContractAction, initialState);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -145,6 +147,54 @@ export function CreateContractForm({
           <option value="3">3</option>
           <option value="4">4</option>
         </select>
+      </label>
+      <label>
+        Contract Number
+        <input name="contractNumber" placeholder="Optional contract reference" />
+      </label>
+      <label>
+        Role
+        <input name="contractRole" placeholder="Designer, Director, Musician..." />
+      </label>
+      <label>
+        Check Request FOAPAL
+        <select name="checkRequestFoapalId">
+          <option value="">Use contract organization only</option>
+          {foapalOptions.map((foapal) => (
+            <option key={foapal.id} value={foapal.id}>
+              {foapal.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Check Delivery
+        <select name="checkRequestHandling" defaultValue="mail">
+          <option value="mail">Mail check</option>
+          <option value="business_affairs_pickup">Pick up in Business Affairs</option>
+          <option value="other">Other location</option>
+        </select>
+      </label>
+      <label>
+        Other Pickup Location
+        <input name="checkRequestOtherLocation" />
+      </label>
+      <label>
+        Vendor Address Line 1
+        <input name="vendorAddress1" />
+      </label>
+      <label>
+        Vendor Address Line 2
+        <input name="vendorAddress2" />
+      </label>
+      <label>
+        Vendor Address Line 3
+        <input name="vendorAddress3" />
+      </label>
+      <label>
+        Tax ID / SSN
+        <input name="taxIdOrSsn" type="password" autoComplete="off" />
+        <span className="helperText">Stored encrypted and only decrypted during check request PDF export.</span>
       </label>
       <div className="contractInstallmentDates">
         {Array.from({ length: installmentCount }, (_, index) => {

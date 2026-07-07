@@ -2,8 +2,11 @@ import { SettingsPageClient } from "@/app/settings/settings-page-client";
 import {
   getAccountCodesAdmin,
   getFiscalYearOptions,
+  getFoapalOptions,
+  getFundOptions,
   getHierarchyRows,
   getOrganizationOptions,
+  getProgramOptions,
   getProductionCategoriesAdmin,
   getProductionCategoryOptions,
   getSettingsAccessScopes,
@@ -29,6 +32,9 @@ export default async function SettingsPage() {
   const allProductionCategories = await getProductionCategoriesAdmin();
   const fiscalYears = await getFiscalYearOptions();
   const organizations = await getOrganizationOptions();
+  const funds = await getFundOptions();
+  const programs = await getProgramOptions();
+  const foapals = await getFoapalOptions();
   const hierarchyRowsAll = await getHierarchyRows();
   const { users: accessUsers, scopes: accessScopes } = await getSettingsAccessScopes();
   const { users: membershipUsers, memberships: projectMemberships } = await getSettingsProjectMemberships();
@@ -48,6 +54,9 @@ export default async function SettingsPage() {
       allProductionCategories={allProductionCategories}
       fiscalYears={fiscalYears}
       organizations={organizations}
+      funds={funds}
+      programs={programs}
+      foapals={foapals}
       hierarchyRows={hierarchyRows}
       accessUsers={accessUsers}
       accessScopes={accessScopes}

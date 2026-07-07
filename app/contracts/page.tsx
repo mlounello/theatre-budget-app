@@ -2,6 +2,7 @@ import { CreateContractBatchForm } from "@/app/contracts/create-contract-batch-f
 import { CreateContractForm } from "@/app/contracts/create-contract-form";
 import { ContractRowActions } from "@/app/contracts/contract-row-actions";
 import { ContractInstallmentControl, ContractWorkflowControl } from "@/app/contracts/contract-inline-actions";
+import { InstallmentCheckRequestActions } from "@/app/contracts/installment-check-request-actions";
 import { formatCurrency } from "@/lib/format";
 import { getContractsData } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
@@ -71,7 +72,7 @@ export default async function ContractsPage({
   if (!access.userId) redirect("/login");
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
 
-  const { contracts, installments, fiscalYearOptions, organizationOptions, projectOptions, accountCodeOptions, canManageContracts } =
+  const { contracts, installments, fiscalYearOptions, organizationOptions, projectOptions, accountCodeOptions, foapalOptions, canManageContracts } =
     await getContractsData();
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const selectedFiscalYearId = resolveRequestedFiscalYearId(fiscalYearOptions, resolvedSearchParams?.fiscalYearId);
@@ -104,6 +105,7 @@ export default async function ContractsPage({
             organizationOptions={organizationOptions}
             projectOptions={projectOptions}
             accountCodeOptions={accountCodeOptions}
+            foapalOptions={foapalOptions}
           />
         </article>
       ) : null}
@@ -204,6 +206,7 @@ export default async function ContractsPage({
                                       {installmentLabel(row.status)}
                                     </span>
                                     <ContractInstallmentControl installment={row} />
+                                    <InstallmentCheckRequestActions installment={row} foapalOptions={foapalOptions} />
                                     <a className="tinyButton" href={`/contracts/${contract.id}/installments/${row.id}/check-request`}>
                                       Check Request PDF
                                     </a>
@@ -232,6 +235,7 @@ export default async function ContractsPage({
                             organizationOptions={organizationOptions}
                             projectOptions={projectOptions}
                             accountCodeOptions={accountCodeOptions}
+                            foapalOptions={foapalOptions}
                           />
                         ) : (
                           "-"

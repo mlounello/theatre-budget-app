@@ -5,6 +5,7 @@ import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
 import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
 import { createInstitutionalCommitmentForPurchase } from "@/lib/institutional-budget";
+import { encryptSensitiveValue, taxIdLastFour } from "@/lib/sensitive-encryption";
 import type { PurchaseStatus } from "@/lib/types";
 
 type ActionState = {
@@ -15,6 +16,7 @@ type ActionState = {
 
 type ContractWorkflowStatus = "w9_requested" | "contract_sent" | "contract_signed_returned" | "siena_signed";
 type InstallmentStatus = "planned" | "check_request_submitted" | "check_paid";
+type CheckRequestHandling = "mail" | "business_affairs_pickup" | "other";
 type BulkContractLine = {
   contractorName: string;
   contractValue: string;
@@ -60,6 +62,61 @@ function parseInstallmentStatus(value: FormDataEntryValue | null): InstallmentSt
   return "planned";
 }
 
+function parseCheckRequestHandling(value: FormDataEntryValue | null): CheckRequestHandling {
+  const raw = String(value ?? "mail").trim();
+  if (raw === "business_affairs_pickup" || raw === "other") return raw;
+  return "mail";
+}
+
+function nullableFormText(formData: FormData, name: string): string | null {
+  const value = String(formData.get(name) ?? "").trim();
+  return value.length > 0 ? value : null;
+}
+
+function parseTaxIdUpdate(formData: FormData, existing?: { encrypted: string | null; last4: string | null }): {
+  encrypted: string | null;
+  last4: string | null;
+} {
+  if (formData.get("clearTaxId") === "on") {
+    return { encrypted: null, last4: null };
+  }
+  const rawTaxId = String(formData.get("taxIdOrSsn") ?? "").trim();
+  if (!rawTaxId) {
+    return {
+      encrypted: existing?.encrypted ?? null,
+      last4: existing?.last4 ?? null
+    };
+  }
+  return {
+    encrypted: encryptSensitiveValue(rawTaxId),
+    last4: taxIdLastFour(rawTaxId)
+  };
+}
+
+function checkRequestValues(formData: FormData, existingTax?: { encrypted: string | null; last4: string | null }) {
+  const tax = parseTaxIdUpdate(formData, existingTax);
+  return {
+    contract_number: nullableFormText(formData, "contractNumber"),
+    contract_role: nullableFormText(formData, "contractRole"),
+    check_request_foapal_id: nullableFormText(formData, "checkRequestFoapalId"),
+    check_request_handling: parseCheckRequestHandling(formData.get("checkRequestHandling")),
+    check_request_other_location: nullableFormText(formData, "checkRequestOtherLocation"),
+    vendor_address1: nullableFormText(formData, "vendorAddress1"),
+    vendor_address2: nullableFormText(formData, "vendorAddress2"),
+    vendor_address3: nullableFormText(formData, "vendorAddress3"),
+    tax_id_encrypted: tax.encrypted,
+    tax_id_last4: tax.last4
+  };
+}
+
+function installmentCheckRequestValues(formData: FormData, existingTax?: { encrypted: string | null; last4: string | null }) {
+  const values = checkRequestValues(formData, existingTax);
+  const { contract_number: _contractNumber, contract_role: _contractRole, ...installmentValues } = values;
+  void _contractNumber;
+  void _contractRole;
+  return installmentValues;
+}
+
 function splitAmounts(total: number, count: number): number[] {
   const cents = Math.round(total * 100);
   const base = Math.trunc(cents / count);
@@ -85,6 +142,18 @@ function installmentScheduleValues(formData: FormData, installmentNumber: number
     ap_receive_by: schedule?.apReceiveBy ?? null,
     mail_by: schedule?.mailBy ?? null
   };
+}
+
+function isMissingInstallmentScheduleColumn(error: { message?: string | null } | null | undefined): boolean {
+  const message = (error?.message ?? "").toLowerCase();
+  return (
+    message.includes("due_date") ||
+    message.includes("ap_receive_by") ||
+    message.includes("mail_by") ||
+    message.includes("check_request_foapal_id") ||
+    message.includes("vendor_address") ||
+    message.includes("tax_id")
+  );
 }
 
 function parseBulkContractLines(value: FormDataEntryValue | null): BulkContractLine[] {
@@ -150,6 +219,8 @@ export async function createContractAction(
     const contractValue = parseMoney(formData.get("contractValue"));
     const installmentCount = parseInstallmentCount(formData.get("installmentCount"));
     const notes = String(formData.get("notes") ?? "").trim();
+    const contractCheckRequestValues = checkRequestValues(formData);
+    const installmentCheckRequestDefaults = installmentCheckRequestValues(formData);
 
     if (!projectId) return err("Project is required.");
     if (!bannerAccountCodeId) return err("Banner account code is required.");
@@ -201,6 +272,7 @@ export async function createContractAction(
         contractor_phone: contractorPhone || null,
         contract_value: contractValue,
         installment_count: installmentCount,
+        ...contractCheckRequestValues,
         workflow_status: "w9_requested",
         notes: notes || null
       })
@@ -252,14 +324,23 @@ export async function createContractAction(
       });
       if (allocationError) return err(allocationError.message);
 
-      const { error: installmentError } = await supabase.from("contract_installments").insert({
+      const installmentInsert = {
         contract_id: contract.id,
         purchase_id: purchase.id,
         installment_number: installmentNumber,
         installment_amount: installmentAmount,
         ...scheduleValues,
+        ...installmentCheckRequestDefaults,
         status: "planned"
-      });
+      };
+      let { error: installmentError } = await supabase.from("contract_installments").insert(installmentInsert);
+      if (isMissingInstallmentScheduleColumn(installmentError)) {
+        const { due_date: _dueDate, ap_receive_by: _apReceiveBy, mail_by: _mailBy, ...fallbackInsert } = installmentInsert;
+        void _dueDate;
+        void _apReceiveBy;
+        void _mailBy;
+        ({ error: installmentError } = await supabase.from("contract_installments").insert(fallbackInsert));
+      }
       if (installmentError) return err(installmentError.message);
 
       await createInstitutionalCommitmentForPurchase(supabase, purchase.id as string, user.id);
@@ -356,7 +437,7 @@ export async function updateContractDetailsAction(
 
     const { data: existing, error: existingError } = await supabase
       .from("contracts")
-      .select("id, project_id, installment_count, production_category_id")
+      .select("id, project_id, installment_count, production_category_id, tax_id_encrypted, tax_id_last4")
       .eq("id", contractId)
       .single();
     if (existingError || !existing) return err("Contract not found.");
@@ -377,6 +458,14 @@ export async function updateContractDetailsAction(
     const resolvedFiscalYearId = fiscalYearId || ((projectRow.fiscal_year_id as string | null) ?? null);
     const productionCategoryId = (existing.production_category_id as string | null) ?? null;
     if (!productionCategoryId) return err("Contract production category is missing.");
+    const contractCheckRequestValues = checkRequestValues(formData, {
+      encrypted: (existing.tax_id_encrypted as string | null) ?? null,
+      last4: (existing.tax_id_last4 as string | null) ?? null
+    });
+    const installmentCheckRequestDefaults = installmentCheckRequestValues(formData, {
+      encrypted: (existing.tax_id_encrypted as string | null) ?? null,
+      last4: (existing.tax_id_last4 as string | null) ?? null
+    });
 
     const { data: reportingBudgetLineId, error: lineError } = await supabase.rpc("ensure_project_category_line", {
       p_project_id: projectId,
@@ -430,6 +519,7 @@ export async function updateContractDetailsAction(
         contractor_phone: contractorPhone || null,
         contract_value: contractValue,
         installment_count: installmentCount,
+        ...contractCheckRequestValues,
         notes: notes || null
       })
       .eq("id", contractId)
@@ -499,14 +589,23 @@ export async function updateContractDetailsAction(
       });
       if (allocationError) return err(allocationError.message);
 
-      const { error: installmentError } = await supabase.from("contract_installments").insert({
+      const installmentInsert = {
         contract_id: contractId,
         purchase_id: purchase.id,
         installment_number: installmentNumber,
         installment_amount: installmentAmount,
         ...scheduleValues,
+        ...installmentCheckRequestDefaults,
         status: "planned"
-      });
+      };
+      let { error: installmentError } = await supabase.from("contract_installments").insert(installmentInsert);
+      if (isMissingInstallmentScheduleColumn(installmentError)) {
+        const { due_date: _dueDate, ap_receive_by: _apReceiveBy, mail_by: _mailBy, ...fallbackInsert } = installmentInsert;
+        void _dueDate;
+        void _apReceiveBy;
+        void _mailBy;
+        ({ error: installmentError } = await supabase.from("contract_installments").insert(fallbackInsert));
+      }
       if (installmentError) return err(installmentError.message);
 
       await createInstitutionalCommitmentForPurchase(supabase, purchase.id as string, user.id);
@@ -524,15 +623,29 @@ export async function updateContractDetailsAction(
       const installmentAmount = parts[index] ?? 0;
       const installmentStatus = ((installment.status as string | null) ?? "planned") as InstallmentStatus;
 
-      const { data: installmentUpdated, error: installmentUpdateError } = await supabase
+      const installmentUpdate = {
+        installment_amount: installmentAmount,
+        ...installmentScheduleValues(formData, Number(installment.installment_number ?? 1)),
+        ...installmentCheckRequestDefaults
+      };
+      let { data: installmentUpdated, error: installmentUpdateError } = await supabase
         .from("contract_installments")
-        .update({
-          installment_amount: installmentAmount,
-          ...installmentScheduleValues(formData, Number(installment.installment_number ?? 1))
-        })
+        .update(installmentUpdate)
         .eq("id", installment.id as string)
         .select("id")
         .maybeSingle();
+      if (isMissingInstallmentScheduleColumn(installmentUpdateError)) {
+        const { due_date: _dueDate, ap_receive_by: _apReceiveBy, mail_by: _mailBy, ...fallbackUpdate } = installmentUpdate;
+        void _dueDate;
+        void _apReceiveBy;
+        void _mailBy;
+        ({ data: installmentUpdated, error: installmentUpdateError } = await supabase
+          .from("contract_installments")
+          .update(fallbackUpdate)
+          .eq("id", installment.id as string)
+          .select("id")
+          .maybeSingle());
+      }
       if (installmentUpdateError) return err(installmentUpdateError.message);
       if (!installmentUpdated?.id) return err("Installment amount update was not applied.");
 
@@ -746,6 +859,60 @@ export async function updateContractInstallmentStatusAction(
     return ok("Installment status updated.");
   } catch (error) {
     return err(getErrorMessage(error, "Could not update installment status."));
+  }
+}
+
+export async function updateContractInstallmentCheckRequestAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) return err("You must be signed in.");
+
+    const installmentId = String(formData.get("installmentId") ?? "").trim();
+    const installmentNumber = Number.parseInt(String(formData.get("installmentNumber") ?? "1"), 10);
+    if (!installmentId) return err("Installment id is required.");
+
+    const { data: installment, error: installmentError } = await supabase
+      .from("contract_installments")
+      .select("id, contract_id, tax_id_encrypted, tax_id_last4, contracts!inner(project_id)")
+      .eq("id", installmentId)
+      .single();
+    if (installmentError || !installment) return err("Installment not found.");
+
+    const contractJoin = installment.contracts as { project_id?: string } | Array<{ project_id?: string }> | null;
+    const contractRow = Array.isArray(contractJoin) ? contractJoin[0] : contractJoin;
+    const projectId = contractRow?.project_id;
+    if (!projectId) return err("Project could not be resolved.");
+
+    await ensurePmOrAdmin(projectId, user.id);
+
+    const updateValues = {
+      ...installmentScheduleValues(formData, Number.isFinite(installmentNumber) ? installmentNumber : 1),
+      ...installmentCheckRequestValues(formData, {
+        encrypted: (installment.tax_id_encrypted as string | null) ?? null,
+        last4: (installment.tax_id_last4 as string | null) ?? null
+      })
+    };
+
+    const { data: updated, error: updateError } = await supabase
+      .from("contract_installments")
+      .update(updateValues)
+      .eq("id", installmentId)
+      .select("id")
+      .maybeSingle();
+    if (updateError) return err(updateError.message);
+    if (!updated?.id) return err("Installment check request update was not applied.");
+
+    revalidatePath("/contracts");
+    return ok("Installment check request fields updated.");
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not update installment check request fields."));
   }
 }
 

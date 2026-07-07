@@ -4,7 +4,7 @@ import { useActionState, useCallback, useEffect, useMemo, useRef, useState } fro
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { deleteContractAction, updateContractDetailsAction, type ActionState } from "@/app/contracts/actions";
 import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
-import type { AccountCodeOption, ContractInstallmentRow, ContractRow, FiscalYearOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
+import type { AccountCodeOption, ContractInstallmentRow, ContractRow, FiscalYearOption, FoapalOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
@@ -14,7 +14,8 @@ export function ContractRowActions({
   fiscalYearOptions,
   organizationOptions,
   projectOptions,
-  accountCodeOptions
+  accountCodeOptions,
+  foapalOptions
 }: {
   contract: ContractRow;
   installments: ContractInstallmentRow[];
@@ -22,6 +23,7 @@ export function ContractRowActions({
   organizationOptions: OrganizationOption[];
   projectOptions: ProcurementProjectOption[];
   accountCodeOptions: AccountCodeOption[];
+  foapalOptions: FoapalOption[];
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -40,6 +42,14 @@ export function ContractRowActions({
   const [editContractorPhone, setEditContractorPhone] = useState(contract.contractorPhone ?? "");
   const [editContractValue, setEditContractValue] = useState(String(contract.contractValue ?? 0));
   const [editInstallmentCount, setEditInstallmentCount] = useState(String(contract.installmentCount ?? 1));
+  const [editContractNumber, setEditContractNumber] = useState(contract.contractNumber ?? "");
+  const [editContractRole, setEditContractRole] = useState(contract.contractRole ?? "");
+  const [editFoapalId, setEditFoapalId] = useState(contract.checkRequestFoapalId ?? "");
+  const [editHandling, setEditHandling] = useState(contract.checkRequestHandling ?? "mail");
+  const [editOtherLocation, setEditOtherLocation] = useState(contract.checkRequestOtherLocation ?? "");
+  const [editVendorAddress1, setEditVendorAddress1] = useState(contract.vendorAddress1 ?? "");
+  const [editVendorAddress2, setEditVendorAddress2] = useState(contract.vendorAddress2 ?? "");
+  const [editVendorAddress3, setEditVendorAddress3] = useState(contract.vendorAddress3 ?? "");
   const [editDueDates, setEditDueDates] = useState<Record<number, string>>({});
   const [editNotes, setEditNotes] = useState(contract.notes ?? "");
   const lastEditIdRef = useRef<string | null>(null);
@@ -73,6 +83,14 @@ export function ContractRowActions({
     setEditContractorPhone(contract.contractorPhone ?? "");
     setEditContractValue(String(contract.contractValue ?? 0));
     setEditInstallmentCount(String(contract.installmentCount ?? 1));
+    setEditContractNumber(contract.contractNumber ?? "");
+    setEditContractRole(contract.contractRole ?? "");
+    setEditFoapalId(contract.checkRequestFoapalId ?? "");
+    setEditHandling(contract.checkRequestHandling ?? "mail");
+    setEditOtherLocation(contract.checkRequestOtherLocation ?? "");
+    setEditVendorAddress1(contract.vendorAddress1 ?? "");
+    setEditVendorAddress2(contract.vendorAddress2 ?? "");
+    setEditVendorAddress3(contract.vendorAddress3 ?? "");
     setEditDueDates(Object.fromEntries(installments.map((installment) => [installment.installmentNumber, installment.dueDate ?? ""])));
     setEditNotes(contract.notes ?? "");
   }, [open, contract, installments]);
@@ -180,6 +198,84 @@ export function ContractRowActions({
                   <option value="3">3</option>
                   <option value="4">4</option>
                 </select>
+              </label>
+              <label>
+                Contract Number
+                <input
+                  name="contractNumber"
+                  value={editContractNumber}
+                  onChange={(event) => setEditContractNumber(event.target.value)}
+                />
+              </label>
+              <label>
+                Role
+                <input name="contractRole" value={editContractRole} onChange={(event) => setEditContractRole(event.target.value)} />
+              </label>
+              <label>
+                Check Request FOAPAL
+                <select name="checkRequestFoapalId" value={editFoapalId} onChange={(event) => setEditFoapalId(event.target.value)}>
+                  <option value="">Use contract organization only</option>
+                  {foapalOptions.map((foapal) => (
+                    <option key={foapal.id} value={foapal.id}>
+                      {foapal.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Check Delivery
+                <select
+                  name="checkRequestHandling"
+                  value={editHandling}
+                  onChange={(event) => setEditHandling(event.target.value as "mail" | "business_affairs_pickup" | "other")}
+                >
+                  <option value="mail">Mail check</option>
+                  <option value="business_affairs_pickup">Pick up in Business Affairs</option>
+                  <option value="other">Other location</option>
+                </select>
+              </label>
+              <label>
+                Other Pickup Location
+                <input
+                  name="checkRequestOtherLocation"
+                  value={editOtherLocation}
+                  onChange={(event) => setEditOtherLocation(event.target.value)}
+                />
+              </label>
+              <label>
+                Vendor Address Line 1
+                <input
+                  name="vendorAddress1"
+                  value={editVendorAddress1}
+                  onChange={(event) => setEditVendorAddress1(event.target.value)}
+                />
+              </label>
+              <label>
+                Vendor Address Line 2
+                <input
+                  name="vendorAddress2"
+                  value={editVendorAddress2}
+                  onChange={(event) => setEditVendorAddress2(event.target.value)}
+                />
+              </label>
+              <label>
+                Vendor Address Line 3
+                <input
+                  name="vendorAddress3"
+                  value={editVendorAddress3}
+                  onChange={(event) => setEditVendorAddress3(event.target.value)}
+                />
+              </label>
+              <label>
+                Tax ID / SSN
+                <input name="taxIdOrSsn" type="password" autoComplete="off" placeholder="Leave blank to keep saved value" />
+                <span className="helperText">
+                  {contract.taxIdLast4 ? `Saved encrypted value ending in ${contract.taxIdLast4}. ` : ""}
+                  Saving this contract overwrites all installment check-request snapshots.
+                </span>
+              </label>
+              <label className="checkboxLabel">
+                <input name="clearTaxId" type="checkbox" /> Clear saved Tax ID / SSN
               </label>
               <div className="contractInstallmentDates">
                 {Array.from({ length: Number(editInstallmentCount) || 1 }, (_, index) => {

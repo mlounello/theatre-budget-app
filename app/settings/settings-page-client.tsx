@@ -28,6 +28,7 @@ import {
 import { AddEntityPanel } from "@/app/settings/add-entity-panel";
 import { BudgetLineReorder } from "@/app/settings/budget-line-reorder";
 import { FiscalYearReorder } from "@/app/settings/fiscal-year-reorder";
+import { FoapalManager } from "@/app/settings/foapal-manager";
 import { HierarchyTreeControls } from "@/app/settings/hierarchy-tree-controls";
 import { OrganizationReorder } from "@/app/settings/organization-reorder";
 import { ProjectAllocationEditor } from "@/app/settings/project-allocation-editor";
@@ -35,8 +36,11 @@ import { ProjectReorder } from "@/app/settings/project-reorder";
 import type {
   AccountCodeAdminRow,
   FiscalYearOption,
+  FoapalOption,
+  FundOption,
   HierarchyRow,
   OrganizationOption,
+  ProgramOption,
   ProductionCategoryAdminRow,
   ProductionCategoryOption,
   SettingsProject,
@@ -83,6 +87,9 @@ type Props = {
   allProductionCategories: ProductionCategoryAdminRow[];
   fiscalYears: FiscalYearOption[];
   organizations: OrganizationOption[];
+  funds: FundOption[];
+  programs: ProgramOption[];
+  foapals: FoapalOption[];
   hierarchyRows: HierarchyRow[];
   accessUsers: SettingsUserRow[];
   accessScopes: SettingsAccessScopeRow[];
@@ -102,6 +109,9 @@ export function SettingsPageClient({
   allProductionCategories,
   fiscalYears,
   organizations,
+  funds,
+  programs,
+  foapals,
   hierarchyRows,
   accessUsers,
   accessScopes,
@@ -500,6 +510,10 @@ export function SettingsPageClient({
         <p className="eyebrow">{isAdmin ? "Admin" : "Project Manager"}</p>
         <h1>Settings</h1>
       </header>
+
+      {isAdmin ? (
+        <FoapalManager funds={funds} programs={programs} organizations={organizations} foapals={foapals} />
+      ) : null}
 
       <ProjectAllocationEditor
         fiscalYears={fiscalYears}
