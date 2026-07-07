@@ -312,6 +312,9 @@ export type ContractInstallmentRow = {
   installmentNumber: number;
   installmentAmount: number;
   status: ContractInstallmentStatus;
+  dueDate: string | null;
+  apReceiveBy: string | null;
+  mailBy: string | null;
   checkRequestSubmittedOn: string | null;
   checkPaidOn: string | null;
 };
@@ -1457,7 +1460,7 @@ export async function getContractsData(): Promise<{
       .limit(200),
     supabase
       .from("contract_installments")
-      .select("id, contract_id, purchase_id, installment_number, installment_amount, status, check_request_submitted_on, check_paid_on")
+      .select("id, contract_id, purchase_id, installment_number, installment_amount, status, due_date, ap_receive_by, mail_by, check_request_submitted_on, check_paid_on")
       .order("contract_id", { ascending: true })
       .order("installment_number", { ascending: true }),
     getFiscalYearOptions(),
@@ -1512,6 +1515,9 @@ export async function getContractsData(): Promise<{
     installmentNumber: Number(row.installment_number ?? 1),
     installmentAmount: asNumber(row.installment_amount as string | number | null),
     status: ((row.status as string | null) ?? "planned") as ContractInstallmentStatus,
+    dueDate: (row.due_date as string | null) ?? null,
+    apReceiveBy: (row.ap_receive_by as string | null) ?? null,
+    mailBy: (row.mail_by as string | null) ?? null,
     checkRequestSubmittedOn: (row.check_request_submitted_on as string | null) ?? null,
     checkPaidOn: (row.check_paid_on as string | null) ?? null
   }));

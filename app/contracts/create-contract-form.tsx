@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { createContractAction, type ActionState } from "@/app/contracts/actions";
+import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
 import { GLOBAL_FISCAL_YEAR_STORAGE_KEY } from "@/lib/fiscal-year-context";
 import type { AccountCodeOption, FiscalYearOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
 
@@ -24,6 +25,8 @@ export function CreateContractForm({
   const [organizationId, setOrganizationId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [bannerAccountCodeId, setBannerAccountCodeId] = useState("");
+  const [installmentCount, setInstallmentCount] = useState(1);
+  const [dueDates, setDueDates] = useState<Record<number, string>>({});
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -50,6 +53,8 @@ export function CreateContractForm({
   useEffect(() => {
     if (!state.ok || !state.message || !formRef.current) return;
     formRef.current.reset();
+    setInstallmentCount(1);
+    setDueDates({});
   }, [state]);
 
   return (
@@ -130,13 +135,42 @@ export function CreateContractForm({
       </label>
       <label>
         Payment Installments
-        <select name="installmentCount" defaultValue="1">
+        <select
+          name="installmentCount"
+          value={installmentCount}
+          onChange={(event) => setInstallmentCount(Number(event.target.value))}
+        >
           <option value="1">1</option>
           <option value="2">2</option>
           <option value="3">3</option>
           <option value="4">4</option>
         </select>
       </label>
+      <div className="contractInstallmentDates">
+        {Array.from({ length: installmentCount }, (_, index) => {
+          const installmentNumber = index + 1;
+          const dueDate = dueDates[installmentNumber] ?? "";
+          const schedule = calculateCheckRequestSchedule(dueDate);
+          return (
+            <label key={installmentNumber}>
+              Installment {installmentNumber} Due Date
+              <input
+                name={`installmentDueDate${installmentNumber}`}
+                type="date"
+                value={dueDate}
+                onChange={(event) =>
+                  setDueDates((previous) => ({ ...previous, [installmentNumber]: event.target.value }))
+                }
+              />
+              {schedule ? (
+                <span className="helperText">
+                  Mail by {schedule.mailBy}; AP needs it by {schedule.apReceiveBy}; check run {schedule.checkRunDate}.
+                </span>
+              ) : null}
+            </label>
+          );
+        })}
+      </div>
       <label>
         Notes
         <input name="notes" />

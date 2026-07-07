@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
+import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
 import { createInstitutionalCommitmentForPurchase } from "@/lib/institutional-budget";
 import type { PurchaseStatus } from "@/lib/types";
 
@@ -70,6 +71,20 @@ function splitAmounts(total: number, count: number): number[] {
     parts.push((base + bump) / 100);
   }
   return parts;
+}
+
+function installmentScheduleValues(formData: FormData, installmentNumber: number): {
+  due_date: string | null;
+  ap_receive_by: string | null;
+  mail_by: string | null;
+} {
+  const dueDate = String(formData.get(`installmentDueDate${installmentNumber}`) ?? "").trim();
+  const schedule = calculateCheckRequestSchedule(dueDate);
+  return {
+    due_date: schedule?.dueDate ?? null,
+    ap_receive_by: schedule?.apReceiveBy ?? null,
+    mail_by: schedule?.mailBy ?? null
+  };
 }
 
 function parseBulkContractLines(value: FormDataEntryValue | null): BulkContractLine[] {
@@ -198,6 +213,7 @@ export async function createContractAction(
       const installmentNumber = index + 1;
       const installmentAmount = installmentAmounts[index];
       const installmentTitle = `${contractorName} Contract Payment ${installmentNumber}/${installmentCount}`;
+      const scheduleValues = installmentScheduleValues(formData, installmentNumber);
 
       const { data: purchase, error: purchaseError } = await supabase
         .from("purchases")
@@ -241,6 +257,7 @@ export async function createContractAction(
         purchase_id: purchase.id,
         installment_number: installmentNumber,
         installment_amount: installmentAmount,
+        ...scheduleValues,
         status: "planned"
       });
       if (installmentError) return err(installmentError.message);
@@ -443,6 +460,7 @@ export async function updateContractDetailsAction(
       if (existingNumbers.has(installmentNumber)) continue;
       const installmentAmount = parts[installmentNumber - 1] ?? 0;
       const installmentTitle = `${contractorName} Contract Payment ${installmentNumber}/${installmentCount}`;
+      const scheduleValues = installmentScheduleValues(formData, installmentNumber);
 
       const { data: purchase, error: purchaseError } = await supabase
         .from("purchases")
@@ -486,6 +504,7 @@ export async function updateContractDetailsAction(
         purchase_id: purchase.id,
         installment_number: installmentNumber,
         installment_amount: installmentAmount,
+        ...scheduleValues,
         status: "planned"
       });
       if (installmentError) return err(installmentError.message);
@@ -507,7 +526,10 @@ export async function updateContractDetailsAction(
 
       const { data: installmentUpdated, error: installmentUpdateError } = await supabase
         .from("contract_installments")
-        .update({ installment_amount: installmentAmount })
+        .update({
+          installment_amount: installmentAmount,
+          ...installmentScheduleValues(formData, Number(installment.installment_number ?? 1))
+        })
         .eq("id", installment.id as string)
         .select("id")
         .maybeSingle();

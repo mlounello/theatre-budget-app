@@ -34,6 +34,34 @@ function installmentClass(value: string): string {
   return "status-requested";
 }
 
+function shortDate(value: string | null): string {
+  if (!value) return "-";
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return value;
+  return `${month}/${day}/${year.slice(2)}`;
+}
+
+function addDaysYmd(value: string, days: number): string {
+  const [year, month, day] = value.split("-").map((part) => Number(part));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function googleCalendarHref(contractorName: string, projectName: string, mailBy: string | null): string | null {
+  if (!mailBy) return null;
+  const start = mailBy.replaceAll("-", "");
+  const end = addDaysYmd(mailBy, 1).replaceAll("-", "");
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: `Mail check request: ${contractorName}`,
+    dates: `${start}/${end}`,
+    details: `Put the check request in inter-office mail for ${contractorName} (${projectName}).`,
+    trp: "false"
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
 export default async function ContractsPage({
   searchParams
 }: {
@@ -159,31 +187,47 @@ export default async function ContractsPage({
                           <p>
                             Paid: <strong>{formatCurrency(paidTotal)}</strong>
                           </p>
-                          {rows.map((row) => (
-                            <div key={row.id} className="inlineEditForm" style={{ marginBottom: "0.4rem" }}>
-                              <span>
-                                #{row.installmentNumber} {formatCurrency(row.installmentAmount)}
-                              </span>
-                              {canManageContracts ? (
-                                <>
+                          {rows.map((row) => {
+                            const calendarHref = googleCalendarHref(contract.contractorName, contract.projectName, row.mailBy);
+                            return (
+                              <div key={row.id} className="inlineEditForm" style={{ marginBottom: "0.4rem" }}>
+                                <span>
+                                  #{row.installmentNumber} {formatCurrency(row.installmentAmount)}
+                                  <br />
+                                  <span className="muted">
+                                    Due {shortDate(row.dueDate)} | Mail by {shortDate(row.mailBy)}
+                                  </span>
+                                </span>
+                                {canManageContracts ? (
+                                  <>
+                                    <span className={`statusChip ${installmentClass(row.status)}`}>
+                                      {installmentLabel(row.status)}
+                                    </span>
+                                    <ContractInstallmentControl installment={row} />
+                                    <a className="tinyButton" href={`/contracts/${contract.id}/installments/${row.id}/check-request`}>
+                                      Check Request PDF
+                                    </a>
+                                    {calendarHref ? (
+                                      <a className="tinyButton" href={calendarHref} target="_blank" rel="noreferrer">
+                                        Google Calendar
+                                      </a>
+                                    ) : null}
+                                  </>
+                                ) : (
                                   <span className={`statusChip ${installmentClass(row.status)}`}>
                                     {installmentLabel(row.status)}
                                   </span>
-                                  <ContractInstallmentControl installment={row} />
-                                </>
-                              ) : (
-                                <span className={`statusChip ${installmentClass(row.status)}`}>
-                                  {installmentLabel(row.status)}
-                                </span>
-                              )}
-                            </div>
-                          ))}
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       </td>
                       <td>
                         {canManageContracts ? (
                           <ContractRowActions
                             contract={contract}
+                            installments={rows}
                             fiscalYearOptions={fiscalYearOptions}
                             organizationOptions={organizationOptions}
                             projectOptions={projectOptions}

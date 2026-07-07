@@ -3,18 +3,21 @@
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { deleteContractAction, updateContractDetailsAction, type ActionState } from "@/app/contracts/actions";
-import type { AccountCodeOption, ContractRow, FiscalYearOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
+import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
+import type { AccountCodeOption, ContractInstallmentRow, ContractRow, FiscalYearOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
 export function ContractRowActions({
   contract,
+  installments,
   fiscalYearOptions,
   organizationOptions,
   projectOptions,
   accountCodeOptions
 }: {
   contract: ContractRow;
+  installments: ContractInstallmentRow[];
   fiscalYearOptions: FiscalYearOption[];
   organizationOptions: OrganizationOption[];
   projectOptions: ProcurementProjectOption[];
@@ -37,6 +40,7 @@ export function ContractRowActions({
   const [editContractorPhone, setEditContractorPhone] = useState(contract.contractorPhone ?? "");
   const [editContractValue, setEditContractValue] = useState(String(contract.contractValue ?? 0));
   const [editInstallmentCount, setEditInstallmentCount] = useState(String(contract.installmentCount ?? 1));
+  const [editDueDates, setEditDueDates] = useState<Record<number, string>>({});
   const [editNotes, setEditNotes] = useState(contract.notes ?? "");
   const lastEditIdRef = useRef<string | null>(null);
 
@@ -69,8 +73,9 @@ export function ContractRowActions({
     setEditContractorPhone(contract.contractorPhone ?? "");
     setEditContractValue(String(contract.contractValue ?? 0));
     setEditInstallmentCount(String(contract.installmentCount ?? 1));
+    setEditDueDates(Object.fromEntries(installments.map((installment) => [installment.installmentNumber, installment.dueDate ?? ""])));
     setEditNotes(contract.notes ?? "");
-  }, [open, contract]);
+  }, [open, contract, installments]);
 
   useEffect(() => {
     if (!deleteState.ok || !deleteState.message) return;
@@ -176,6 +181,31 @@ export function ContractRowActions({
                   <option value="4">4</option>
                 </select>
               </label>
+              <div className="contractInstallmentDates">
+                {Array.from({ length: Number(editInstallmentCount) || 1 }, (_, index) => {
+                  const installmentNumber = index + 1;
+                  const dueDate = editDueDates[installmentNumber] ?? "";
+                  const schedule = calculateCheckRequestSchedule(dueDate);
+                  return (
+                    <label key={installmentNumber}>
+                      Installment {installmentNumber} Due Date
+                      <input
+                        name={`installmentDueDate${installmentNumber}`}
+                        type="date"
+                        value={dueDate}
+                        onChange={(event) =>
+                          setEditDueDates((previous) => ({ ...previous, [installmentNumber]: event.target.value }))
+                        }
+                      />
+                      {schedule ? (
+                        <span className="helperText">
+                          Mail by {schedule.mailBy}; AP needs it by {schedule.apReceiveBy}; check run {schedule.checkRunDate}.
+                        </span>
+                      ) : null}
+                    </label>
+                  );
+                })}
+              </div>
               <label>
                 FY
                 <select

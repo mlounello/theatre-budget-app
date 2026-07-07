@@ -1116,6 +1116,22 @@ th {
   min-width: 0;
 }
 
+.contractInstallmentDates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid #d7ddd7;
+  border-radius: 8px;
+  background: #f8fbf9;
+}
+
+.contractInstallmentDates .helperText {
+  display: block;
+  margin-top: 0.25rem;
+  line-height: 1.35;
+}
+
 .reorderBlock {
   margin: 0.55rem 0 0.7rem;
 }
