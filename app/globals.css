@@ -733,6 +733,15 @@ th {
   min-width: 0;
 }
 
+.requestForm input[type="date"],
+.inlineEditForm input[type="date"],
+.inlineStatusForm input[type="date"] {
+  min-width: 11.25rem;
+  min-height: 2.35rem;
+  line-height: 1.2;
+  font-family: "Gudea", "Arial", sans-serif;
+}
+
 .sensitiveInputWrap {
   position: relative;
   display: block;
@@ -1175,6 +1184,10 @@ th {
   display: block;
   margin-top: 0.25rem;
   line-height: 1.35;
+}
+
+.contractInstallmentDates label {
+  align-self: start;
 }
 
 .reorderBlock {

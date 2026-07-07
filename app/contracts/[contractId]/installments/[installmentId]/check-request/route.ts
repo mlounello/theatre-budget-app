@@ -190,6 +190,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
   fillText(form, "PRG1", programCode);
   fillText(form, "Amount1", formatMoney(amount));
   fillText(form, "Description", description);
+  fillText(form, "OtherLocation", "");
   if (handling === "business_affairs_pickup") {
     checkBox(form, "BusAffairsChq");
   } else if (handling === "other") {
