@@ -4,7 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { createContractAction, type ActionState } from "@/app/contracts/actions";
 import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
 import { GLOBAL_FISCAL_YEAR_STORAGE_KEY } from "@/lib/fiscal-year-context";
-import type { AccountCodeOption, FiscalYearOption, FoapalOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
+import type { AccountCodeOption, FiscalYearOption, FoapalOption, GuestArtistOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
@@ -13,13 +13,15 @@ export function CreateContractForm({
   organizationOptions,
   projectOptions,
   accountCodeOptions,
-  foapalOptions
+  foapalOptions,
+  guestArtistOptions
 }: {
   fiscalYearOptions: FiscalYearOption[];
   organizationOptions: OrganizationOption[];
   projectOptions: ProcurementProjectOption[];
   accountCodeOptions: AccountCodeOption[];
   foapalOptions: FoapalOption[];
+  guestArtistOptions: GuestArtistOption[];
 }) {
   const [state, formAction] = useActionState(createContractAction, initialState);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -27,6 +29,17 @@ export function CreateContractForm({
   const [organizationId, setOrganizationId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [bannerAccountCodeId, setBannerAccountCodeId] = useState("");
+  const [guestArtistId, setGuestArtistId] = useState("");
+  const [contractorName, setContractorName] = useState("");
+  const [contractorEmployeeId, setContractorEmployeeId] = useState("");
+  const [contractorEmail, setContractorEmail] = useState("");
+  const [contractorPhone, setContractorPhone] = useState("");
+  const [checkRequestFoapalId, setCheckRequestFoapalId] = useState("");
+  const [checkRequestHandling, setCheckRequestHandling] = useState<"mail" | "business_affairs_pickup" | "other">("mail");
+  const [checkRequestOtherLocation, setCheckRequestOtherLocation] = useState("");
+  const [vendorAddress1, setVendorAddress1] = useState("");
+  const [vendorAddress2, setVendorAddress2] = useState("");
+  const [vendorAddress3, setVendorAddress3] = useState("");
   const [installmentCount, setInstallmentCount] = useState(1);
   const [dueDates, setDueDates] = useState<Record<number, string>>({});
 
@@ -57,7 +70,34 @@ export function CreateContractForm({
     formRef.current.reset();
     setInstallmentCount(1);
     setDueDates({});
+    setGuestArtistId("");
+    setContractorName("");
+    setContractorEmployeeId("");
+    setContractorEmail("");
+    setContractorPhone("");
+    setCheckRequestFoapalId("");
+    setCheckRequestHandling("mail");
+    setCheckRequestOtherLocation("");
+    setVendorAddress1("");
+    setVendorAddress2("");
+    setVendorAddress3("");
   }, [state]);
+
+  function applyGuestArtist(nextGuestArtistId: string) {
+    setGuestArtistId(nextGuestArtistId);
+    const guestArtist = guestArtistOptions.find((artist) => artist.id === nextGuestArtistId);
+    if (!guestArtist) return;
+    setContractorName(guestArtist.displayName);
+    setContractorEmployeeId(guestArtist.vendorNumber ?? "");
+    setContractorEmail(guestArtist.email ?? "");
+    setContractorPhone(guestArtist.phone ?? "");
+    setCheckRequestFoapalId(guestArtist.defaultFoapalId ?? "");
+    setCheckRequestHandling(guestArtist.defaultCheckRequestHandling);
+    setCheckRequestOtherLocation(guestArtist.defaultCheckRequestOtherLocation ?? "");
+    setVendorAddress1(guestArtist.vendorAddress1 ?? "");
+    setVendorAddress2(guestArtist.vendorAddress2 ?? "");
+    setVendorAddress3(guestArtist.vendorAddress3 ?? "");
+  }
 
   return (
     <form className="requestForm" action={formAction} ref={formRef}>
@@ -116,20 +156,34 @@ export function CreateContractForm({
         </select>
       </label>
       <label>
+        Guest Artist Profile
+        <select name="guestArtistId" value={guestArtistId} onChange={(event) => applyGuestArtist(event.target.value)}>
+          <option value="">Manual entry</option>
+          {guestArtistOptions
+            .filter((artist) => artist.active)
+            .map((artist) => (
+              <option key={artist.id} value={artist.id}>
+                {artist.displayName}
+                {artist.taxIdLast4 ? ` (Tax ID ending ${artist.taxIdLast4})` : ""}
+              </option>
+            ))}
+        </select>
+      </label>
+      <label>
         Contracted Employee Name
-        <input name="contractorName" required />
+        <input name="contractorName" value={contractorName} onChange={(event) => setContractorName(event.target.value)} required />
       </label>
       <label>
         Employee ID Number
-        <input name="contractorEmployeeId" />
+        <input name="contractorEmployeeId" value={contractorEmployeeId} onChange={(event) => setContractorEmployeeId(event.target.value)} />
       </label>
       <label>
         Email
-        <input name="contractorEmail" type="email" />
+        <input name="contractorEmail" type="email" value={contractorEmail} onChange={(event) => setContractorEmail(event.target.value)} />
       </label>
       <label>
         Phone
-        <input name="contractorPhone" />
+        <input name="contractorPhone" value={contractorPhone} onChange={(event) => setContractorPhone(event.target.value)} />
       </label>
       <label>
         Contract Value
@@ -158,7 +212,7 @@ export function CreateContractForm({
       </label>
       <label>
         Check Request FOAPAL
-        <select name="checkRequestFoapalId">
+        <select name="checkRequestFoapalId" value={checkRequestFoapalId} onChange={(event) => setCheckRequestFoapalId(event.target.value)}>
           <option value="">Use contract organization only</option>
           {foapalOptions.map((foapal) => (
             <option key={foapal.id} value={foapal.id}>
@@ -169,7 +223,11 @@ export function CreateContractForm({
       </label>
       <label>
         Check Delivery
-        <select name="checkRequestHandling" defaultValue="mail">
+        <select
+          name="checkRequestHandling"
+          value={checkRequestHandling}
+          onChange={(event) => setCheckRequestHandling(event.target.value as "mail" | "business_affairs_pickup" | "other")}
+        >
           <option value="mail">Mail check</option>
           <option value="business_affairs_pickup">Pick up in Business Affairs</option>
           <option value="other">Other location</option>
@@ -177,19 +235,23 @@ export function CreateContractForm({
       </label>
       <label>
         Other Pickup Location
-        <input name="checkRequestOtherLocation" />
+        <input
+          name="checkRequestOtherLocation"
+          value={checkRequestOtherLocation}
+          onChange={(event) => setCheckRequestOtherLocation(event.target.value)}
+        />
       </label>
       <label>
         Vendor Address Line 1
-        <input name="vendorAddress1" />
+        <input name="vendorAddress1" value={vendorAddress1} onChange={(event) => setVendorAddress1(event.target.value)} />
       </label>
       <label>
         Vendor Address Line 2
-        <input name="vendorAddress2" />
+        <input name="vendorAddress2" value={vendorAddress2} onChange={(event) => setVendorAddress2(event.target.value)} />
       </label>
       <label>
         Vendor Address Line 3
-        <input name="vendorAddress3" />
+        <input name="vendorAddress3" value={vendorAddress3} onChange={(event) => setVendorAddress3(event.target.value)} />
       </label>
       <label>
         Tax ID / SSN

@@ -17,6 +17,21 @@ type ActionState = {
 type ContractWorkflowStatus = "w9_requested" | "contract_sent" | "contract_signed_returned" | "siena_signed";
 type InstallmentStatus = "planned" | "check_request_submitted" | "check_paid";
 type CheckRequestHandling = "mail" | "business_affairs_pickup" | "other";
+type GuestArtistDefaults = {
+  id: string;
+  display_name: string;
+  vendor_number: string | null;
+  email: string | null;
+  phone: string | null;
+  default_foapal_id: string | null;
+  default_check_request_handling: CheckRequestHandling;
+  default_check_request_other_location: string | null;
+  vendor_address1: string | null;
+  vendor_address2: string | null;
+  vendor_address3: string | null;
+  tax_id_encrypted: string | null;
+  tax_id_last4: string | null;
+};
 type BulkContractLine = {
   contractorName: string;
   contractValue: string;
@@ -73,6 +88,11 @@ function nullableFormText(formData: FormData, name: string): string | null {
   return value.length > 0 ? value : null;
 }
 
+function formTextOrDefault(formData: FormData, name: string, fallback: string | null = null): string | null {
+  const value = String(formData.get(name) ?? "").trim();
+  return value.length > 0 ? value : fallback;
+}
+
 function parseTaxIdUpdate(formData: FormData, existing?: { encrypted: string | null; last4: string | null }): {
   encrypted: string | null;
   last4: string | null;
@@ -93,24 +113,41 @@ function parseTaxIdUpdate(formData: FormData, existing?: { encrypted: string | n
   };
 }
 
-function checkRequestValues(formData: FormData, existingTax?: { encrypted: string | null; last4: string | null }) {
+function checkRequestValues(
+  formData: FormData,
+  existingTax?: { encrypted: string | null; last4: string | null },
+  defaults?: {
+    foapalId?: string | null;
+    handling?: CheckRequestHandling | null;
+    otherLocation?: string | null;
+    address1?: string | null;
+    address2?: string | null;
+    address3?: string | null;
+  }
+) {
   const tax = parseTaxIdUpdate(formData, existingTax);
   return {
     contract_number: nullableFormText(formData, "contractNumber"),
     contract_role: nullableFormText(formData, "contractRole"),
-    check_request_foapal_id: nullableFormText(formData, "checkRequestFoapalId"),
-    check_request_handling: parseCheckRequestHandling(formData.get("checkRequestHandling")),
-    check_request_other_location: nullableFormText(formData, "checkRequestOtherLocation"),
-    vendor_address1: nullableFormText(formData, "vendorAddress1"),
-    vendor_address2: nullableFormText(formData, "vendorAddress2"),
-    vendor_address3: nullableFormText(formData, "vendorAddress3"),
+    check_request_foapal_id: formTextOrDefault(formData, "checkRequestFoapalId", defaults?.foapalId ?? null),
+    check_request_handling: formData.has("checkRequestHandling")
+      ? parseCheckRequestHandling(formData.get("checkRequestHandling"))
+      : defaults?.handling ?? "mail",
+    check_request_other_location: formTextOrDefault(formData, "checkRequestOtherLocation", defaults?.otherLocation ?? null),
+    vendor_address1: formTextOrDefault(formData, "vendorAddress1", defaults?.address1 ?? null),
+    vendor_address2: formTextOrDefault(formData, "vendorAddress2", defaults?.address2 ?? null),
+    vendor_address3: formTextOrDefault(formData, "vendorAddress3", defaults?.address3 ?? null),
     tax_id_encrypted: tax.encrypted,
     tax_id_last4: tax.last4
   };
 }
 
-function installmentCheckRequestValues(formData: FormData, existingTax?: { encrypted: string | null; last4: string | null }) {
-  const values = checkRequestValues(formData, existingTax);
+function installmentCheckRequestValues(
+  formData: FormData,
+  existingTax?: { encrypted: string | null; last4: string | null },
+  defaults?: Parameters<typeof checkRequestValues>[2]
+) {
+  const values = checkRequestValues(formData, existingTax, defaults);
   const { contract_number: _contractNumber, contract_role: _contractRole, ...installmentValues } = values;
   void _contractNumber;
   void _contractRole;
@@ -177,6 +214,51 @@ function parseBulkContractLines(value: FormDataEntryValue | null): BulkContractL
     .filter((row) => row.contractorName.length > 0 && row.contractValue.length > 0);
 }
 
+async function getGuestArtistDefaults(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  guestArtistId: string
+): Promise<GuestArtistDefaults | null> {
+  if (!guestArtistId) return null;
+  const { data, error } = await supabase
+    .from("guest_artists")
+    .select(
+      "id, display_name, vendor_number, email, phone, default_foapal_id, default_check_request_handling, default_check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_encrypted, tax_id_last4, active"
+    )
+    .eq("id", guestArtistId)
+    .eq("active", true)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data?.id) return null;
+  return {
+    id: data.id as string,
+    display_name: data.display_name as string,
+    vendor_number: (data.vendor_number as string | null) ?? null,
+    email: (data.email as string | null) ?? null,
+    phone: (data.phone as string | null) ?? null,
+    default_foapal_id: (data.default_foapal_id as string | null) ?? null,
+    default_check_request_handling: ((data.default_check_request_handling as string | null) ?? "mail") as CheckRequestHandling,
+    default_check_request_other_location: (data.default_check_request_other_location as string | null) ?? null,
+    vendor_address1: (data.vendor_address1 as string | null) ?? null,
+    vendor_address2: (data.vendor_address2 as string | null) ?? null,
+    vendor_address3: (data.vendor_address3 as string | null) ?? null,
+    tax_id_encrypted: (data.tax_id_encrypted as string | null) ?? null,
+    tax_id_last4: (data.tax_id_last4 as string | null) ?? null
+  };
+}
+
+function guestCheckDefaults(guestArtist: GuestArtistDefaults | null) {
+  return guestArtist
+    ? {
+        foapalId: guestArtist.default_foapal_id,
+        handling: guestArtist.default_check_request_handling,
+        otherLocation: guestArtist.default_check_request_other_location,
+        address1: guestArtist.vendor_address1,
+        address2: guestArtist.vendor_address2,
+        address3: guestArtist.vendor_address3
+      }
+    : undefined;
+}
+
 async function ensurePmOrAdmin(projectId: string, userId: string): Promise<void> {
   const access = await getAccessContext();
   if (access.role === "admin") return;
@@ -209,18 +291,26 @@ export async function createContractAction(
     if (!user) return err("You must be signed in.");
 
     const projectId = String(formData.get("projectId") ?? "").trim();
+    const guestArtistId = String(formData.get("guestArtistId") ?? "").trim();
     const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
     const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
-    const contractorName = String(formData.get("contractorName") ?? "").trim();
-    const contractorEmployeeId = String(formData.get("contractorEmployeeId") ?? "").trim();
-    const contractorEmail = String(formData.get("contractorEmail") ?? "").trim();
-    const contractorPhone = String(formData.get("contractorPhone") ?? "").trim();
+    const guestArtist = await getGuestArtistDefaults(supabase, guestArtistId);
+    if (guestArtistId && !guestArtist) return err("Selected guest artist profile was not found or is inactive.");
+
+    const contractorName = String(formData.get("contractorName") ?? "").trim() || guestArtist?.display_name || "";
+    const contractorEmployeeId = String(formData.get("contractorEmployeeId") ?? "").trim() || guestArtist?.vendor_number || "";
+    const contractorEmail = String(formData.get("contractorEmail") ?? "").trim() || guestArtist?.email || "";
+    const contractorPhone = String(formData.get("contractorPhone") ?? "").trim() || guestArtist?.phone || "";
     const contractValue = parseMoney(formData.get("contractValue"));
     const installmentCount = parseInstallmentCount(formData.get("installmentCount"));
     const notes = String(formData.get("notes") ?? "").trim();
-    const contractCheckRequestValues = checkRequestValues(formData);
-    const installmentCheckRequestDefaults = installmentCheckRequestValues(formData);
+    const guestTax = guestArtist
+      ? { encrypted: guestArtist.tax_id_encrypted, last4: guestArtist.tax_id_last4 }
+      : undefined;
+    const checkDefaults = guestCheckDefaults(guestArtist);
+    const contractCheckRequestValues = checkRequestValues(formData, guestTax, checkDefaults);
+    const installmentCheckRequestDefaults = installmentCheckRequestValues(formData, guestTax, checkDefaults);
 
     if (!projectId) return err("Project is required.");
     if (!bannerAccountCodeId) return err("Banner account code is required.");
@@ -264,6 +354,7 @@ export async function createContractAction(
         organization_id: resolvedOrganizationId,
         project_id: projectId,
         banner_account_code_id: bannerAccountCodeId,
+        guest_artist_id: guestArtist?.id ?? null,
         production_category_id: miscCategoryId,
         entered_by_user_id: user.id,
         contractor_name: contractorName,
@@ -417,14 +508,18 @@ export async function updateContractDetailsAction(
     if (!user) return err("You must be signed in.");
 
     const contractId = String(formData.get("contractId") ?? "").trim();
+    const guestArtistId = String(formData.get("guestArtistId") ?? "").trim();
     const projectId = String(formData.get("projectId") ?? "").trim();
     const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
     const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
-    const contractorName = String(formData.get("contractorName") ?? "").trim();
-    const contractorEmployeeId = String(formData.get("contractorEmployeeId") ?? "").trim();
-    const contractorEmail = String(formData.get("contractorEmail") ?? "").trim();
-    const contractorPhone = String(formData.get("contractorPhone") ?? "").trim();
+    const guestArtist = await getGuestArtistDefaults(supabase, guestArtistId);
+    if (guestArtistId && !guestArtist) return err("Selected guest artist profile was not found or is inactive.");
+
+    const contractorName = String(formData.get("contractorName") ?? "").trim() || guestArtist?.display_name || "";
+    const contractorEmployeeId = String(formData.get("contractorEmployeeId") ?? "").trim() || guestArtist?.vendor_number || "";
+    const contractorEmail = String(formData.get("contractorEmail") ?? "").trim() || guestArtist?.email || "";
+    const contractorPhone = String(formData.get("contractorPhone") ?? "").trim() || guestArtist?.phone || "";
     const contractValue = parseMoney(formData.get("contractValue"));
     const installmentCount = parseInstallmentCount(formData.get("installmentCount"));
     const notes = String(formData.get("notes") ?? "").trim();
@@ -458,14 +553,15 @@ export async function updateContractDetailsAction(
     const resolvedFiscalYearId = fiscalYearId || ((projectRow.fiscal_year_id as string | null) ?? null);
     const productionCategoryId = (existing.production_category_id as string | null) ?? null;
     if (!productionCategoryId) return err("Contract production category is missing.");
-    const contractCheckRequestValues = checkRequestValues(formData, {
-      encrypted: (existing.tax_id_encrypted as string | null) ?? null,
-      last4: (existing.tax_id_last4 as string | null) ?? null
-    });
-    const installmentCheckRequestDefaults = installmentCheckRequestValues(formData, {
-      encrypted: (existing.tax_id_encrypted as string | null) ?? null,
-      last4: (existing.tax_id_last4 as string | null) ?? null
-    });
+    const taxSource = guestArtist
+      ? { encrypted: guestArtist.tax_id_encrypted, last4: guestArtist.tax_id_last4 }
+      : {
+          encrypted: (existing.tax_id_encrypted as string | null) ?? null,
+          last4: (existing.tax_id_last4 as string | null) ?? null
+        };
+    const checkDefaults = guestCheckDefaults(guestArtist);
+    const contractCheckRequestValues = checkRequestValues(formData, taxSource, checkDefaults);
+    const installmentCheckRequestDefaults = installmentCheckRequestValues(formData, taxSource, checkDefaults);
 
     const { data: reportingBudgetLineId, error: lineError } = await supabase.rpc("ensure_project_category_line", {
       p_project_id: projectId,
@@ -513,6 +609,7 @@ export async function updateContractDetailsAction(
         organization_id: resolvedOrganizationId,
         project_id: projectId,
         banner_account_code_id: bannerAccountCodeId,
+        guest_artist_id: guestArtist?.id ?? null,
         contractor_name: contractorName,
         contractor_employee_id: contractorEmployeeId || null,
         contractor_email: contractorEmail || null,

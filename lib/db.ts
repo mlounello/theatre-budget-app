@@ -299,6 +299,7 @@ export type ContractRow = {
   season: string | null;
   bannerAccountCodeId: string;
   bannerAccountCode: string | null;
+  guestArtistId: string | null;
   contractorName: string;
   contractorEmployeeId: string | null;
   contractorEmail: string | null;
@@ -366,6 +367,23 @@ export type FoapalOption = {
   programId: string;
   programCode: string;
   label: string;
+  active: boolean;
+};
+
+export type GuestArtistOption = {
+  id: string;
+  displayName: string;
+  vendorNumber: string | null;
+  email: string | null;
+  phone: string | null;
+  defaultFoapalId: string | null;
+  defaultCheckRequestHandling: "mail" | "business_affairs_pickup" | "other";
+  defaultCheckRequestOtherLocation: string | null;
+  vendorAddress1: string | null;
+  vendorAddress2: string | null;
+  vendorAddress3: string | null;
+  taxIdLast4: string | null;
+  notes: string | null;
   active: boolean;
 };
 
@@ -1496,29 +1514,32 @@ export async function getContractsData(): Promise<{
   projectOptions: ProcurementProjectOption[];
   accountCodeOptions: AccountCodeOption[];
   foapalOptions: FoapalOption[];
+  guestArtistOptions: GuestArtistOption[];
   canManageContracts: boolean;
 }> {
   const supabase = await getSupabaseServerClient();
   const access = await getAccessContext();
 
-  const [fiscalYears, organizations, projects, accountCodes, foapalOptions] = await Promise.all([
+  const [fiscalYears, organizations, projects, accountCodes, foapalOptions, guestArtistOptions] = await Promise.all([
     getFiscalYearOptions(),
     getOrganizationOptions(),
     getSettingsProjects(),
     getAccountCodeOptions(),
-    getFoapalOptions()
+    getFoapalOptions(),
+    getGuestArtistOptions()
   ]);
 
   let contractsResponse = (await supabase
     .from("contracts")
     .select(
-      "id, fiscal_year_id, organization_id, project_id, banner_account_code_id, contractor_name, contractor_employee_id, contractor_email, contractor_phone, contract_value, installment_count, contract_number, contract_role, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, workflow_status, notes, created_at, fiscal_years(name), organizations(name, org_code), projects(name, season), account_codes(code)"
+      "id, fiscal_year_id, organization_id, project_id, banner_account_code_id, guest_artist_id, contractor_name, contractor_employee_id, contractor_email, contractor_phone, contract_value, installment_count, contract_number, contract_role, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, workflow_status, notes, created_at, fiscal_years(name), organizations(name, org_code), projects(name, season), account_codes(code)"
     )
     .order("created_at", { ascending: false })
     .limit(200)) as DbListResponse;
   if (
     contractsResponse.error &&
     (contractsResponse.error.message.toLowerCase().includes("contract_number") ||
+      contractsResponse.error.message.toLowerCase().includes("guest_artist_id") ||
       contractsResponse.error.message.toLowerCase().includes("check_request_foapal_id") ||
       contractsResponse.error.message.toLowerCase().includes("tax_id"))
   ) {
@@ -1574,6 +1595,7 @@ export async function getContractsData(): Promise<{
       season: (project?.season as string | null) ?? null,
       bannerAccountCodeId: row.banner_account_code_id as string,
       bannerAccountCode: account?.code ?? null,
+      guestArtistId: (row.guest_artist_id as string | null) ?? null,
       contractorName: row.contractor_name as string,
       contractorEmployeeId: (row.contractor_employee_id as string | null) ?? null,
       contractorEmail: (row.contractor_email as string | null) ?? null,
@@ -1633,6 +1655,7 @@ export async function getContractsData(): Promise<{
     projectOptions,
     accountCodeOptions: accountCodes,
     foapalOptions,
+    guestArtistOptions,
     canManageContracts
   };
 }
@@ -2014,6 +2037,39 @@ export async function getFoapalOptions(): Promise<FoapalOption[]> {
       active: Boolean(row.active as boolean | null)
     };
   });
+}
+
+export async function getGuestArtistOptions(): Promise<GuestArtistOption[]> {
+  const supabase = await getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("guest_artists")
+    .select(
+      "id, display_name, vendor_number, email, phone, default_foapal_id, default_check_request_handling, default_check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, notes, active"
+    )
+    .order("display_name", { ascending: true });
+  if (error) {
+    if (error.message.toLowerCase().includes("guest_artists")) return [];
+    throw error;
+  }
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    displayName: row.display_name as string,
+    vendorNumber: (row.vendor_number as string | null) ?? null,
+    email: (row.email as string | null) ?? null,
+    phone: (row.phone as string | null) ?? null,
+    defaultFoapalId: (row.default_foapal_id as string | null) ?? null,
+    defaultCheckRequestHandling: ((row.default_check_request_handling as string | null) ?? "mail") as
+      | "mail"
+      | "business_affairs_pickup"
+      | "other",
+    defaultCheckRequestOtherLocation: (row.default_check_request_other_location as string | null) ?? null,
+    vendorAddress1: (row.vendor_address1 as string | null) ?? null,
+    vendorAddress2: (row.vendor_address2 as string | null) ?? null,
+    vendorAddress3: (row.vendor_address3 as string | null) ?? null,
+    taxIdLast4: (row.tax_id_last4 as string | null) ?? null,
+    notes: (row.notes as string | null) ?? null,
+    active: Boolean(row.active as boolean | null)
+  }));
 }
 
 export async function getBudgetPlanningOptions(): Promise<{

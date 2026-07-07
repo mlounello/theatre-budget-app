@@ -4,7 +4,16 @@ import { useActionState, useCallback, useEffect, useMemo, useRef, useState } fro
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { deleteContractAction, updateContractDetailsAction, type ActionState } from "@/app/contracts/actions";
 import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
-import type { AccountCodeOption, ContractInstallmentRow, ContractRow, FiscalYearOption, FoapalOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
+import type {
+  AccountCodeOption,
+  ContractInstallmentRow,
+  ContractRow,
+  FiscalYearOption,
+  FoapalOption,
+  GuestArtistOption,
+  OrganizationOption,
+  ProcurementProjectOption
+} from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
@@ -15,7 +24,8 @@ export function ContractRowActions({
   organizationOptions,
   projectOptions,
   accountCodeOptions,
-  foapalOptions
+  foapalOptions,
+  guestArtistOptions
 }: {
   contract: ContractRow;
   installments: ContractInstallmentRow[];
@@ -24,6 +34,7 @@ export function ContractRowActions({
   projectOptions: ProcurementProjectOption[];
   accountCodeOptions: AccountCodeOption[];
   foapalOptions: FoapalOption[];
+  guestArtistOptions: GuestArtistOption[];
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -36,6 +47,7 @@ export function ContractRowActions({
   const [editFiscalYearId, setEditFiscalYearId] = useState(contract.fiscalYearId ?? "");
   const [editOrganizationId, setEditOrganizationId] = useState(contract.organizationId ?? "");
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState(contract.bannerAccountCodeId ?? "");
+  const [editGuestArtistId, setEditGuestArtistId] = useState(contract.guestArtistId ?? "");
   const [editContractorName, setEditContractorName] = useState(contract.contractorName ?? "");
   const [editContractorEmployeeId, setEditContractorEmployeeId] = useState(contract.contractorEmployeeId ?? "");
   const [editContractorEmail, setEditContractorEmail] = useState(contract.contractorEmail ?? "");
@@ -77,6 +89,7 @@ export function ContractRowActions({
     setEditFiscalYearId(contract.fiscalYearId ?? "");
     setEditOrganizationId(contract.organizationId ?? "");
     setEditBannerAccountCodeId(contract.bannerAccountCodeId ?? "");
+    setEditGuestArtistId(contract.guestArtistId ?? "");
     setEditContractorName(contract.contractorName ?? "");
     setEditContractorEmployeeId(contract.contractorEmployeeId ?? "");
     setEditContractorEmail(contract.contractorEmail ?? "");
@@ -99,6 +112,22 @@ export function ContractRowActions({
     if (!deleteState.ok || !deleteState.message) return;
     if (open) closeEdit();
   }, [deleteState, open, closeEdit]);
+
+  function applyGuestArtist(nextGuestArtistId: string) {
+    setEditGuestArtistId(nextGuestArtistId);
+    const guestArtist = guestArtistOptions.find((artist) => artist.id === nextGuestArtistId);
+    if (!guestArtist) return;
+    setEditContractorName(guestArtist.displayName);
+    setEditContractorEmployeeId(guestArtist.vendorNumber ?? "");
+    setEditContractorEmail(guestArtist.email ?? "");
+    setEditContractorPhone(guestArtist.phone ?? "");
+    setEditFoapalId(guestArtist.defaultFoapalId ?? "");
+    setEditHandling(guestArtist.defaultCheckRequestHandling);
+    setEditOtherLocation(guestArtist.defaultCheckRequestOtherLocation ?? "");
+    setEditVendorAddress1(guestArtist.vendorAddress1 ?? "");
+    setEditVendorAddress2(guestArtist.vendorAddress2 ?? "");
+    setEditVendorAddress3(guestArtist.vendorAddress3 ?? "");
+  }
 
   return (
     <>
@@ -141,6 +170,20 @@ export function ContractRowActions({
             ) : null}
             <form action={updateAction} className="requestForm">
               <input type="hidden" name="contractId" value={contract.id} />
+              <label>
+                Guest Artist Profile
+                <select name="guestArtistId" value={editGuestArtistId} onChange={(event) => applyGuestArtist(event.target.value)}>
+                  <option value="">Manual entry</option>
+                  {guestArtistOptions
+                    .filter((artist) => artist.active || artist.id === editGuestArtistId)
+                    .map((artist) => (
+                      <option key={artist.id} value={artist.id}>
+                        {artist.displayName}
+                        {artist.taxIdLast4 ? ` (Tax ID ending ${artist.taxIdLast4})` : ""}
+                      </option>
+                    ))}
+                </select>
+              </label>
               <label>
                 Name
                 <input

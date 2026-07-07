@@ -72,7 +72,17 @@ export default async function ContractsPage({
   if (!access.userId) redirect("/login");
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
 
-  const { contracts, installments, fiscalYearOptions, organizationOptions, projectOptions, accountCodeOptions, foapalOptions, canManageContracts } =
+  const {
+    contracts,
+    installments,
+    fiscalYearOptions,
+    organizationOptions,
+    projectOptions,
+    accountCodeOptions,
+    foapalOptions,
+    guestArtistOptions,
+    canManageContracts
+  } =
     await getContractsData();
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const selectedFiscalYearId = resolveRequestedFiscalYearId(fiscalYearOptions, resolvedSearchParams?.fiscalYearId);
@@ -106,6 +116,7 @@ export default async function ContractsPage({
             projectOptions={projectOptions}
             accountCodeOptions={accountCodeOptions}
             foapalOptions={foapalOptions}
+            guestArtistOptions={guestArtistOptions}
           />
         </article>
       ) : null}
@@ -236,6 +247,7 @@ export default async function ContractsPage({
                             projectOptions={projectOptions}
                             accountCodeOptions={accountCodeOptions}
                             foapalOptions={foapalOptions}
+                            guestArtistOptions={guestArtistOptions}
                           />
                         ) : (
                           "-"
