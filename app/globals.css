@@ -1171,8 +1171,9 @@ th {
 }
 
 .contractInstallmentDates {
+  grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
   gap: 0.75rem;
   padding: 0.75rem;
   border: 1px solid #d7ddd7;
@@ -1188,6 +1189,11 @@ th {
 
 .contractInstallmentDates label {
   align-self: start;
+  min-width: 0;
+}
+
+.contractInstallmentDates input[type="date"] {
+  width: 100%;
 }
 
 .reorderBlock {
