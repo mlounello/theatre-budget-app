@@ -33,9 +33,34 @@ function safeFilePart(value: string): string {
   return value.trim().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "check-request";
 }
 
-function fillText(form: ReturnType<PDFDocument["getForm"]>, fieldName: string, value: string): void {
+function wrapText(value: string, maxLineLength = 78): string {
+  const words = value.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxLineLength && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.join("\n");
+}
+
+function fillText(
+  form: ReturnType<PDFDocument["getForm"]>,
+  fieldName: string,
+  value: string,
+  options?: { multiline?: boolean; fontSize?: number }
+): void {
   const field = form.getFieldMaybe(fieldName);
   if (field instanceof PDFTextField) {
+    if (options?.multiline) field.enableMultiline();
+    if (options?.fontSize) field.setFontSize(options.fontSize);
     field.setText(value);
   }
 }
@@ -56,8 +81,10 @@ function buildDescription(params: {
   role: string | null;
 }): string {
   const contractPart = params.contractNumber ? `Contract #${params.contractNumber}` : "Contract";
-  const productionPart = [params.projectName, params.season, params.role].filter(Boolean).join(", ");
-  return `${contractPart} payment #${params.installmentNumber} for ${params.contractorName} - ${productionPart}`;
+  const normalizedProject = params.projectName.toLowerCase();
+  const season = params.season && !normalizedProject.includes(params.season.toLowerCase()) ? params.season : null;
+  const productionPart = [params.projectName, season, params.role].filter(Boolean).join(", ");
+  return `${contractPart} payment ${params.installmentNumber} for ${params.contractorName} - ${productionPart}`;
 }
 
 export async function GET(_request: Request, { params }: RouteParams) {
@@ -189,7 +216,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
   fillText(form, "ACT1", accountCode);
   fillText(form, "PRG1", programCode);
   fillText(form, "Amount1", formatMoney(amount));
-  fillText(form, "Description", description);
+  fillText(form, "Description", wrapText(description), { multiline: true, fontSize: 10 });
   fillText(form, "OtherLocation", "");
   if (handling === "business_affairs_pickup") {
     checkBox(form, "BusAffairsChq");
