@@ -181,6 +181,10 @@ function installmentScheduleValues(formData: FormData, installmentNumber: number
   };
 }
 
+function contractPaymentOrderDate(schedule: { mail_by: string | null; ap_receive_by: string | null; due_date: string | null }): string | null {
+  return schedule.mail_by ?? schedule.ap_receive_by ?? schedule.due_date;
+}
+
 function isMissingInstallmentScheduleColumn(error: { message?: string | null } | null | undefined): boolean {
   const message = (error?.message ?? "").toLowerCase();
   return (
@@ -397,6 +401,7 @@ export async function createContractAction(
           status: "requested",
           request_type: "contract_payment",
           is_credit_card: false,
+          ordered_on: contractPaymentOrderDate(scheduleValues),
           procurement_status: "requested",
           notes: `Contract installment ${installmentNumber}/${installmentCount}`
         })
@@ -668,6 +673,7 @@ export async function updateContractDetailsAction(
           status: "requested",
           request_type: "contract_payment",
           is_credit_card: false,
+          ordered_on: contractPaymentOrderDate(scheduleValues),
           procurement_status: "requested",
           notes: `Contract installment ${installmentNumber}/${installmentCount}`
         })
@@ -725,6 +731,7 @@ export async function updateContractDetailsAction(
         ...installmentScheduleValues(formData, Number(installment.installment_number ?? 1)),
         ...installmentCheckRequestDefaults
       };
+      const nextOrderDate = contractPaymentOrderDate(installmentUpdate);
       let { data: installmentUpdated, error: installmentUpdateError } = await supabase
         .from("contract_installments")
         .update(installmentUpdate)
@@ -769,6 +776,7 @@ export async function updateContractDetailsAction(
           encumbered_amount: encumberedAmount,
           pending_cc_amount: 0,
           posted_amount: postedAmount,
+          ordered_on: nextOrderDate,
           status: nextStatus,
           procurement_status: nextStatus === "posted" ? "paid" : nextStatus === "encumbered" ? "ordered" : "requested",
           posted_date: nextStatus === "posted" ? new Date().toISOString().slice(0, 10) : null
@@ -977,7 +985,7 @@ export async function updateContractInstallmentCheckRequestAction(
 
     const { data: installment, error: installmentError } = await supabase
       .from("contract_installments")
-      .select("id, contract_id, tax_id_encrypted, tax_id_last4, contracts!inner(project_id)")
+      .select("id, contract_id, purchase_id, tax_id_encrypted, tax_id_last4, contracts!inner(project_id)")
       .eq("id", installmentId)
       .single();
     if (installmentError || !installment) return err("Installment not found.");
@@ -1006,7 +1014,20 @@ export async function updateContractInstallmentCheckRequestAction(
     if (updateError) return err(updateError.message);
     if (!updated?.id) return err("Installment check request update was not applied.");
 
+    const purchaseId = (installment.purchase_id as string | null) ?? null;
+    if (purchaseId) {
+      const { error: purchaseUpdateError } = await supabase
+        .from("purchases")
+        .update({ ordered_on: contractPaymentOrderDate(updateValues) })
+        .eq("id", purchaseId);
+      if (purchaseUpdateError) return err(purchaseUpdateError.message);
+      await createInstitutionalCommitmentForPurchase(supabase, purchaseId, user.id);
+    }
+
     revalidatePath("/contracts");
+    revalidatePath("/institutional-budget");
+    revalidatePath("/procurement");
+    revalidatePath("/variance");
     return ok("Installment check request fields updated.");
   } catch (error) {
     return err(getErrorMessage(error, "Could not update installment check request fields."));
