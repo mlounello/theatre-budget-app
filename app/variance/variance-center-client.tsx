@@ -15,10 +15,21 @@ import {
 export type VarianceSourceLine = {
   id: string;
   budgetPlanMonthId: string;
+  targetBudgetPlanMonthId: string;
   label: string;
+  targetLabel: string;
   amount: number;
   narrative: string | null;
   crossOrgOverride: boolean;
+};
+
+export type VarianceTargetLine = {
+  id: string;
+  budgetPlanMonthId: string;
+  fiscalYearId: string | null;
+  organizationId: string | null;
+  label: string;
+  shortageAmount: number;
 };
 
 export type VarianceRow = {
@@ -35,6 +46,7 @@ export type VarianceRow = {
   targetFiscalYearId: string | null;
   targetOrganizationId: string | null;
   targetLabel: string | null;
+  targetLines: VarianceTargetLine[];
   lineCount: number;
   sourceLines: VarianceSourceLine[];
   generatedFileUrl: string | null;
@@ -114,12 +126,39 @@ function FundingSummary({ variance }: { variance: VarianceRow }) {
   );
 }
 
+function TargetLineList({ variance }: { variance: VarianceRow }) {
+  if (variance.targetLines.length === 0) return null;
+  return (
+    <div className="sourceLineList targetLineList">
+      <p className="eyebrow">Target shortages</p>
+      {variance.targetLines.map((target) => {
+        const sourced = variance.sourceLines
+          .filter((line) => line.targetBudgetPlanMonthId === target.budgetPlanMonthId)
+          .reduce((sum, line) => sum + line.amount, 0);
+        const remaining = Math.max(target.shortageAmount - sourced, 0);
+        return (
+          <div className="sourceLineRow" key={target.id}>
+            <div>
+              <strong>{target.label}</strong>
+              <p className="helperText">
+                Need {money(target.shortageAmount)} | Sourced {money(sourced)} | Remaining {money(remaining)}
+              </p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function SourcePicker({
   variance,
+  targetLine,
   sourceCandidates,
   remaining
 }: {
   variance: VarianceRow;
+  targetLine: VarianceTargetLine;
   sourceCandidates: SourceCandidate[];
   remaining: number;
 }) {
@@ -128,10 +167,14 @@ function SourcePicker({
   const [crossOrgOverride, setCrossOrgOverride] = useState(false);
   const normalizedSearch = search.trim().toLowerCase();
   const sortedCandidates = useMemo(() => {
-    const existingSourceIds = new Set(variance.sourceLines.map((line) => line.budgetPlanMonthId));
+    const existingSourceIds = new Set(
+      variance.sourceLines
+        .filter((line) => line.targetBudgetPlanMonthId === targetLine.budgetPlanMonthId)
+        .map((line) => line.budgetPlanMonthId)
+    );
     return sourceCandidates
       .filter((candidate) => !existingSourceIds.has(candidate.budgetPlanMonthId))
-      .filter((candidate) => crossOrgOverride || !variance.targetOrganizationId || candidate.organizationId === variance.targetOrganizationId)
+      .filter((candidate) => crossOrgOverride || !targetLine.organizationId || candidate.organizationId === targetLine.organizationId)
       .filter((candidate) => {
         if (!normalizedSearch) return true;
         return [candidate.fiscalYearName, candidate.orgCode, candidate.organizationName, candidate.accountCode, candidate.accountName, candidate.monthStart]
@@ -141,16 +184,16 @@ function SourcePicker({
           .includes(normalizedSearch);
       })
       .sort((a, b) => {
-        const aSameFy = variance.targetFiscalYearId && a.fiscalYearId === variance.targetFiscalYearId ? 0 : 1;
-        const bSameFy = variance.targetFiscalYearId && b.fiscalYearId === variance.targetFiscalYearId ? 0 : 1;
-        const aSameOrg = variance.targetOrganizationId && a.organizationId === variance.targetOrganizationId ? 0 : 1;
-        const bSameOrg = variance.targetOrganizationId && b.organizationId === variance.targetOrganizationId ? 0 : 1;
+        const aSameFy = targetLine.fiscalYearId && a.fiscalYearId === targetLine.fiscalYearId ? 0 : 1;
+        const bSameFy = targetLine.fiscalYearId && b.fiscalYearId === targetLine.fiscalYearId ? 0 : 1;
+        const aSameOrg = targetLine.organizationId && a.organizationId === targetLine.organizationId ? 0 : 1;
+        const bSameOrg = targetLine.organizationId && b.organizationId === targetLine.organizationId ? 0 : 1;
         const aEnough = a.available >= remaining ? 0 : 1;
         const bEnough = b.available >= remaining ? 0 : 1;
         return aSameFy - bSameFy || aSameOrg - bSameOrg || aEnough - bEnough || b.available - a.available || a.label.localeCompare(b.label);
       })
       .slice(0, 24);
-  }, [crossOrgOverride, normalizedSearch, remaining, sourceCandidates, variance.sourceLines, variance.targetFiscalYearId, variance.targetOrganizationId]);
+  }, [crossOrgOverride, normalizedSearch, remaining, sourceCandidates, targetLine, variance.sourceLines]);
 
   const selected = sortedCandidates.find((candidate) => candidate.budgetPlanMonthId === selectedId);
 
@@ -168,7 +211,7 @@ function SourcePicker({
       <input type="hidden" name="crossOrgOverride" value={crossOrgOverride ? "on" : ""} />
       <div className="sourceCandidateList">
         {sortedCandidates.map((candidate) => {
-          const sameOrg = variance.targetOrganizationId && candidate.organizationId === variance.targetOrganizationId;
+          const sameOrg = targetLine.organizationId && candidate.organizationId === targetLine.organizationId;
           const enough = candidate.available >= remaining;
           return (
             <button
@@ -208,6 +251,7 @@ function SourceLineList({ variance }: { variance: VarianceRow }) {
             <strong>{line.label}</strong>
             <p className="helperText">
               {money(line.amount)}
+              {line.targetLabel ? ` | To ${line.targetLabel}` : ""}
               {line.crossOrgOverride ? " | Cross-org override" : ""}
               {line.narrative ? ` | ${line.narrative}` : ""}
             </p>
@@ -234,27 +278,55 @@ function SourceLineList({ variance }: { variance: VarianceRow }) {
 function SourceLineForm({ variance, sourceCandidates }: { variance: VarianceRow; sourceCandidates: SourceCandidate[] }) {
   const [state, action] = useActionState(addVarianceSourceLineAction, initialState);
   if (!["draft", "ready_for_review"].includes(variance.status)) return null;
-  const remaining = Math.max(variance.targetShortage - variance.totalSourced, 0);
-  const fullySourced = remaining <= 0;
+  const targets =
+    variance.targetLines.length > 0
+      ? variance.targetLines
+      : [
+          {
+            id: `${variance.id}:target`,
+            budgetPlanMonthId: "",
+            fiscalYearId: variance.targetFiscalYearId,
+            organizationId: variance.targetOrganizationId,
+            label: variance.targetLabel ?? "Target bucket",
+            shortageAmount: variance.targetShortage
+          }
+        ];
 
   return (
-    <form className="varianceSourceForm" action={action}>
-      <input type="hidden" name="varianceRequestId" value={variance.id} />
-      <SourcePicker variance={variance} sourceCandidates={sourceCandidates} remaining={remaining || variance.targetShortage} />
-      <label>
-        Transfer Amount
-        <input name="transferAmount" type="number" min="0.01" step="0.01" defaultValue={(remaining || variance.targetShortage).toFixed(2)} required />
-      </label>
-      <label>
-        Narrative
-        <input name="narrative" placeholder="Reason for moving funds" />
-      </label>
-      <SubmitButton className="buttonLink buttonPrimary" disabled={fullySourced}>
-        {fullySourced ? "Fully Sourced" : "Add Source"}
-      </SubmitButton>
-      {fullySourced ? <p className="helperText">Remove a source line before adding another.</p> : null}
+    <div className="varianceTargetRouting">
+      {targets.map((targetLine) => {
+        const sourced = variance.sourceLines
+          .filter((line) => !targetLine.budgetPlanMonthId || line.targetBudgetPlanMonthId === targetLine.budgetPlanMonthId)
+          .reduce((sum, line) => sum + line.amount, 0);
+        const remaining = Math.max(targetLine.shortageAmount - sourced, 0);
+        const fullySourced = remaining <= 0;
+        return (
+          <form className="varianceSourceForm" action={action} key={targetLine.id}>
+            <input type="hidden" name="varianceRequestId" value={variance.id} />
+            <input type="hidden" name="toBudgetPlanMonthId" value={targetLine.budgetPlanMonthId} />
+            <div>
+              <p className="eyebrow">Route source to</p>
+              <strong>{targetLine.label}</strong>
+              <p className="helperText">Remaining to source: {money(remaining)}</p>
+            </div>
+            <SourcePicker variance={variance} targetLine={targetLine} sourceCandidates={sourceCandidates} remaining={remaining || targetLine.shortageAmount} />
+            <label>
+              Transfer Amount
+              <input name="transferAmount" type="number" min="0.01" step="0.01" defaultValue={(remaining || targetLine.shortageAmount).toFixed(2)} required />
+            </label>
+            <label>
+              Narrative
+              <input name="narrative" placeholder="Reason for moving funds" />
+            </label>
+            <SubmitButton className="buttonLink buttonPrimary" disabled={fullySourced}>
+              {fullySourced ? "Fully Sourced" : "Add Source"}
+            </SubmitButton>
+            {fullySourced ? <p className="helperText">Remove a source line before adding another for this target.</p> : null}
+          </form>
+        );
+      })}
       <StateMessage state={state} />
-    </form>
+    </div>
   );
 }
 
@@ -355,6 +427,7 @@ export function VarianceCenterClient({ variances, sourceCandidates, canApprove }
                   {variance.reason ? <p>{variance.reason}</p> : null}
                 </div>
                 <FundingSummary variance={variance} />
+                <TargetLineList variance={variance} />
                 <SourceLineList variance={variance} />
                 <SourceLineForm variance={variance} sourceCandidates={sourceCandidates} />
                 <WorkbookControls variance={variance} />

@@ -421,6 +421,26 @@ th {
   background: #ffffff;
 }
 
+.institutionalBulkForm {
+  display: block;
+}
+
+.varianceCellActions {
+  display: grid;
+  gap: 0.35rem;
+  justify-items: end;
+  margin-top: 0.55rem;
+}
+
+.varianceSelectLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  color: var(--text-muted);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.78rem;
+}
+
 .emptyMonthCell {
   color: var(--text-muted);
 }
@@ -909,6 +929,16 @@ th {
   border: 1px solid #e2e8e3;
   border-radius: 8px;
   background: #ffffff;
+}
+
+.varianceTargetRouting {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.targetLineList {
+  border-color: #d8e5dc;
+  background: #f7fbf8;
 }
 
 .varianceSourceForm label,

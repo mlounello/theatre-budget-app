@@ -200,6 +200,74 @@ export async function calculateInstitutionalAvailability(
   return asNumber(row?.official_available_amount);
 }
 
+async function resolveInstitutionalOrganizationId(
+  supabase: unknown,
+  params: { organizationId: string; fiscalYearId: string; purchaseId: string }
+): Promise<string> {
+  const db = asDb(supabase);
+  const { data: organization, error } = await db
+    .from("organizations")
+    .select("id, org_code, fiscal_year_id")
+    .eq("id", params.organizationId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+
+  const row = organization as { id?: string; org_code?: string | null; fiscal_year_id?: string | null } | null;
+  if (!row?.id) return params.organizationId;
+  if (row.fiscal_year_id === params.fiscalYearId) return row.id;
+
+  const orgCode = row.org_code?.trim();
+  if (!orgCode) return row.id;
+
+  const { data: fiscalYearOrg, error: fiscalYearOrgError } = await db
+    .from("organizations")
+    .select("id")
+    .eq("org_code", orgCode)
+    .eq("fiscal_year_id", params.fiscalYearId)
+    .maybeSingle();
+  if (fiscalYearOrgError) throw new Error(fiscalYearOrgError.message);
+
+  const fiscalYearOrgRow = fiscalYearOrg as { id?: string } | null;
+  if (fiscalYearOrgRow?.id) return fiscalYearOrgRow.id;
+
+  return row.id;
+}
+
+async function resolveInstitutionalAccountCodeId(
+  supabase: unknown,
+  params: { accountCodeId: string; purchaseId: string }
+): Promise<string> {
+  const db = asDb(supabase);
+  const { data: accountCode, error } = await db
+    .from("account_codes")
+    .select("id, code")
+    .eq("id", params.accountCodeId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+
+  const row = accountCode as { id?: string; code?: string | null } | null;
+  if (!row?.id) return params.accountCodeId;
+  const code = row.code?.trim();
+  if (!code) return row.id;
+
+  const { data: matchingCodes, error: matchingError } = await db
+    .from("account_codes")
+    .select("id")
+    .eq("code", code);
+  if (matchingError) throw new Error(matchingError.message);
+
+  const matches = (matchingCodes ?? []) as Array<{ id?: string }>;
+  const ids = [...new Set(matches.map((match) => match.id).filter((id): id is string => Boolean(id)))];
+  if (ids.length === 1) return ids[0];
+
+  warnInstitutionalSync(params.purchaseId, "ambiguous_account_code", {
+    accountCodeId: params.accountCodeId,
+    accountCode: code,
+    matchingAccountCodeIds: ids
+  });
+  return row.id;
+}
+
 function activeCommitmentAmount(purchase: PurchaseForInstitutionalBudget): number {
   const status = String(purchase.status ?? "").toLowerCase();
   if (status === "cancelled") return 0;
@@ -326,8 +394,8 @@ export async function createInstitutionalCommitmentForPurchase(
     return { ok: true, skippedReason: "zero_or_cancelled_amount", commitmentCount: 0, committedAmount: 0, varianceRequired: false, shortageAmount: 0 };
   }
 
-  const organizationId = purchaseRow.organization_id ?? purchaseRow.projects?.organization_id ?? null;
-  if (!organizationId) {
+  const rawOrganizationId = purchaseRow.organization_id ?? purchaseRow.projects?.organization_id ?? null;
+  if (!rawOrganizationId) {
     warnInstitutionalSync(purchaseId, "missing_organization");
     return { ok: true, skippedReason: "missing_organization", commitmentCount: 0, committedAmount: 0, varianceRequired: false, shortageAmount: 0 };
   }
@@ -338,6 +406,11 @@ export async function createInstitutionalCommitmentForPurchase(
     warnInstitutionalSync(purchaseId, "missing_fiscal_year", { orderDate });
     return { ok: true, skippedReason: "missing_fiscal_year", commitmentCount: 0, committedAmount: 0, varianceRequired: false, shortageAmount: 0 };
   }
+  const organizationId = await resolveInstitutionalOrganizationId(db, {
+    organizationId: rawOrganizationId,
+    fiscalYearId: fiscalYear.id,
+    purchaseId
+  });
 
   const { data: allocations, error: allocationsError } = await db
     .from("purchase_allocations")
@@ -366,11 +439,15 @@ export async function createInstitutionalCommitmentForPurchase(
         ];
 
   for (const allocation of allocationInputs) {
-    const accountCodeId =
+    const rawAccountCodeId =
       allocation.account_code_id ??
       allocation.project_budget_lines?.account_code_id ??
       (allocationRows.length === 0 ? purchaseRow.project_budget_lines?.account_code_id ?? null : null);
-    if (!accountCodeId) continue;
+    if (!rawAccountCodeId) continue;
+    const accountCodeId = await resolveInstitutionalAccountCodeId(db, {
+      accountCodeId: rawAccountCodeId,
+      purchaseId
+    });
     const committedAmount = asNumber(allocation.amount);
     if (committedAmount === 0) continue;
     const bucket = await resolveInstitutionalBudgetBucket(db, {

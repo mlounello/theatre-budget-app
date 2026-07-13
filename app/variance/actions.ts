@@ -67,7 +67,17 @@ async function getVarianceFundingState(
 
   const targetBudgetPlanMonthId = (variance.target_budget_plan_month_id as string | null) ?? null;
   let targetShortage = asNumber(variance.total_transfer_amount as string | number | null);
-  if (targetBudgetPlanMonthId) {
+  const { data: targets, error: targetsError } = await supabase
+    .from("variance_request_targets")
+    .select("shortage_amount")
+    .eq("variance_request_id", varianceRequestId);
+  if (targetsError) throw new Error(targetsError.message);
+  if ((targets ?? []).length > 0) {
+    targetShortage = ((targets ?? []) as Array<{ shortage_amount?: string | number | null }>).reduce(
+      (sum, target) => sum + asNumber(target.shortage_amount),
+      0
+    );
+  } else if (targetBudgetPlanMonthId) {
     const { data: bucket, error: bucketError } = await supabase
       .from("v_institutional_monthly_budget_availability")
       .select("official_available_amount")
@@ -103,7 +113,7 @@ async function updateVarianceSourceTotal(
   const state = await getVarianceFundingState(supabase, varianceRequestId);
   const { error } = await supabase
     .from("variance_requests")
-    .update({ total_transfer_amount: state.totalSourced.toFixed(2) })
+    .update({ total_transfer_amount: state.targetShortage.toFixed(2) })
     .eq("id", varianceRequestId);
   if (error) throw new Error(error.message);
   return state.totalSourced;
@@ -120,6 +130,7 @@ export async function addVarianceSourceLineAction(
 
     const varianceRequestId = String(formData.get("varianceRequestId") ?? "").trim();
     const fromBudgetPlanMonthId = String(formData.get("fromBudgetPlanMonthId") ?? "").trim();
+    const requestedToBudgetPlanMonthId = String(formData.get("toBudgetPlanMonthId") ?? "").trim();
     const transferAmount = parseMoney(formData.get("transferAmount"));
     const narrative = String(formData.get("narrative") ?? "").trim();
     const crossOrgOverride = formData.get("crossOrgOverride") === "on";
@@ -142,7 +153,7 @@ export async function addVarianceSourceLineAction(
       return err("Source lines can only be edited while a variance is Draft or Ready for Review.");
     }
 
-    let targetBudgetPlanMonthId = (variance.target_budget_plan_month_id as string | null) ?? null;
+    let targetBudgetPlanMonthId = requestedToBudgetPlanMonthId || (variance.target_budget_plan_month_id as string | null) || null;
     if (!targetBudgetPlanMonthId) {
       const triggeringPurchaseId = (variance.triggering_purchase_id as string | null) ?? "";
       if (!triggeringPurchaseId) return err("This variance does not have a target bucket yet.");
@@ -159,6 +170,14 @@ export async function addVarianceSourceLineAction(
       targetBudgetPlanMonthId = (targetCommitment?.budget_plan_month_id as string | null) ?? null;
       if (!targetBudgetPlanMonthId) return err("No institutional target bucket is linked to this variance.");
     }
+
+    const { count: matchingTargetCount, error: matchingTargetError } = await supabase
+      .from("variance_request_targets")
+      .select("id", { count: "exact", head: true })
+      .eq("variance_request_id", varianceRequestId)
+      .eq("budget_plan_month_id", targetBudgetPlanMonthId);
+    if (matchingTargetError) return err(matchingTargetError.message);
+    if (requestedToBudgetPlanMonthId && (matchingTargetCount ?? 0) === 0) return err("That target bucket is not attached to this variance.");
 
     const { data: targetBucket, error: targetBucketError } = await supabase
       .from("v_institutional_monthly_budget_availability")
@@ -191,7 +210,8 @@ export async function addVarianceSourceLineAction(
       .from("variance_request_lines")
       .select("id", { count: "exact", head: true })
       .eq("variance_request_id", varianceRequestId)
-      .eq("from_budget_plan_month_id", fromBudgetPlanMonthId);
+      .eq("from_budget_plan_month_id", fromBudgetPlanMonthId)
+      .eq("to_budget_plan_month_id", targetBudgetPlanMonthId);
     if (duplicateError) return err(duplicateError.message);
     if ((duplicateCount ?? 0) > 0) return err("That source bucket is already attached to this variance.");
 

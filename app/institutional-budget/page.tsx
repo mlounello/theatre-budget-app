@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { createVarianceFromBucketAction } from "@/app/institutional-budget/actions";
+import { createBulkVarianceFromBucketsAction, createVarianceFromBucketAction } from "@/app/institutional-budget/actions";
 import { getAccessContext } from "@/lib/access";
 import { formatCurrency } from "@/lib/format";
 import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
@@ -224,10 +224,16 @@ export default async function InstitutionalBudgetPage({
             <p className="eyebrow">FY / Org / Account</p>
             <h2>Institutional Availability</h2>
           </div>
-          <Link className="buttonLink" href="/variance">
-            Open Variance Center
-          </Link>
+          <div className="buttonCluster">
+            <Link className="buttonLink" href="/variance">
+              Open Variance Center
+            </Link>
+            <button className="buttonLink buttonPrimary" form="bulkVarianceForm" type="submit">
+              Create Bulk Variance
+            </button>
+          </div>
         </div>
+        <form id="bulkVarianceForm" action={createBulkVarianceFromBucketsAction} className="institutionalBulkForm">
         <div className="tableWrap institutionalGridWrap">
           <table className="institutionalGrid">
             <thead>
@@ -278,12 +284,21 @@ export default async function InstitutionalBudgetPage({
                             <span>Commit {formatCurrency(asNumber(cell.submitted_commitments_amount))}</span>
                           </div>
                           {isNegative && cell.budget_plan_month_id ? (
-                            <form action={createVarianceFromBucketAction} className="inlineEditForm">
-                              <input type="hidden" name="budgetPlanMonthId" value={cell.budget_plan_month_id} />
-                              <button type="submit" className="tinyButton">
+                            <div className="varianceCellActions">
+                              <label className="varianceSelectLabel">
+                                <input type="checkbox" name="budgetPlanMonthId" value={cell.budget_plan_month_id} />
+                                Bulk
+                              </label>
+                              <button
+                                type="submit"
+                                className="tinyButton"
+                                formAction={createVarianceFromBucketAction}
+                                name="singleBudgetPlanMonthId"
+                                value={cell.budget_plan_month_id}
+                              >
                                 Create variance
                               </button>
-                            </form>
+                            </div>
                           ) : null}
                         </td>
                       );
@@ -294,6 +309,7 @@ export default async function InstitutionalBudgetPage({
             </tbody>
           </table>
         </div>
+        </form>
       </article>
     </section>
   );
