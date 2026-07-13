@@ -64,6 +64,7 @@ export type SourceCandidate = {
   monthStart: string | null;
   label: string;
   available: number;
+  projectedAvailable: number;
   crossesTargetOrg: boolean;
 };
 
@@ -188,9 +189,9 @@ function SourcePicker({
         const bSameFy = targetLine.fiscalYearId && b.fiscalYearId === targetLine.fiscalYearId ? 0 : 1;
         const aSameOrg = targetLine.organizationId && a.organizationId === targetLine.organizationId ? 0 : 1;
         const bSameOrg = targetLine.organizationId && b.organizationId === targetLine.organizationId ? 0 : 1;
-        const aEnough = a.available >= remaining ? 0 : 1;
-        const bEnough = b.available >= remaining ? 0 : 1;
-        return aSameFy - bSameFy || aSameOrg - bSameOrg || aEnough - bEnough || b.available - a.available || a.label.localeCompare(b.label);
+        const aEnough = a.projectedAvailable >= remaining ? 0 : 1;
+        const bEnough = b.projectedAvailable >= remaining ? 0 : 1;
+        return aSameFy - bSameFy || aSameOrg - bSameOrg || aEnough - bEnough || b.projectedAvailable - a.projectedAvailable || a.label.localeCompare(b.label);
       })
       .slice(0, 24);
   }, [crossOrgOverride, normalizedSearch, remaining, sourceCandidates, targetLine, variance.sourceLines]);
@@ -212,7 +213,7 @@ function SourcePicker({
       <div className="sourceCandidateList">
         {sortedCandidates.map((candidate) => {
           const sameOrg = targetLine.organizationId && candidate.organizationId === targetLine.organizationId;
-          const enough = candidate.available >= remaining;
+          const enough = candidate.projectedAvailable >= remaining;
           return (
             <button
               className={candidate.budgetPlanMonthId === selectedId ? "sourceCandidate selected" : "sourceCandidate"}
@@ -226,14 +227,21 @@ function SourcePicker({
                 </strong>
                 <small>{[candidate.accountName, candidate.monthStart ? String(candidate.monthStart).slice(0, 7) : null].filter(Boolean).join(" | ")}</small>
               </span>
-              <span className={enough ? "positive" : "negative"}>{money(candidate.available)}</span>
+              <span className={enough ? "positive sourceCandidateAmount" : "negative sourceCandidateAmount"}>
+                {money(candidate.projectedAvailable)}
+                <small>after pending</small>
+              </span>
               {!sameOrg ? <em>Cross-org</em> : null}
             </button>
           );
         })}
         {sortedCandidates.length === 0 ? <p className="helperText">No matching source buckets.</p> : null}
       </div>
-      {selected ? <p className="helperText">Selected: {selected.label}</p> : null}
+      {selected ? (
+        <p className="helperText">
+          Selected: {selected.label}. Official {money(selected.available)}, after pending {money(selected.projectedAvailable)}.
+        </p>
+      ) : null}
     </div>
   );
 }

@@ -251,6 +251,7 @@ export default async function VariancePage({
     account_name?: string | null;
     month_start?: string | null;
     official_available_amount?: string | number | null;
+    projected_available_amount?: string | number | null;
     crosses_target_org?: boolean | null;
   };
 
@@ -265,6 +266,7 @@ export default async function VariancePage({
     accountName: (row.account_name as string | null) ?? null,
     monthStart: (row.month_start as string | null) ?? null,
     available: moneyLabel(row.official_available_amount as string | number | null),
+    projectedAvailable: moneyLabel(row.projected_available_amount as string | number | null),
     crossesTargetOrg: Boolean(row.crosses_target_org),
     label: [
       row.fiscal_year_name,

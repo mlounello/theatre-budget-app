@@ -189,7 +189,7 @@ export async function addVarianceSourceLineAction(
 
     const { data: sourceBucket, error: sourceError } = await supabase
       .from("v_institutional_monthly_budget_availability")
-      .select("budget_plan_month_id, organization_id, account_code_id, month_start, official_available_amount")
+      .select("budget_plan_month_id, organization_id, account_code_id, month_start, official_available_amount, projected_available_amount")
       .eq("budget_plan_month_id", fromBudgetPlanMonthId)
       .maybeSingle();
     if (sourceError) return err(sourceError.message);
@@ -201,9 +201,12 @@ export async function addVarianceSourceLineAction(
       return err("Cross-org variance requires the manual override checkbox.");
     }
 
-    const available = Number(sourceBucket.official_available_amount ?? 0);
-    if (transferAmount > available && !crossOrgOverride) {
-      return err("Transfer amount exceeds the selected source bucket's official available amount.");
+    const officialAvailable = asNumber(sourceBucket.official_available_amount as string | number | null);
+    const projectedAvailable = asNumber(sourceBucket.projected_available_amount as string | number | null);
+    if (transferAmount > projectedAvailable) {
+      return err(
+        `Transfer amount exceeds the selected source bucket's remaining balance after pending variances. Official available: ${officialAvailable.toFixed(2)}. After pending: ${projectedAvailable.toFixed(2)}.`
+      );
     }
 
     const { count: duplicateCount, error: duplicateError } = await supabase

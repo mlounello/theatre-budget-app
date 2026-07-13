@@ -1000,6 +1000,18 @@ th {
   font-style: normal;
 }
 
+.sourceCandidateAmount {
+  text-align: right;
+  font-weight: 800;
+}
+
+.sourceCandidateAmount small {
+  color: var(--text-muted);
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
 .sourceLineList {
   display: grid;
   gap: 0.5rem;
