@@ -611,6 +611,23 @@ export type SettingsProjectMembershipRow = {
   role: "admin" | "project_manager" | "buyer" | "viewer" | "procurement_tracker";
 };
 
+export type SettingsProductionTeamAssignmentRow = {
+  id: string;
+  projectId: string;
+  projectLabel: string;
+  userId: string | null;
+  userName: string | null;
+  profileName: string;
+  profileEmail: string | null;
+  productionRole: string | null;
+  productionCategoryId: string | null;
+  productionCategoryName: string | null;
+  budgetAccessRole: "none" | "viewer" | "project_manager";
+  derivedAccessScopeId: string | null;
+  active: boolean;
+  lastInvitedAt: string | null;
+};
+
 export async function getDashboardProjects(params: { fiscalYearId?: string } = {}): Promise<DashboardProject[]> {
   const supabase = await getSupabaseServerClient();
   const debugAccess = process.env.DEBUG_DASHBOARD_ACCESS === "true";
@@ -1841,6 +1858,92 @@ export async function getSettingsProjectMemberships(): Promise<{
   const filteredUsers = isAdmin ? users : users.filter((user) => membershipUserIds.has(user.id));
 
   return { users: filteredUsers, memberships };
+}
+
+export async function getSettingsProductionTeamAssignments(): Promise<SettingsProductionTeamAssignmentRow[]> {
+  const supabase = await getSupabaseServerClient();
+  const access = await getAccessContext();
+
+  const [
+    assignmentsResponse,
+    usersResponse,
+    projectsResponse,
+    categoriesResponse
+  ] = await Promise.all([
+    supabase
+      .from("production_team_assignments")
+      .select(
+        "id, project_id, user_id, profile_name, profile_email, production_role, production_category_id, budget_access_role, derived_access_scope_id, active, last_invited_at, created_at"
+      )
+      .order("created_at", { ascending: false }),
+    supabase.from("users").select("id, full_name"),
+    supabase.from("projects").select("id, name, season"),
+    supabase.from("production_categories").select("id, name")
+  ]);
+
+  if (assignmentsResponse.error) throw assignmentsResponse.error;
+  if (usersResponse.error) throw usersResponse.error;
+  if (projectsResponse.error) throw projectsResponse.error;
+  if (categoriesResponse.error) throw categoriesResponse.error;
+
+  const isAdmin = access.role === "admin";
+  const manageableProjects = access.manageableProjectIds;
+  const userNameById = new Map(
+    (usersResponse.data ?? []).map((row) => [
+      row.id as string,
+      ((row.full_name as string | null) ?? "").trim() || (row.id as string)
+    ])
+  );
+  const projectLabelById = new Map(
+    (projectsResponse.data ?? []).map((row) => [
+      row.id as string,
+      `${row.name as string}${(row.season as string | null) ? ` (${row.season as string})` : ""}`
+    ])
+  );
+  const categoryNameById = new Map((categoriesResponse.data ?? []).map((row) => [row.id as string, row.name as string]));
+
+  return ((assignmentsResponse.data ?? []) as Array<{
+    id?: string;
+    project_id?: string | null;
+    user_id?: string | null;
+    profile_name?: string | null;
+    profile_email?: string | null;
+    production_role?: string | null;
+    production_category_id?: string | null;
+    budget_access_role?: string | null;
+    derived_access_scope_id?: string | null;
+    active?: boolean | null;
+    last_invited_at?: string | null;
+  }>)
+    .filter((row) => {
+      const projectId = row.project_id ?? "";
+      return isAdmin || manageableProjects.has(projectId);
+    })
+    .map((row) => {
+      const projectId = row.project_id ?? "";
+      const userId = row.user_id ?? null;
+      const productionCategoryId = row.production_category_id ?? null;
+      const budgetAccessRole = row.budget_access_role === "project_manager" || row.budget_access_role === "none"
+        ? row.budget_access_role
+        : "viewer";
+      return {
+        id: row.id ?? "",
+        projectId,
+        projectLabel: projectLabelById.get(projectId) ?? projectId,
+        userId,
+        userName: userId ? userNameById.get(userId) ?? userId : null,
+        profileName: row.profile_name ?? "Production team member",
+        profileEmail: row.profile_email ?? null,
+        productionRole: row.production_role ?? null,
+        productionCategoryId,
+        productionCategoryName: productionCategoryId ? categoryNameById.get(productionCategoryId) ?? productionCategoryId : null,
+        budgetAccessRole: budgetAccessRole as "none" | "viewer" | "project_manager",
+        derivedAccessScopeId: row.derived_access_scope_id ?? null,
+        active: row.active ?? true,
+        lastInvitedAt: row.last_invited_at ?? null
+      };
+    })
+    .sort((a, b) => a.projectLabel.localeCompare(b.projectLabel) || a.profileName.localeCompare(b.profileName));
 }
 
 export async function getTemplateNames(): Promise<string[]> {

@@ -11,18 +11,10 @@ function linksForRole(role: string): Array<{ href: string; label: string }> {
     return [{ href: "/procurement-tracker", label: "Procurement Tracker" }];
   }
 
-  if (role === "viewer") {
+  if (role === "viewer" || role === "buyer") {
     return [
       { href: "/", label: "Dashboard" },
       { href: "/my-budget", label: "My Budget" }
-    ];
-  }
-
-  if (role === "buyer") {
-    return [
-      { href: "/", label: "Dashboard" },
-      { href: "/my-budget", label: "My Budget" },
-      { href: "/requests", label: "Requests" }
     ];
   }
 
@@ -30,7 +22,7 @@ function linksForRole(role: string): Array<{ href: string; label: string }> {
     return [
       { href: "/", label: "Dashboard" },
       { href: "/overview", label: "Overview" },
-      { href: "/requests", label: "Requests" },
+      { href: "/my-budget", label: "Viewer Totals" },
       { href: "/procurement", label: "Procurement" },
       { href: "/contracts", label: "Contracts" },
       { href: "/guest-artists", label: "Guest Artists" },
@@ -47,7 +39,7 @@ function linksForRole(role: string): Array<{ href: string; label: string }> {
     return [
       { href: "/", label: "Dashboard" },
       { href: "/overview", label: "Overview" },
-      { href: "/requests", label: "Requests" },
+      { href: "/my-budget", label: "Viewer Totals" },
       { href: "/procurement", label: "Procurement" },
       { href: "/contracts", label: "Contracts" },
       { href: "/guest-artists", label: "Guest Artists" },

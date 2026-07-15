@@ -31,6 +31,7 @@ const ROLE_PRIORITY: Record<string, number> = {
 
 function toRole(value: unknown): AppRole | null {
   const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "buyer") return "viewer";
   if (normalized in ROLE_PRIORITY) return normalized as AppRole;
   return null;
 }

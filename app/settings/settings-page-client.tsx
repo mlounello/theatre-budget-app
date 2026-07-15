@@ -7,6 +7,7 @@ import {
   addBudgetLineAction,
   createAccountCodeAction,
   createUserAccessScopeAction,
+  deactivateProductionTeamAssignmentAction,
   archiveUserProfileAction,
   deleteFiscalYearAction,
   deleteOrganizationAction,
@@ -15,6 +16,8 @@ import {
   deleteUserAccessScopeAction,
   updateUserAccessScopeAction,
   removeProjectMembershipAction,
+  saveProductionTeamAssignmentAction,
+  sendProductionTeamAccessLinkAction,
   importHierarchyCsvAction,
   updateProductionCategoryAction,
   updateAccountCodeAction,
@@ -45,6 +48,7 @@ import type {
   ProductionCategoryOption,
   SettingsProject,
   SettingsAccessScopeRow,
+  SettingsProductionTeamAssignmentRow,
   SettingsUserRow,
   SettingsProjectMembershipRow,
   SettingsUserRow as SettingsProjectMembershipUser
@@ -95,6 +99,7 @@ type Props = {
   accessScopes: SettingsAccessScopeRow[];
   membershipUsers: SettingsProjectMembershipUser[];
   projectMemberships: SettingsProjectMembershipRow[];
+  productionTeamAssignments: SettingsProductionTeamAssignmentRow[];
 };
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
@@ -116,7 +121,8 @@ export function SettingsPageClient({
   accessUsers,
   accessScopes,
   membershipUsers,
-  projectMemberships
+  projectMemberships,
+  productionTeamAssignments
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -133,6 +139,9 @@ export function SettingsPageClient({
   const [createScopeState, createScopeActionForm] = useActionState(createUserAccessScopeAction, initialState);
   const [deleteScopeState, deleteScopeActionForm] = useActionState(deleteUserAccessScopeAction, initialState);
   const [updateScopeState, updateScopeActionForm] = useActionState(updateUserAccessScopeAction, initialState);
+  const [saveTeamState, saveTeamActionForm] = useActionState(saveProductionTeamAssignmentAction, initialState);
+  const [sendTeamLinkState, sendTeamLinkActionForm] = useActionState(sendProductionTeamAccessLinkAction, initialState);
+  const [deactivateTeamState, deactivateTeamActionForm] = useActionState(deactivateProductionTeamAssignmentAction, initialState);
   const [archiveUserState, archiveUserActionForm] = useActionState(archiveUserProfileAction, initialState);
 
   const [deleteOrganizationInlineState, deleteOrganizationInlineAction] = useActionState(deleteOrganizationAction, initialState);
@@ -296,7 +305,7 @@ export function SettingsPageClient({
     active: "true"
   });
   const [scopeForm, setScopeForm] = useState({
-    scopeRole: "buyer",
+    scopeRole: "viewer",
     projectId: "",
     productionCategoryId: "",
     fiscalYearId: "",
@@ -422,7 +431,7 @@ export function SettingsPageClient({
     if (lastScopeIdRef.current === editingScope.id) return;
     lastScopeIdRef.current = editingScope.id;
     setScopeForm({
-      scopeRole: editingScope.scopeRole ?? "buyer",
+      scopeRole: editingScope.scopeRole === "buyer" ? "viewer" : editingScope.scopeRole ?? "viewer",
       projectId: editingScope.projectId ?? "",
       productionCategoryId: editingScope.productionCategoryId ?? "",
       fiscalYearId: editingScope.fiscalYearId ?? "",
@@ -959,8 +968,8 @@ export function SettingsPageClient({
           <h2>Project Team Access</h2>
           <p className="heroSubtitle">
             {isAdmin
-              ? "Assign Admin/PM/Buyer/Viewer roles by project."
-              : "Assign PM/Buyer/Viewer roles for projects you manage."}
+              ? "Assign Admin, PM, or Viewer roles by project."
+              : "Assign PM or Viewer roles for projects you manage."}
           </p>
           {addProjectMembershipState.message ? (
             <p className={addProjectMembershipState.ok ? "successNote" : "errorNote"} key={addProjectMembershipState.timestamp}>
@@ -996,10 +1005,9 @@ export function SettingsPageClient({
             </label>
             <label>
               Role
-              <select name="role" defaultValue={isAdmin ? "project_manager" : "buyer"}>
+              <select name="role" defaultValue={isAdmin ? "project_manager" : "viewer"}>
                 {isAdmin ? <option value="admin">Admin</option> : null}
                 <option value="project_manager">Project Manager</option>
-                <option value="buyer">Buyer</option>
                 <option value="viewer">Viewer</option>
               </select>
             </label>
@@ -1050,11 +1058,156 @@ export function SettingsPageClient({
         </article>
 
         <article className="panel panelFull">
+          <h2>Production Team & Budget Access</h2>
+          <p className="heroSubtitle">
+            Assign the person to the production first, then let the app create Viewer budget access and send a magic-link login.
+          </p>
+          {saveTeamState.message ? (
+            <p className={saveTeamState.ok ? "successNote" : "errorNote"} key={saveTeamState.timestamp}>
+              {saveTeamState.message}
+            </p>
+          ) : null}
+          {sendTeamLinkState.message ? (
+            <p className={sendTeamLinkState.ok ? "successNote" : "errorNote"} key={sendTeamLinkState.timestamp}>
+              {sendTeamLinkState.message}
+            </p>
+          ) : null}
+          {deactivateTeamState.message ? (
+            <p className={deactivateTeamState.ok ? "successNote" : "errorNote"} key={deactivateTeamState.timestamp}>
+              {deactivateTeamState.message}
+            </p>
+          ) : null}
+          <form action={saveTeamActionForm} className="requestForm">
+            <label>
+              Project
+              <select name="projectId" required>
+                <option value="">Select project</option>
+                {projects
+                  .slice()
+                  .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
+                  .map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                      {project.season ? ` (${project.season})` : ""}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label>
+              Existing app user
+              <select name="userId">
+                <option value="">Use profile email / magic link</option>
+                {accessUsers.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.fullName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Name
+              <input name="profileName" placeholder="Designer, director, team member" required />
+            </label>
+            <label>
+              Email
+              <input name="profileEmail" type="email" placeholder="person@siena.edu" />
+            </label>
+            <label>
+              Production Role
+              <input name="productionRole" placeholder="Scenic Designer, Director, Stage Manager" />
+            </label>
+            <label>
+              Department
+              <select name="productionCategoryId">
+                <option value="">All / no department restriction</option>
+                {productionCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Budget Access
+              <select name="budgetAccessRole" defaultValue="viewer">
+                <option value="none">No budget access yet</option>
+                <option value="viewer">Viewer</option>
+                {isAdmin ? <option value="project_manager">Project Manager</option> : null}
+              </select>
+            </label>
+            <button type="submit" className="buttonLink buttonPrimary">
+              Save Team Access
+            </button>
+          </form>
+
+          <div className="tableWrap" style={{ marginTop: "0.8rem" }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Project</th>
+                  <th>Person</th>
+                  <th>Role</th>
+                  <th>Department</th>
+                  <th>Budget Access</th>
+                  <th>Status</th>
+                  <th>Magic Link</th>
+                  <th>Deactivate</th>
+                </tr>
+              </thead>
+              <tbody>
+                {productionTeamAssignments.map((assignment) => (
+                  <tr key={assignment.id}>
+                    <td>{assignment.projectLabel}</td>
+                    <td>
+                      <strong>{assignment.profileName}</strong>
+                      <div className="muted">{assignment.profileEmail ?? assignment.userName ?? "No email yet"}</div>
+                    </td>
+                    <td>{assignment.productionRole ?? "-"}</td>
+                    <td>{assignment.productionCategoryName ?? "All"}</td>
+                    <td>{assignment.budgetAccessRole}</td>
+                    <td>{assignment.active ? "Active" : "Inactive"}</td>
+                    <td>
+                      <form action={sendTeamLinkActionForm}>
+                        <input type="hidden" name="assignmentId" value={assignment.id} />
+                        <button type="submit" className="tinyButton" disabled={!assignment.active || assignment.budgetAccessRole === "none"}>
+                          Send Link
+                        </button>
+                      </form>
+                      {assignment.lastInvitedAt ? <div className="muted">{assignment.lastInvitedAt.slice(0, 10)}</div> : null}
+                    </td>
+                    <td>
+                      <form
+                        action={deactivateTeamActionForm}
+                        onSubmit={(event) => {
+                          if (!window.confirm("Deactivate this production-team assignment and its derived Viewer scope?")) {
+                            event.preventDefault();
+                          }
+                        }}
+                      >
+                        <input type="hidden" name="assignmentId" value={assignment.id} />
+                        <button type="submit" className="tinyButton dangerButton" disabled={!assignment.active || assignment.userId === accessUserId}>
+                          Deactivate
+                        </button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+                {productionTeamAssignments.length === 0 ? (
+                  <tr>
+                    <td colSpan={8}>(none)</td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <article className="panel panelFull">
           <h2>User Access Scopes</h2>
           <p className="heroSubtitle">
             {isAdmin
               ? "Assign optional FY/Org/Project/Department scope rows."
-              : "Assign Buyer/Viewer scope rows for projects you manage."}
+              : "Assign Viewer scope rows for projects you manage."}
           </p>
           {createScopeState.message ? (
             <p className={createScopeState.ok ? "successNote" : "errorNote"} key={createScopeState.timestamp}>
@@ -1075,10 +1228,9 @@ export function SettingsPageClient({
             </label>
             <label>
               Role
-              <select name="scopeRole" defaultValue="buyer">
+              <select name="scopeRole" defaultValue="viewer">
                 {isAdmin ? <option value="admin">Admin</option> : null}
                 {isAdmin ? <option value="project_manager">Project Manager</option> : null}
-                <option value="buyer">Buyer</option>
                 <option value="viewer">Viewer</option>
                 {isAdmin ? <option value="procurement_tracker">Procurement Tracker</option> : null}
               </select>
@@ -1666,7 +1818,6 @@ export function SettingsPageClient({
                 >
                   {isAdmin ? <option value="admin">Admin</option> : null}
                   {isAdmin ? <option value="project_manager">Project Manager</option> : null}
-                  <option value="buyer">Buyer</option>
                   <option value="viewer">Viewer</option>
                   {isAdmin ? <option value="procurement_tracker">Procurement Tracker</option> : null}
                 </select>

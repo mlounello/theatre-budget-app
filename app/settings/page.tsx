@@ -10,6 +10,7 @@ import {
   getProductionCategoriesAdmin,
   getProductionCategoryOptions,
   getSettingsAccessScopes,
+  getSettingsProductionTeamAssignments,
   getSettingsProjectMemberships,
   getSettingsProjects,
   getTemplateNames
@@ -38,10 +39,14 @@ export default async function SettingsPage() {
   const hierarchyRowsAll = await getHierarchyRows();
   const { users: accessUsers, scopes: accessScopes } = await getSettingsAccessScopes();
   const { users: membershipUsers, memberships: projectMemberships } = await getSettingsProjectMemberships();
+  const productionTeamAssignmentsAll = await getSettingsProductionTeamAssignments();
 
   const manageableProjectIds = access.manageableProjectIds;
   const projects = isAdmin ? projectsAll : projectsAll.filter((project) => manageableProjectIds.has(project.id));
   const hierarchyRows = isAdmin ? hierarchyRowsAll : hierarchyRowsAll.filter((row) => manageableProjectIds.has(row.projectId));
+  const productionTeamAssignments = isAdmin
+    ? productionTeamAssignmentsAll
+    : productionTeamAssignmentsAll.filter((assignment) => manageableProjectIds.has(assignment.projectId));
 
   return (
     <SettingsPageClient
@@ -62,6 +67,7 @@ export default async function SettingsPage() {
       accessScopes={accessScopes}
       membershipUsers={membershipUsers}
       projectMemberships={projectMemberships}
+      productionTeamAssignments={productionTeamAssignments}
     />
   );
 }

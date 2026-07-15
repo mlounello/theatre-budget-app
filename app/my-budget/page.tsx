@@ -30,6 +30,7 @@ export default async function MyBudgetPage({
   if (!access.userId) redirect("/login");
   if (access.role === "procurement_tracker") redirect("/procurement-tracker");
   if (searchParams) await searchParams;
+  const isAdminView = access.role === "admin" || access.role === "project_manager";
 
   const { cards } = await getMyBudgetData();
   const projectGroups = new Map<
@@ -95,10 +96,12 @@ export default async function MyBudgetPage({
   return (
     <section>
       <header className="sectionHeader">
-        <p className="eyebrow">My Budget</p>
-        <h1>Department Actuals and Running List</h1>
+        <p className="eyebrow">{isAdminView ? "Viewer Totals" : "My Budget"}</p>
+        <h1>{isAdminView ? "Production Department Totals" : "Department Actuals and Running List"}</h1>
         <p className="heroSubtitle">
-          Scoped department-level totals first, then full running lists grouped by project.
+          {isAdminView
+            ? "The same total budget, encumbered, paid, and remaining view assigned production users see."
+            : "Scoped department-level totals first, then full running lists grouped by project."}
         </p>
       </header>
 

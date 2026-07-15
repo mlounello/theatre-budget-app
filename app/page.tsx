@@ -96,7 +96,7 @@ export default async function DashboardPage({
   if (access.role === "procurement_tracker") {
     redirect("/procurement-tracker");
   }
-  if (access.role === "buyer" || access.role === "viewer") {
+  if (access.role === "viewer") {
     const { cards, openRequisitions } = await getMyBudgetData();
     return (
       <section>

@@ -31,10 +31,10 @@ type ProjectAccessTarget = {
 
 function toRole(value: unknown): AppRole | null {
   const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "buyer") return "viewer";
   if (
     normalized === "admin" ||
     normalized === "project_manager" ||
-    normalized === "buyer" ||
     normalized === "viewer" ||
     normalized === "procurement_tracker"
   ) {
@@ -46,8 +46,8 @@ function toRole(value: unknown): AppRole | null {
 function rolePriority(role: AppRole): number {
   if (role === "admin") return 5;
   if (role === "project_manager") return 4;
-  if (role === "buyer") return 3;
   if (role === "viewer") return 2;
+  if (role === "buyer") return 2;
   return 1;
 }
 
