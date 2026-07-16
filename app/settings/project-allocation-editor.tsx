@@ -33,6 +33,13 @@ type ProjectGroup = {
 };
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
+const HIDDEN_LINE_CODES = new Set(["CATEGORY", "UNASSIGNED"]);
+
+function displayBudgetCode(code: string | null): string | null {
+  const normalized = (code ?? "").trim();
+  if (!normalized || HIDDEN_LINE_CODES.has(normalized.toUpperCase())) return null;
+  return normalized;
+}
 
 function AllocationSaveButton() {
   const { pending } = useFormStatus();
@@ -70,12 +77,13 @@ function AllocationLineRow({ line, accountCodes }: { line: EditableLine; account
     active !== Boolean(line.budgetLineActive) ||
     accountCodeId !== (line.accountCodeId ?? "");
   const latestState = deleteState.message ? deleteState : saveState;
+  const budgetCodeLabel = displayBudgetCode(line.budgetCode);
 
   return (
     <tr className={changed ? "allocationDirtyRow" : ""}>
       <td className="allocationLineName">
         <strong>{line.budgetLineName ?? line.budgetCategory ?? "Budget line"}</strong>
-        <div className="muted">{line.budgetCode ?? "CATEGORY"}</div>
+        {budgetCodeLabel ? <div className="muted">{budgetCodeLabel}</div> : null}
       </td>
       <td>
         <form action={saveAction} className="allocationInlineForm">
