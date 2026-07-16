@@ -2880,7 +2880,7 @@ function hasBudgetActivity(values: Array<number | null | undefined>): boolean {
   return values.some((value) => Math.abs(value ?? 0) >= 0.005);
 }
 
-export async function getMyBudgetData(): Promise<{
+export async function getMyBudgetData(params: { fiscalYearId?: string } = {}): Promise<{
   role: "admin" | "project_manager" | "buyer" | "viewer" | "procurement_tracker" | "none";
   cards: MyBudgetCard[];
   openRequisitions: DashboardOpenRequisition[];
@@ -2911,13 +2911,16 @@ export async function getMyBudgetData(): Promise<{
     }
   }
 
+  let projectsQuery = supabase
+    .from("projects")
+    .select("id, name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name)")
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+  if (params.fiscalYearId) projectsQuery = projectsQuery.eq("fiscal_year_id", params.fiscalYearId);
+
   const [{ data: projectsData, error: projectsError }, { data: linesData, error: linesError }, { data: purchasesData, error: purchasesError }] =
     await Promise.all([
-      supabase
-        .from("projects")
-        .select("id, name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name)")
-        .order("sort_order", { ascending: true })
-        .order("name", { ascending: true }),
+      projectsQuery,
       supabase
         .from("project_budget_lines")
         .select("id, project_id, production_category_id, category, allocated_amount, active, production_categories(name)")

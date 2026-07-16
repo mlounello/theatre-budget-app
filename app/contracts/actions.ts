@@ -77,6 +77,24 @@ function parseInstallmentStatus(value: FormDataEntryValue | null): InstallmentSt
   return "planned";
 }
 
+function purchaseStatusForInstallmentStatus(status: InstallmentStatus): PurchaseStatus {
+  if (status === "check_paid") return "posted";
+  if (status === "check_request_submitted") return "encumbered";
+  return "requested";
+}
+
+function contractPaymentRequestedAmount(status: PurchaseStatus, amount: number): number {
+  return status === "requested" ? amount : 0;
+}
+
+function contractPaymentEncumberedAmount(status: PurchaseStatus, amount: number): number {
+  return status === "encumbered" ? amount : 0;
+}
+
+function contractPaymentPostedAmount(status: PurchaseStatus, amount: number): number {
+  return status === "posted" ? amount : 0;
+}
+
 function parseCheckRequestHandling(value: FormDataEntryValue | null): CheckRequestHandling {
   const raw = String(value ?? "mail").trim();
   if (raw === "business_affairs_pickup" || raw === "other") return raw;
@@ -394,7 +412,7 @@ export async function createContractAction(
           entered_by_user_id: user.id,
           title: installmentTitle,
           estimated_amount: installmentAmount,
-          requested_amount: 0,
+          requested_amount: installmentAmount,
           encumbered_amount: 0,
           pending_cc_amount: 0,
           posted_amount: 0,
@@ -666,7 +684,7 @@ export async function updateContractDetailsAction(
           entered_by_user_id: user.id,
           title: installmentTitle,
           estimated_amount: installmentAmount,
-          requested_amount: 0,
+          requested_amount: installmentAmount,
           encumbered_amount: 0,
           pending_cc_amount: 0,
           posted_amount: 0,
@@ -756,11 +774,10 @@ export async function updateContractDetailsAction(
       if (!installment.purchase_id) continue;
 
       const purchaseId = installment.purchase_id as string;
-      const nextStatus: PurchaseStatus =
-        installmentStatus === "check_paid" ? "posted" : installmentStatus === "check_request_submitted" ? "encumbered" : "requested";
-      const requestedAmount = 0;
-      const encumberedAmount = nextStatus === "encumbered" ? installmentAmount : 0;
-      const postedAmount = nextStatus === "posted" ? installmentAmount : 0;
+      const nextStatus = purchaseStatusForInstallmentStatus(installmentStatus);
+      const requestedAmount = contractPaymentRequestedAmount(nextStatus, installmentAmount);
+      const encumberedAmount = contractPaymentEncumberedAmount(nextStatus, installmentAmount);
+      const postedAmount = contractPaymentPostedAmount(nextStatus, installmentAmount);
 
       const { data: purchaseUpdated, error: purchaseUpdateError } = await supabase
         .from("purchases")

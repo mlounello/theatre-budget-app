@@ -4,7 +4,7 @@ import { formatCurrency } from "@/lib/format";
 import { getDashboardOpenRequisitions, getDashboardProjects, getFiscalYearOptions, getMyBudgetData } from "@/lib/db";
 import type { DashboardOpenRequisition, DashboardProject } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
-import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
+import { resolveCurrentFiscalYearId, resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { DashboardRequisitionTable } from "@/app/dashboard-requisition-table";
 
@@ -97,7 +97,9 @@ export default async function DashboardPage({
     redirect("/procurement-tracker");
   }
   if (access.role === "viewer") {
-    const { cards, openRequisitions } = await getMyBudgetData();
+    const fiscalYears = await getFiscalYearOptions();
+    const fiscalYearId = resolveCurrentFiscalYearId(fiscalYears);
+    const { cards, openRequisitions } = await getMyBudgetData({ fiscalYearId });
     return (
       <section>
         <div className="heroCard">

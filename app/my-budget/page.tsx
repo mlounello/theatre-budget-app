@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { getAccessContext } from "@/lib/access";
-import { getMyBudgetData } from "@/lib/db";
+import { getFiscalYearOptions, getMyBudgetData } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
+import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
 
 function labelForType(value: string): string {
   if (value === "request") return "Budget Hold";
@@ -24,15 +25,18 @@ function labelForStatus(value: string): string {
 export default async function MyBudgetPage({
   searchParams
 }: {
-  searchParams?: Promise<{ projectId?: string }>;
+  searchParams?: Promise<{ fiscalYearId?: string; projectId?: string }>;
 }) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
   if (access.role === "procurement_tracker") redirect("/procurement-tracker");
-  if (searchParams) await searchParams;
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const isAdminView = access.role === "admin" || access.role === "project_manager";
 
-  const { cards } = await getMyBudgetData();
+  const fiscalYears = await getFiscalYearOptions();
+  const selectedFiscalYearId = resolveRequestedFiscalYearId(fiscalYears, resolvedSearchParams?.fiscalYearId);
+  const selectedFiscalYear = fiscalYears.find((fy) => fy.id === selectedFiscalYearId) ?? null;
+  const { cards } = await getMyBudgetData({ fiscalYearId: selectedFiscalYearId });
   const projectGroups = new Map<
     string,
     {
@@ -104,6 +108,28 @@ export default async function MyBudgetPage({
             : "Scoped department-level totals first, then full running lists grouped by project."}
         </p>
       </header>
+
+      <article className="panel">
+        <h2>Fiscal Year</h2>
+        <form method="get" className="requestForm">
+          <label>
+            Show Budget Year
+            <select name="fiscalYearId" defaultValue={selectedFiscalYearId}>
+              {fiscalYears.map((fiscalYear) => (
+                <option key={fiscalYear.id} value={fiscalYear.id}>
+                  {fiscalYear.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" className="buttonLink buttonPrimary">
+            Apply
+          </button>
+        </form>
+        <p className="heroSubtitle">
+          Showing {selectedFiscalYear?.name ?? "the current fiscal year"}. Use this only when looking back at a closed year.
+        </p>
+      </article>
 
       <article className="panel">
         <h2>Actuals by Production Department</h2>
