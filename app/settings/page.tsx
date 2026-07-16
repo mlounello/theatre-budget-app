@@ -11,7 +11,6 @@ import {
   getProductionCategoryOptions,
   getSettingsAccessScopes,
   getSettingsProductionTeamAssignments,
-  getSettingsProjectMemberships,
   getSettingsProjects,
   getTemplateNames
 } from "@/lib/db";
@@ -37,8 +36,7 @@ export default async function SettingsPage() {
   const programs = await getProgramOptions();
   const foapals = await getFoapalOptions();
   const hierarchyRowsAll = await getHierarchyRows();
-  const { users: accessUsers, scopes: accessScopes } = await getSettingsAccessScopes();
-  const { users: membershipUsers, memberships: projectMemberships } = await getSettingsProjectMemberships();
+  const { users: accessUsers } = await getSettingsAccessScopes();
   const productionTeamAssignmentsAll = await getSettingsProductionTeamAssignments();
 
   const manageableProjectIds = access.manageableProjectIds;
@@ -64,9 +62,6 @@ export default async function SettingsPage() {
       foapals={foapals}
       hierarchyRows={hierarchyRows}
       accessUsers={accessUsers}
-      accessScopes={accessScopes}
-      membershipUsers={membershipUsers}
-      projectMemberships={projectMemberships}
       productionTeamAssignments={productionTeamAssignments}
     />
   );

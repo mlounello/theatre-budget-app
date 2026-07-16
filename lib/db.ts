@@ -1737,7 +1737,7 @@ export async function getSettingsAccessScopes(): Promise<{
       .order("created_at", { ascending: false }),
     supabase
       .from("project_memberships")
-      .select("user_id, project_id")
+      .select("user_id, project_id, role")
       .in("role", ["admin", "project_manager", "buyer", "viewer"]),
     supabase.from("projects").select("id, name, season"),
     supabase.from("production_categories").select("id, name")
@@ -1752,10 +1752,21 @@ export async function getSettingsAccessScopes(): Promise<{
   const isAdmin = access.role === "admin";
   const manageableProjects = access.manageableProjectIds;
 
-  const users = (usersResponse.data ?? []).map((row) => ({
-    id: row.id as string,
-    fullName: ((row.full_name as string | null) ?? "").trim() || (row.id as string)
-  }));
+  const adminUserIds = new Set<string>([access.userId].filter((id): id is string => Boolean(id)));
+  for (const row of membershipsResponse.data ?? []) {
+    if (row.role === "admin") adminUserIds.add(row.user_id as string);
+  }
+  for (const row of scopesResponse.data ?? []) {
+    if (row.scope_role === "admin") adminUserIds.add(row.user_id as string);
+  }
+
+  const users = (usersResponse.data ?? [])
+    .map((row) => ({
+      id: row.id as string,
+      fullName: ((row.full_name as string | null) ?? "").trim() || (row.id as string)
+    }))
+    .filter((user) => !adminUserIds.has(user.id))
+    .filter((user) => !user.fullName.toLowerCase().includes("(deleted)"));
   const userNameById = new Map(users.map((user) => [user.id, user.fullName]));
 
   const projectsById = new Map(
@@ -2865,6 +2876,10 @@ function resolvedPurchaseAmount(row: {
   return posted || pendingCc || encumbered || requested || estimated;
 }
 
+function hasBudgetActivity(values: Array<number | null | undefined>): boolean {
+  return values.some((value) => Math.abs(value ?? 0) >= 0.005);
+}
+
 export async function getMyBudgetData(): Promise<{
   role: "admin" | "project_manager" | "buyer" | "viewer" | "procurement_tracker" | "none";
   cards: MyBudgetCard[];
@@ -3105,6 +3120,16 @@ export async function getMyBudgetData(): Promise<{
       card.entries.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
       return card;
     })
+    .filter((card) =>
+      hasBudgetActivity([
+        card.allocatedTotal,
+        card.requestedOpenTotal,
+        card.heldTotal,
+        card.encTotal,
+        card.pendingCcTotal,
+        card.ytdTotal
+      ])
+    )
     .sort((a, b) => {
       const projectSort = a.projectName.localeCompare(b.projectName);
       if (projectSort !== 0) return projectSort;

@@ -4,6 +4,10 @@ import { getAccessContext } from "@/lib/access";
 import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
 import { redirect } from "next/navigation";
 
+function hasAnyAmount(values: number[]): boolean {
+  return values.some((value) => Math.abs(value) >= 0.005);
+}
+
 export default async function OverviewPage({
   searchParams
 }: {
@@ -27,9 +31,18 @@ export default async function OverviewPage({
   const filteredRows = !showAllFiscalYears && selectedFiscalYearId
     ? rows.filter((row) => row.fiscalYearId === selectedFiscalYearId)
     : rows;
-  const filteredCategoryActuals = !showAllFiscalYears && selectedFiscalYearId
+  const filteredCategoryActuals = (!showAllFiscalYears && selectedFiscalYearId
     ? categoryActuals.filter((row) => row.fiscalYearId === selectedFiscalYearId)
-    : categoryActuals;
+    : categoryActuals
+  ).filter((row) =>
+    hasAnyAmount([
+      row.requestedTotal,
+      row.heldTotal,
+      row.encTotal,
+      row.pendingCcTotal,
+      row.postedTotal
+    ])
+  );
   const filteredBannerActuals = !showAllFiscalYears && selectedFiscalYearId
     ? bannerActuals.filter((row) => row.fiscalYearId === selectedFiscalYearId)
     : bannerActuals;

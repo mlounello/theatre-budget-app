@@ -3,19 +3,14 @@
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  addProjectMembershipAction,
   addBudgetLineAction,
   createAccountCodeAction,
-  createUserAccessScopeAction,
   deactivateProductionTeamAssignmentAction,
   archiveUserProfileAction,
   deleteFiscalYearAction,
   deleteOrganizationAction,
   deleteProductionCategoryAction,
   deleteAccountCodeAction,
-  deleteUserAccessScopeAction,
-  updateUserAccessScopeAction,
-  removeProjectMembershipAction,
   saveProductionTeamAssignmentAction,
   sendProductionTeamAccessLinkAction,
   importHierarchyCsvAction,
@@ -47,11 +42,8 @@ import type {
   ProductionCategoryAdminRow,
   ProductionCategoryOption,
   SettingsProject,
-  SettingsAccessScopeRow,
   SettingsProductionTeamAssignmentRow,
-  SettingsUserRow,
-  SettingsProjectMembershipRow,
-  SettingsUserRow as SettingsProjectMembershipUser
+  SettingsUserRow
 } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
 
@@ -96,9 +88,6 @@ type Props = {
   foapals: FoapalOption[];
   hierarchyRows: HierarchyRow[];
   accessUsers: SettingsUserRow[];
-  accessScopes: SettingsAccessScopeRow[];
-  membershipUsers: SettingsProjectMembershipUser[];
-  projectMemberships: SettingsProjectMembershipRow[];
   productionTeamAssignments: SettingsProductionTeamAssignmentRow[];
 };
 
@@ -119,26 +108,17 @@ export function SettingsPageClient({
   foapals,
   hierarchyRows,
   accessUsers,
-  accessScopes,
-  membershipUsers,
-  projectMemberships,
   productionTeamAssignments
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editType = (searchParams.get("editType") ?? "") as "fy" | "org" | "project" | "line" | "account" | "production_category" | "";
   const editId = searchParams.get("editId") ?? "";
-  const scopeEditId = searchParams.get("scopeEditId") ?? "";
 
   const [syncState, syncAction] = useActionState(syncAppUsersAction, initialState);
   const [importState, importAction] = useActionState(importHierarchyCsvAction, initialState);
   const [addBudgetLineState, addBudgetLineActionForm] = useActionState(addBudgetLineAction, initialState);
   const [createAccountCodeState, createAccountCodeActionForm] = useActionState(createAccountCodeAction, initialState);
-  const [addProjectMembershipState, addProjectMembershipActionForm] = useActionState(addProjectMembershipAction, initialState);
-  const [removeProjectMembershipState, removeProjectMembershipActionForm] = useActionState(removeProjectMembershipAction, initialState);
-  const [createScopeState, createScopeActionForm] = useActionState(createUserAccessScopeAction, initialState);
-  const [deleteScopeState, deleteScopeActionForm] = useActionState(deleteUserAccessScopeAction, initialState);
-  const [updateScopeState, updateScopeActionForm] = useActionState(updateUserAccessScopeAction, initialState);
   const [saveTeamState, saveTeamActionForm] = useActionState(saveProductionTeamAssignmentAction, initialState);
   const [sendTeamLinkState, sendTeamLinkActionForm] = useActionState(sendProductionTeamAccessLinkAction, initialState);
   const [deactivateTeamState, deactivateTeamActionForm] = useActionState(deactivateProductionTeamAssignmentAction, initialState);
@@ -275,8 +255,6 @@ export function SettingsPageClient({
   const productionCategoryLookup = useMemo(() => new Map(allProductionCategories.map((row) => [row.id, row] as const)), [allProductionCategories]);
   const editingProductionCategory = editType === "production_category" && editId ? productionCategoryLookup.get(editId) : null;
 
-  const editingScope = scopeEditId ? accessScopes.find((scope) => scope.id === scopeEditId) ?? null : null;
-
   const [fyForm, setFyForm] = useState({ name: "", startDate: "", endDate: "" });
   const [orgForm, setOrgForm] = useState({ name: "", orgCode: "" });
   const [projectForm, setProjectForm] = useState({
@@ -304,15 +282,6 @@ export function SettingsPageClient({
     sortOrder: "",
     active: "true"
   });
-  const [scopeForm, setScopeForm] = useState({
-    scopeRole: "viewer",
-    projectId: "",
-    productionCategoryId: "",
-    fiscalYearId: "",
-    organizationId: "",
-    active: "true"
-  });
-
   const projectOrganizationOptions = useMemo(() => {
     if (!projectForm.fiscalYearId) return organizations;
     const yearSpecific = organizations.filter((org) => org.fiscalYearId === projectForm.fiscalYearId);
@@ -326,7 +295,6 @@ export function SettingsPageClient({
   const lastLineIdRef = useRef<string | null>(null);
   const lastAccountCodeIdRef = useRef<string | null>(null);
   const lastProductionCategoryIdRef = useRef<string | null>(null);
-  const lastScopeIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!editingFiscalYear) {
@@ -423,28 +391,10 @@ export function SettingsPageClient({
     });
   }, [editingProductionCategory]);
 
-  useEffect(() => {
-    if (!editingScope) {
-      lastScopeIdRef.current = null;
-      return;
-    }
-    if (lastScopeIdRef.current === editingScope.id) return;
-    lastScopeIdRef.current = editingScope.id;
-    setScopeForm({
-      scopeRole: editingScope.scopeRole === "buyer" ? "viewer" : editingScope.scopeRole ?? "viewer",
-      projectId: editingScope.projectId ?? "",
-      productionCategoryId: editingScope.productionCategoryId ?? "",
-      fiscalYearId: editingScope.fiscalYearId ?? "",
-      organizationId: editingScope.organizationId ?? "",
-      active: editingScope.active ? "true" : "false"
-    });
-  }, [editingScope]);
-
   const closeEditor = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete("editType");
     params.delete("editId");
-    params.delete("scopeEditId");
     const query = params.toString();
     router.replace(query ? `/settings?${query}` : "/settings");
   }, [router, searchParams]);
@@ -479,32 +429,12 @@ export function SettingsPageClient({
     }
   }, [closeEditor, deleteProductionCategoryState, lastDeleted, editType, editId]);
 
-  useEffect(() => {
-    if (lastDeleted?.type === "scope" && deleteScopeState.ok && deleteScopeState.message) {
-      if (scopeEditId && scopeEditId === lastDeleted.id) closeEditor();
-    }
-  }, [closeEditor, deleteScopeState, lastDeleted, scopeEditId]);
-
   const accountCodeFormRef = useRef<HTMLFormElement | null>(null);
   useEffect(() => {
     if (createAccountCodeState.ok && createAccountCodeState.message) {
       accountCodeFormRef.current?.reset();
     }
   }, [createAccountCodeState]);
-
-  const membershipFormRef = useRef<HTMLFormElement | null>(null);
-  useEffect(() => {
-    if (addProjectMembershipState.ok && addProjectMembershipState.message) {
-      membershipFormRef.current?.reset();
-    }
-  }, [addProjectMembershipState]);
-
-  const scopeFormRef = useRef<HTMLFormElement | null>(null);
-  useEffect(() => {
-    if (createScopeState.ok && createScopeState.message) {
-      scopeFormRef.current?.reset();
-    }
-  }, [createScopeState]);
 
   const importFormRef = useRef<HTMLFormElement | null>(null);
   useEffect(() => {
@@ -965,99 +895,6 @@ export function SettingsPageClient({
         ) : null}
 
         <article className="panel panelFull">
-          <h2>Project Team Access</h2>
-          <p className="heroSubtitle">
-            {isAdmin
-              ? "Assign Admin, PM, or Viewer roles by project."
-              : "Assign PM or Viewer roles for projects you manage."}
-          </p>
-          {addProjectMembershipState.message ? (
-            <p className={addProjectMembershipState.ok ? "successNote" : "errorNote"} key={addProjectMembershipState.timestamp}>
-              {addProjectMembershipState.message}
-            </p>
-          ) : null}
-          <form action={addProjectMembershipActionForm} className="requestForm" ref={membershipFormRef}>
-            <label>
-              Project
-              <select name="projectId" required>
-                <option value="">Select project</option>
-                {projects
-                  .slice()
-                  .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
-                  .map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                      {project.season ? ` (${project.season})` : ""}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label>
-              User
-              <select name="userId" required>
-                <option value="">Select user</option>
-                {membershipUsers.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.fullName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Role
-              <select name="role" defaultValue={isAdmin ? "project_manager" : "viewer"}>
-                {isAdmin ? <option value="admin">Admin</option> : null}
-                <option value="project_manager">Project Manager</option>
-                <option value="viewer">Viewer</option>
-              </select>
-            </label>
-            <button type="submit" className="buttonLink buttonPrimary">
-              Save Team Role
-            </button>
-          </form>
-          {removeProjectMembershipState.message ? (
-            <p className={removeProjectMembershipState.ok ? "successNote" : "errorNote"} key={removeProjectMembershipState.timestamp}>
-              {removeProjectMembershipState.message}
-            </p>
-          ) : null}
-          <div className="tableWrap" style={{ marginTop: "0.8rem" }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>Project</th>
-                  <th>User</th>
-                  <th>Role</th>
-                  <th>Remove</th>
-                </tr>
-              </thead>
-              <tbody>
-                {projectMemberships.map((membership) => (
-                  <tr key={`${membership.projectId}-${membership.userId}`}>
-                    <td>{membership.projectLabel}</td>
-                    <td>{membership.userName}</td>
-                    <td>{membership.role}</td>
-                    <td>
-                      <form action={removeProjectMembershipActionForm}>
-                        <input type="hidden" name="projectId" value={membership.projectId} />
-                        <input type="hidden" name="userId" value={membership.userId} />
-                        <button type="submit" className="tinyButton dangerButton">
-                          Remove
-                        </button>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
-                {projectMemberships.length === 0 ? (
-                  <tr>
-                    <td colSpan={4}>(none)</td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-        </article>
-
-        <article className="panel panelFull">
           <h2>Production Team & Budget Access</h2>
           <p className="heroSubtitle">
             Assign the person to the production first, then let the app create Viewer budget access and send a magic-link login.
@@ -1195,140 +1032,6 @@ export function SettingsPageClient({
                 {productionTeamAssignments.length === 0 ? (
                   <tr>
                     <td colSpan={8}>(none)</td>
-                  </tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-        </article>
-
-        <article className="panel panelFull">
-          <h2>User Access Scopes</h2>
-          <p className="heroSubtitle">
-            {isAdmin
-              ? "Assign optional FY/Org/Project/Department scope rows."
-              : "Assign Viewer scope rows for projects you manage."}
-          </p>
-          {createScopeState.message ? (
-            <p className={createScopeState.ok ? "successNote" : "errorNote"} key={createScopeState.timestamp}>
-              {createScopeState.message}
-            </p>
-          ) : null}
-          <form action={createScopeActionForm} className="requestForm" ref={scopeFormRef}>
-            <label>
-              User
-              <select name="userId" required>
-                <option value="">Select user</option>
-                {accessUsers.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.fullName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Role
-              <select name="scopeRole" defaultValue="viewer">
-                {isAdmin ? <option value="admin">Admin</option> : null}
-                {isAdmin ? <option value="project_manager">Project Manager</option> : null}
-                <option value="viewer">Viewer</option>
-                {isAdmin ? <option value="procurement_tracker">Procurement Tracker</option> : null}
-              </select>
-            </label>
-            <label>
-              Projects (multi)
-              <select name="projectIds" multiple size={6}>
-                {projects
-                  .slice()
-                  .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name))
-                  .map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                      {project.season ? ` (${project.season})` : ""}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label>
-              Departments (multi)
-              <select name="productionCategoryIds" multiple size={6}>
-                {productionCategories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Fiscal Year
-              <select name="fiscalYearId">
-                <option value="">(optional)</option>
-                {fiscalYears.map((fiscalYear) => (
-                  <option key={fiscalYear.id} value={fiscalYear.id}>
-                    {fiscalYear.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Organization
-              <select name="organizationId">
-                <option value="">(optional)</option>
-                {organizations.map((organization) => (
-                  <option key={organization.id} value={organization.id}>
-                    {organization.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="submit" className="buttonLink buttonPrimary">
-              Save Scope
-            </button>
-          </form>
-          {deleteScopeState.message ? (
-            <p className={deleteScopeState.ok ? "successNote" : "errorNote"} key={deleteScopeState.timestamp}>
-              {deleteScopeState.message}
-            </p>
-          ) : null}
-          <div className="tableWrap" style={{ marginTop: "0.8rem" }}>
-            <table>
-              <thead>
-                <tr>
-                  <th>User</th>
-                  <th>Role</th>
-                  <th>Project</th>
-                  <th>Category</th>
-                  <th>Active</th>
-                  <th>Edit</th>
-                  <th>Remove</th>
-                </tr>
-              </thead>
-              <tbody>
-                {accessScopes.map((scope) => (
-                  <tr key={scope.id}>
-                    <td>{scope.userName}</td>
-                    <td>{scope.scopeRole}</td>
-                    <td>{projects.find((project) => project.id === scope.projectId)?.name ?? "-"}</td>
-                    <td>{productionCategories.find((category) => category.id === scope.productionCategoryId)?.name ?? "-"}</td>
-                    <td>{scope.active ? "Yes" : "No"}</td>
-                    <td>
-                      <a className="tinyButton" href={`/settings?scopeEditId=${scope.id}`}>
-                        Edit
-                      </a>
-                    </td>
-                    <td>
-                      <form action={deleteScopeActionForm} onSubmit={() => setLastDeleted({ type: "scope", id: scope.id })}>
-                        <input type="hidden" name="id" value={scope.id} />
-                        <button type="submit" className="tinyButton dangerButton">
-                          Remove
-                        </button>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
-                {accessScopes.length === 0 ? (
-                  <tr>
-                    <td colSpan={7}>(none)</td>
                   </tr>
                 ) : null}
               </tbody>
@@ -1798,114 +1501,6 @@ export function SettingsPageClient({
         </div>
       ) : null}
 
-      {editingScope ? (
-        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit user access scope">
-          <div className="modalPanel">
-            <h2>Edit User Access Scope</h2>
-            {updateScopeState.message ? (
-              <p className={updateScopeState.ok ? "successNote" : "errorNote"} key={updateScopeState.timestamp}>
-                {updateScopeState.message}
-              </p>
-            ) : null}
-            <form action={updateScopeActionForm} className="requestForm">
-              <input type="hidden" name="id" value={editingScope.id} />
-              <label>
-                Role
-                <select
-                  name="scopeRole"
-                  value={scopeForm.scopeRole}
-                  onChange={(event) => setScopeForm((prev) => ({ ...prev, scopeRole: event.target.value }))}
-                >
-                  {isAdmin ? <option value="admin">Admin</option> : null}
-                  {isAdmin ? <option value="project_manager">Project Manager</option> : null}
-                  <option value="viewer">Viewer</option>
-                  {isAdmin ? <option value="procurement_tracker">Procurement Tracker</option> : null}
-                </select>
-              </label>
-              <label>
-                Project
-                <select
-                  name="projectId"
-                  value={scopeForm.projectId}
-                  onChange={(event) => setScopeForm((prev) => ({ ...prev, projectId: event.target.value }))}
-                >
-                  <option value="">(optional)</option>
-                  {projects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                      {project.season ? ` (${project.season})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Department
-                <select
-                  name="productionCategoryId"
-                  value={scopeForm.productionCategoryId}
-                  onChange={(event) => setScopeForm((prev) => ({ ...prev, productionCategoryId: event.target.value }))}
-                >
-                  <option value="">All categories</option>
-                  {productionCategories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Fiscal Year
-                <select
-                  name="fiscalYearId"
-                  value={scopeForm.fiscalYearId}
-                  onChange={(event) => setScopeForm((prev) => ({ ...prev, fiscalYearId: event.target.value }))}
-                >
-                  <option value="">(optional)</option>
-                  {fiscalYears.map((fiscalYear) => (
-                    <option key={fiscalYear.id} value={fiscalYear.id}>
-                      {fiscalYear.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Organization
-                <select
-                  name="organizationId"
-                  value={scopeForm.organizationId}
-                  onChange={(event) => setScopeForm((prev) => ({ ...prev, organizationId: event.target.value }))}
-                >
-                  <option value="">(optional)</option>
-                  {organizations.map((organization) => (
-                    <option key={organization.id} value={organization.id}>
-                      {organization.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Active
-                <select
-                  name="active"
-                  value={scopeForm.active}
-                  onChange={(event) => setScopeForm((prev) => ({ ...prev, active: event.target.value }))}
-                >
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
-                </select>
-              </label>
-              <div className="modalActions">
-                <a className="tinyButton" href="/settings">
-                  Cancel
-                </a>
-                <button type="submit" className="buttonLink buttonPrimary">
-                  Save Scope
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      ) : null}
     </section>
   );
 }
