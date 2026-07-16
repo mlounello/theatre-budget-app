@@ -918,25 +918,14 @@ export async function updateAllocationLineInlineAction(
     const id = String(formData.get("id") ?? "").trim();
     const projectId = String(formData.get("projectId") ?? "").trim();
     const allocatedAmount = parseMoney(formData.get("allocatedAmount"));
-    const accountCodeId = String(formData.get("accountCodeId") ?? "").trim();
     const active = formData.get("active") === "on";
 
     if (!id || !projectId) throw new Error("Budget line and project are required.");
     await requireProjectSettingsWrite(supabase, projectId);
 
-    if (accountCodeId) {
-      const { data: accountCode, error: accountCodeError } = await supabase
-        .from("account_codes")
-        .select("id")
-        .eq("id", accountCodeId)
-        .maybeSingle();
-      if (accountCodeError) throw new Error(accountCodeError.message);
-      if (!accountCode?.id) throw new Error("Selected account code was not found.");
-    }
-
     const { data: updated, error } = await supabase
       .from("project_budget_lines")
-      .update({ allocated_amount: allocatedAmount, account_code_id: accountCodeId || null, active })
+      .update({ allocated_amount: allocatedAmount, active })
       .eq("id", id)
       .eq("project_id", projectId)
       .select("id")

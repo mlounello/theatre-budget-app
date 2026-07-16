@@ -467,7 +467,6 @@ export function SettingsPageClient({
         fiscalYears={fiscalYears}
         organizations={organizations}
         hierarchyRows={hierarchyRows}
-        accountCodes={allAccountCodes}
       />
 
       <div className="panelGrid">

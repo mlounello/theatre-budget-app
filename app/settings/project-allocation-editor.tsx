@@ -8,14 +8,13 @@ import {
   type ActionState
 } from "@/app/settings/actions";
 import { GLOBAL_FISCAL_YEAR_STORAGE_KEY, resolveCurrentFiscalYearId } from "@/lib/fiscal-year-context";
-import type { AccountCodeAdminRow, FiscalYearOption, HierarchyRow, OrganizationOption } from "@/lib/db";
+import type { FiscalYearOption, HierarchyRow, OrganizationOption } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";
 
 type Props = {
   fiscalYears: FiscalYearOption[];
   organizations: OrganizationOption[];
   hierarchyRows: HierarchyRow[];
-  accountCodes: AccountCodeAdminRow[];
 };
 
 type EditableLine = HierarchyRow & {
@@ -59,23 +58,18 @@ function AllocationDeleteButton() {
   );
 }
 
-function AllocationLineRow({ line, accountCodes }: { line: EditableLine; accountCodes: AccountCodeAdminRow[] }) {
+function AllocationLineRow({ line }: { line: EditableLine }) {
   const [saveState, saveAction] = useActionState(updateAllocationLineInlineAction, initialState);
   const [deleteState, deleteAction] = useActionState(deleteAllocationLineAction, initialState);
   const [amount, setAmount] = useState(String(line.allocatedAmount ?? 0));
   const [active, setActive] = useState(Boolean(line.budgetLineActive));
-  const [accountCodeId, setAccountCodeId] = useState(line.accountCodeId ?? "");
 
   useEffect(() => {
     setAmount(String(line.allocatedAmount ?? 0));
     setActive(Boolean(line.budgetLineActive));
-    setAccountCodeId(line.accountCodeId ?? "");
-  }, [line.accountCodeId, line.allocatedAmount, line.budgetLineActive]);
+  }, [line.allocatedAmount, line.budgetLineActive]);
 
-  const changed =
-    Number.parseFloat(amount || "0") !== (line.allocatedAmount ?? 0) ||
-    active !== Boolean(line.budgetLineActive) ||
-    accountCodeId !== (line.accountCodeId ?? "");
+  const changed = Number.parseFloat(amount || "0") !== (line.allocatedAmount ?? 0) || active !== Boolean(line.budgetLineActive);
   const latestState = deleteState.message ? deleteState : saveState;
   const budgetCodeLabel = displayBudgetCode(line.budgetCode);
 
@@ -89,18 +83,6 @@ function AllocationLineRow({ line, accountCodes }: { line: EditableLine; account
         <form action={saveAction} className="allocationInlineForm">
           <input type="hidden" name="id" value={line.budgetLineId} />
           <input type="hidden" name="projectId" value={line.projectId} />
-          <label className="allocationAccountPicker">
-            Account Code
-            <select name="accountCodeId" value={accountCodeId} onChange={(event) => setAccountCodeId(event.target.value)}>
-              <option value="">Not linked - choose on request/contract</option>
-              {accountCodes.map((account) => (
-                <option key={account.id} value={account.id}>
-                  {account.code} | {account.name}
-                  {!account.active ? " (inactive)" : ""}
-                </option>
-              ))}
-            </select>
-          </label>
           <input
             aria-label={`Allocated amount for ${line.budgetLineName ?? line.budgetCategory ?? "budget line"}`}
             name="allocatedAmount"
@@ -144,7 +126,7 @@ function AllocationLineRow({ line, accountCodes }: { line: EditableLine; account
   );
 }
 
-export function ProjectAllocationEditor({ fiscalYears, organizations, hierarchyRows, accountCodes }: Props) {
+export function ProjectAllocationEditor({ fiscalYears, organizations, hierarchyRows }: Props) {
   const [fiscalYearId, setFiscalYearId] = useState(resolveCurrentFiscalYearId(fiscalYears));
   const [organizationId, setOrganizationId] = useState("");
   const [query, setQuery] = useState("");
@@ -166,11 +148,6 @@ export function ProjectAllocationEditor({ fiscalYears, organizations, hierarchyR
     return organizations.filter((org) => !fiscalYearId || org.fiscalYearId === fiscalYearId || org.fiscalYearId === null);
   }, [fiscalYearId, organizations]);
 
-  const accountCodeOptions = useMemo(
-    () => accountCodes.slice().sort((a, b) => Number(b.active) - Number(a.active) || a.code.localeCompare(b.code)),
-    [accountCodes]
-  );
-
   const groupedProjects = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     const grouped = new Map<string, ProjectGroup>();
@@ -187,10 +164,7 @@ export function ProjectAllocationEditor({ fiscalYears, organizations, hierarchyR
         row.season,
         row.budgetCode,
         row.budgetCategory,
-        row.budgetLineName,
-        accountCodes.find((account) => account.id === row.accountCodeId)?.code,
-        accountCodes.find((account) => account.id === row.accountCodeId)?.category,
-        accountCodes.find((account) => account.id === row.accountCodeId)?.name
+        row.budgetLineName
       ]
         .filter(Boolean)
         .join(" ")
@@ -215,7 +189,7 @@ export function ProjectAllocationEditor({ fiscalYears, organizations, hierarchyR
     return Array.from(grouped.values()).sort((a, b) =>
       a.organizationLabel.localeCompare(b.organizationLabel) || a.projectName.localeCompare(b.projectName)
     );
-  }, [accountCodes, fiscalYearId, hierarchyRows, organizationId, query]);
+  }, [fiscalYearId, hierarchyRows, organizationId, query]);
 
   const allocationTotal = groupedProjects.reduce(
     (sum, project) => sum + project.lines.reduce((lineSum, line) => lineSum + (line.allocatedAmount ?? 0), 0),
@@ -229,8 +203,8 @@ export function ProjectAllocationEditor({ fiscalYears, organizations, hierarchyR
           <p className="eyebrow">Settings</p>
           <h2>Project Allocation Editor</h2>
           <p className="heroSubtitle">
-            Allocations are required for production/department budget totals. Account codes are optional defaults; contracts and procurement can
-            still choose their own account code when needed.
+            Allocations are required for production/department budget totals. Account codes are selected in contracts and procurement when money is
+            actually committed.
           </p>
         </div>
         <div className="allocationSummary">{formatCurrency(allocationTotal)} visible</div>
@@ -264,7 +238,7 @@ export function ProjectAllocationEditor({ fiscalYears, organizations, hierarchyR
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Project, category, account, or org"
+            placeholder="Project, category, or org"
           />
         </label>
       </div>
@@ -288,7 +262,7 @@ export function ProjectAllocationEditor({ fiscalYears, organizations, hierarchyR
                 <thead>
                   <tr>
                     <th>Category / Line</th>
-                    <th>Allocation & Account</th>
+                    <th>Allocation</th>
                     <th>Order</th>
                     <th>Actions</th>
                   </tr>
@@ -298,7 +272,7 @@ export function ProjectAllocationEditor({ fiscalYears, organizations, hierarchyR
                     .slice()
                     .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || String(a.budgetLineName ?? "").localeCompare(String(b.budgetLineName ?? "")))
                     .map((line) => {
-                      return <AllocationLineRow key={line.budgetLineId} line={line} accountCodes={accountCodeOptions} />;
+                      return <AllocationLineRow key={line.budgetLineId} line={line} />;
                     })}
                 </tbody>
               </table>
