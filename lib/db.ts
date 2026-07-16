@@ -591,6 +591,21 @@ export type SettingsUserRow = {
   fullName: string;
 };
 
+export type ProductionManagementProfileOption = {
+  id: string;
+  fullName: string;
+  preferredName: string | null;
+  email: string | null;
+  personType: string | null;
+  roleLabel: string | null;
+  projectLabel: string | null;
+};
+
+export type ProductionManagementProfileResult = {
+  profiles: ProductionManagementProfileOption[];
+  warning: string | null;
+};
+
 export type SettingsAccessScopeRow = {
   id: string;
   userId: string;
@@ -1815,6 +1830,126 @@ export async function getSettingsAccessScopes(): Promise<{
     });
 
   return { users: filteredUsers, scopes };
+}
+
+const PRODUCTION_MANAGEMENT_SCHEMA = "app_production_management";
+const PRODUCTION_TEAM_BUDGET_ROLE_GROUPS = ["creative_team", "directorial_team"];
+
+function normalizePmRoleGroup(value: string | null | undefined): string {
+  return String(value ?? "")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+export async function getProductionManagementProfileOptions(): Promise<ProductionManagementProfileResult> {
+  const supabase = await getSupabaseServerClient();
+
+  type PmPersonRow = {
+    id?: string;
+    full_name?: string | null;
+    preferred_name?: string | null;
+    email?: string | null;
+    person_type?: string | null;
+    status?: string | null;
+  };
+  type PmAssignmentRow = {
+    person_id?: string | null;
+    status?: string | null;
+    project_roles?: { name?: string | null; role_group?: string | null; department?: string | null } | null;
+    projects?: { title?: string | null; season_label?: string | null } | null;
+  };
+
+  const pmDb = supabase.schema(PRODUCTION_MANAGEMENT_SCHEMA);
+  const assignmentResponse = await pmDb
+    .from("role_assignments")
+    .select("person_id, status, project_roles!inner(name, role_group, department), projects(title, season_label)")
+    .not("status", "in", "(declined,withdrawn)")
+    .in("project_roles.role_group", PRODUCTION_TEAM_BUDGET_ROLE_GROUPS)
+    .order("updated_at", { ascending: false })
+    .limit(1500);
+
+  if (assignmentResponse.error) {
+    console.warn("[settings] Production Management profiles unavailable", {
+      schema: PRODUCTION_MANAGEMENT_SCHEMA,
+      message: assignmentResponse.error.message
+    });
+    return {
+      profiles: [],
+      warning:
+        "Production Management profiles are not available to this signed-in account. You can still enter a name/email manually and send a magic link."
+    };
+  }
+
+  const eligiblePersonIds = [
+    ...new Set(
+      ((assignmentResponse.data ?? []) as PmAssignmentRow[])
+        .filter((assignment) => PRODUCTION_TEAM_BUDGET_ROLE_GROUPS.includes(String(assignment.project_roles?.role_group ?? "")))
+        .map((assignment) => String(assignment.person_id ?? ""))
+        .filter(Boolean)
+    )
+  ];
+
+  if (eligiblePersonIds.length === 0) return { profiles: [], warning: null };
+
+  const peopleResponse = await pmDb
+    .from("people")
+    .select("id, full_name, preferred_name, email, person_type, status")
+    .eq("status", "active")
+    .in("id", eligiblePersonIds)
+    .order("full_name", { ascending: true })
+    .limit(750);
+
+  if (peopleResponse.error) {
+    console.warn("[settings] Production Management people unavailable", {
+      schema: PRODUCTION_MANAGEMENT_SCHEMA,
+      message: peopleResponse.error.message
+    });
+    return {
+      profiles: [],
+      warning:
+        "Production Management profiles are not available to this signed-in account. You can still enter a name/email manually and send a magic link."
+    };
+  }
+
+  const people = ((peopleResponse.data ?? []) as PmPersonRow[])
+    .filter((person) => person.id && String(person.full_name ?? "").trim())
+    .map((person) => ({
+      id: String(person.id),
+      fullName: String(person.full_name ?? "").trim(),
+      preferredName: String(person.preferred_name ?? "").trim() || null,
+      email: String(person.email ?? "").trim().toLowerCase() || null,
+      personType: String(person.person_type ?? "").trim() || null,
+      roleLabel: null as string | null,
+      projectLabel: null as string | null
+    }));
+
+  if (people.length === 0) return { profiles: [], warning: null };
+
+  const roleByPersonId = new Map<string, { roleLabel: string | null; projectLabel: string | null }>();
+  for (const assignment of ((assignmentResponse.data ?? []) as PmAssignmentRow[])) {
+    const personId = String(assignment.person_id ?? "");
+    if (!personId || roleByPersonId.has(personId)) continue;
+    const role = assignment.project_roles;
+    const project = assignment.projects;
+    const roleName = String(role?.name ?? "").trim();
+    const department = String(role?.department ?? "").trim();
+    const roleGroup = normalizePmRoleGroup(role?.role_group);
+    const projectTitle = String(project?.title ?? "").trim();
+    const season = String(project?.season_label ?? "").trim();
+    roleByPersonId.set(personId, {
+      roleLabel: [roleName, department || roleGroup].filter(Boolean).join(", ") || null,
+      projectLabel: [projectTitle, season].filter(Boolean).join(" ") || null
+    });
+  }
+
+  return {
+    profiles: people.map((person) => ({
+      ...person,
+      roleLabel: roleByPersonId.get(person.id)?.roleLabel ?? null,
+      projectLabel: roleByPersonId.get(person.id)?.projectLabel ?? null
+    })),
+    warning: assignmentResponse.error ? "Production Management people loaded, but role labels could not be loaded." : null
+  };
 }
 
 export async function getSettingsProjectMemberships(): Promise<{

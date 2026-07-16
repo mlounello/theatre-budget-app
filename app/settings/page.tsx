@@ -9,6 +9,7 @@ import {
   getProgramOptions,
   getProductionCategoriesAdmin,
   getProductionCategoryOptions,
+  getProductionManagementProfileOptions,
   getSettingsAccessScopes,
   getSettingsProductionTeamAssignments,
   getSettingsProjects,
@@ -38,6 +39,7 @@ export default async function SettingsPage() {
   const hierarchyRowsAll = await getHierarchyRows();
   const { users: accessUsers } = await getSettingsAccessScopes();
   const productionTeamAssignmentsAll = await getSettingsProductionTeamAssignments();
+  const productionManagementProfiles = await getProductionManagementProfileOptions();
 
   const manageableProjectIds = access.manageableProjectIds;
   const projects = isAdmin ? projectsAll : projectsAll.filter((project) => manageableProjectIds.has(project.id));
@@ -62,6 +64,8 @@ export default async function SettingsPage() {
       foapals={foapals}
       hierarchyRows={hierarchyRows}
       accessUsers={accessUsers}
+      productionManagementProfiles={productionManagementProfiles.profiles}
+      productionManagementProfilesWarning={productionManagementProfiles.warning}
       productionTeamAssignments={productionTeamAssignments}
     />
   );

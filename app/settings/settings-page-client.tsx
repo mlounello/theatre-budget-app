@@ -39,6 +39,7 @@ import type {
   HierarchyRow,
   OrganizationOption,
   ProgramOption,
+  ProductionManagementProfileOption,
   ProductionCategoryAdminRow,
   ProductionCategoryOption,
   SettingsProject,
@@ -88,6 +89,8 @@ type Props = {
   foapals: FoapalOption[];
   hierarchyRows: HierarchyRow[];
   accessUsers: SettingsUserRow[];
+  productionManagementProfiles: ProductionManagementProfileOption[];
+  productionManagementProfilesWarning: string | null;
   productionTeamAssignments: SettingsProductionTeamAssignmentRow[];
 };
 
@@ -108,6 +111,8 @@ export function SettingsPageClient({
   foapals,
   hierarchyRows,
   accessUsers,
+  productionManagementProfiles,
+  productionManagementProfilesWarning,
   productionTeamAssignments
 }: Props) {
   const router = useRouter();
@@ -123,10 +128,41 @@ export function SettingsPageClient({
   const [sendTeamLinkState, sendTeamLinkActionForm] = useActionState(sendProductionTeamAccessLinkAction, initialState);
   const [deactivateTeamState, deactivateTeamActionForm] = useActionState(deactivateProductionTeamAssignmentAction, initialState);
   const [archiveUserState, archiveUserActionForm] = useActionState(archiveUserProfileAction, initialState);
+  const [teamProfileSearch, setTeamProfileSearch] = useState("");
+  const [teamProfileName, setTeamProfileName] = useState("");
+  const [teamProfileEmail, setTeamProfileEmail] = useState("");
+  const [teamProductionRole, setTeamProductionRole] = useState("");
 
   const [deleteOrganizationInlineState, deleteOrganizationInlineAction] = useActionState(deleteOrganizationAction, initialState);
   const [deleteProductionCategoryState, deleteProductionCategoryActionForm] = useActionState(deleteProductionCategoryAction, initialState);
   const [deleteAccountCodeState, deleteAccountCodeActionForm] = useActionState(deleteAccountCodeAction, initialState);
+
+  const filteredProductionManagementProfiles = useMemo(() => {
+    const term = teamProfileSearch.trim().toLowerCase();
+    const matches = productionManagementProfiles.filter((profile) => {
+      if (!term) return true;
+      return [profile.fullName, profile.preferredName, profile.email, profile.roleLabel, profile.projectLabel, profile.personType]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(term));
+    });
+    return matches.slice(0, 80);
+  }, [productionManagementProfiles, teamProfileSearch]);
+
+  const selectProductionManagementProfile = useCallback(
+    (profileId: string) => {
+      const profile = productionManagementProfiles.find((candidate) => candidate.id === profileId);
+      if (!profile) return;
+      setTeamProfileName(profile.fullName);
+      setTeamProfileEmail(profile.email ?? "");
+      setTeamProductionRole(profile.roleLabel ?? "");
+      setTeamProfileSearch(
+        [profile.fullName, profile.email ? `<${profile.email}>` : "", profile.roleLabel ? `- ${profile.roleLabel}` : ""]
+          .filter(Boolean)
+          .join(" ")
+      );
+    },
+    [productionManagementProfiles]
+  );
 
   const [updateFiscalYearState, updateFiscalYearActionForm] = useActionState(updateFiscalYearAction, initialState);
   const [deleteFiscalYearState, deleteFiscalYearActionForm] = useActionState(deleteFiscalYearAction, initialState);
@@ -957,16 +993,68 @@ export function SettingsPageClient({
               </select>
             </label>
             <label>
+              Production Management Profile
+              <input
+                value={teamProfileSearch}
+                onChange={(event) => setTeamProfileSearch(event.target.value)}
+                placeholder="Search PM people by name, email, role, or project"
+              />
+            </label>
+            <label>
+              Select PM Person
+              <select
+                value=""
+                onChange={(event) => {
+                  selectProductionManagementProfile(event.target.value);
+                  event.currentTarget.value = "";
+                }}
+                disabled={filteredProductionManagementProfiles.length === 0}
+              >
+                <option value="">
+                  {filteredProductionManagementProfiles.length === 0 ? "No matching PM profiles" : "Choose a PM profile"}
+                </option>
+                {filteredProductionManagementProfiles.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.fullName}
+                    {profile.email ? ` | ${profile.email}` : ""}
+                    {profile.roleLabel ? ` | ${profile.roleLabel}` : ""}
+                    {profile.projectLabel ? ` | ${profile.projectLabel}` : ""}
+                  </option>
+                ))}
+              </select>
+              {productionManagementProfilesWarning ? <span className="muted">{productionManagementProfilesWarning}</span> : null}
+              {!productionManagementProfilesWarning && productionManagementProfiles.length === 0 ? (
+                <span className="muted">No active Production Management profiles are visible to this account.</span>
+              ) : null}
+            </label>
+            <label>
               Name
-              <input name="profileName" placeholder="Designer, director, team member" required />
+              <input
+                name="profileName"
+                placeholder="Designer, director, team member"
+                required
+                value={teamProfileName}
+                onChange={(event) => setTeamProfileName(event.target.value)}
+              />
             </label>
             <label>
               Email
-              <input name="profileEmail" type="email" placeholder="person@siena.edu" />
+              <input
+                name="profileEmail"
+                type="email"
+                placeholder="person@siena.edu"
+                value={teamProfileEmail}
+                onChange={(event) => setTeamProfileEmail(event.target.value)}
+              />
             </label>
             <label>
               Production Role
-              <input name="productionRole" placeholder="Scenic Designer, Director, Stage Manager" />
+              <input
+                name="productionRole"
+                placeholder="Scenic Designer, Director, Stage Manager"
+                value={teamProductionRole}
+                onChange={(event) => setTeamProductionRole(event.target.value)}
+              />
             </label>
             <label>
               Department
