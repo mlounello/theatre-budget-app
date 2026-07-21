@@ -3,9 +3,9 @@ import { getServerAppSchema } from "@/lib/supabase-schema";
 
 export function createSupabaseAdminClient() {
   const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceKey = process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url) throw new Error("Missing env var: SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL");
-  if (!serviceKey) throw new Error("Missing env var: SUPABASE_SERVICE_ROLE_KEY");
+  if (!serviceKey) throw new Error("Missing env var: SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY");
 
   return createClient(url, serviceKey, {
     auth: {
