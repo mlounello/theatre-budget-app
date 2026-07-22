@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getAccessContext } from "@/lib/access";
 import { encryptSensitiveValue, taxIdLastFour } from "@/lib/sensitive-encryption";
+import { reconcileGuestArtistWithProductionManagement } from "@/lib/production-management-sync";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 export type ActionState = {
@@ -87,12 +88,17 @@ export async function createGuestArtistAction(
     await requireGuestArtistManager();
     const supabase = await getSupabaseServerClient();
     const payload = profilePayload(formData);
-    const { error } = await supabase.from("guest_artists").insert(payload);
+    const { data: created, error } = await supabase.from("guest_artists").insert(payload).select("id").single();
     if (error) return err(error.message);
+    if (!created?.id) return err("Guest artist profile was not created.");
+
+    const reconciliation = await reconcileGuestArtistWithProductionManagement(String(created.id));
 
     revalidatePath("/guest-artists");
     revalidatePath("/contracts");
-    return ok("Guest artist profile saved.");
+    return ok(reconciliation.status === "attention"
+      ? `Guest artist profile saved. Production Management sync needs attention: ${reconciliation.detail}`
+      : "Guest artist profile saved.");
   } catch (error) {
     return err(getErrorMessage(error, "Could not save guest artist."));
   }
@@ -131,9 +137,13 @@ export async function updateGuestArtistAction(
     if (error) return err(error.message);
     if (!updated?.id) return err("Guest artist update was not applied.");
 
+    const reconciliation = await reconcileGuestArtistWithProductionManagement(String(updated.id));
+
     revalidatePath("/guest-artists");
     revalidatePath("/contracts");
-    return ok("Guest artist profile updated.");
+    return ok(reconciliation.status === "attention"
+      ? `Guest artist profile updated. Production Management sync needs attention: ${reconciliation.detail}`
+      : "Guest artist profile updated.");
   } catch (error) {
     return err(getErrorMessage(error, "Could not update guest artist."));
   }

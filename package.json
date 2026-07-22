@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "npm run build && tsc --noEmit"
+    "typecheck": "npm run build && tsc --noEmit",
+    "test:phase5a-integrations": "node --test scripts/phase5a-integration-boundaries.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
