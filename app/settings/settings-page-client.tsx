@@ -20,7 +20,6 @@ import {
   updateFiscalYearAction,
   updateOrganizationAction,
   updateProjectAction,
-  syncAppUsersAction,
   type ActionState
 } from "@/app/settings/actions";
 import { AddEntityPanel } from "@/app/settings/add-entity-panel";
@@ -120,7 +119,6 @@ export function SettingsPageClient({
   const editType = (searchParams.get("editType") ?? "") as "fy" | "org" | "project" | "line" | "account" | "production_category" | "";
   const editId = searchParams.get("editId") ?? "";
 
-  const [syncState, syncAction] = useActionState(syncAppUsersAction, initialState);
   const [importState, importAction] = useActionState(importHierarchyCsvAction, initialState);
   const [addBudgetLineState, addBudgetLineActionForm] = useActionState(addBudgetLineAction, initialState);
   const [createAccountCodeState, createAccountCodeActionForm] = useActionState(createAccountCodeAction, initialState);
@@ -516,23 +514,6 @@ export function SettingsPageClient({
             Hierarchy: Fiscal Year - Organization - Project - Budget Line. Reorder controls are collapsed to reduce clutter.
           </p>
         </article>
-
-        {isAdmin ? (
-          <article className="panel panelFull">
-            <h2>Admin Sync</h2>
-            <p className="heroSubtitle">Sync all app users to the central control room.</p>
-            {syncState.message ? (
-              <p className={syncState.ok ? "successNote" : "errorNote"} key={syncState.timestamp}>
-                {syncState.message}
-              </p>
-            ) : null}
-            <form className="inlineEditForm" action={syncAction}>
-              <button type="submit" className="buttonLink buttonPrimary">
-                Sync Users Now
-              </button>
-            </form>
-          </article>
-        ) : null}
 
         {isAdmin ? (
           <AddEntityPanel
