@@ -4,7 +4,6 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
 import { APP_ID } from "@/lib/supabase-schema";
-import { syncAppUsers, syncAppUsersSafe } from "@/lib/app-user-sync";
 import { ensureBudgetAccessUser, sendBudgetAccessMagicLink } from "@/lib/budget-access-invite";
 
 export type ActionState = {
@@ -1513,7 +1512,6 @@ export async function createUserAccessScopeAction(_prevState: ActionState = empt
     }
 
     revalidatePath("/settings");
-    await syncAppUsersSafe("user_scope_saved");
     return settingsSuccess(`User scope saved. Added ${createdCount}, skipped ${skippedCount} existing.`);
   } catch (error) {
     return settingsError(getErrorMessage(error, "Could not save user scope."));
@@ -1546,7 +1544,6 @@ export async function addProjectMembershipAction(_prevState: ActionState = empty
     if (error) throw new Error(error.message);
 
     revalidatePath("/settings");
-    await syncAppUsersSafe("project_membership_saved");
     return settingsSuccess("Project membership saved.");
   } catch (error) {
     return settingsError(getErrorMessage(error, "Could not save project membership."));
@@ -1576,7 +1573,6 @@ export async function removeProjectMembershipAction(_prevState: ActionState = em
     if (error) throw new Error(error.message);
 
     revalidatePath("/settings");
-    await syncAppUsersSafe("project_membership_removed");
     return settingsSuccess("Project membership removed.");
   } catch (error) {
     return settingsError(getErrorMessage(error, "Could not remove project membership."));
@@ -1614,7 +1610,6 @@ export async function deleteUserAccessScopeAction(_prevState: ActionState = empt
     if (error) throw new Error(error.message);
 
     revalidatePath("/settings");
-    await syncAppUsersSafe("user_scope_removed");
     return settingsSuccess("User scope removed.");
   } catch (error) {
     return settingsError(getErrorMessage(error, "Could not remove user scope."));
@@ -1687,7 +1682,6 @@ export async function updateUserAccessScopeAction(_prevState: ActionState = empt
     }
 
     revalidatePath("/settings");
-    await syncAppUsersSafe("user_scope_updated");
     return settingsSuccess("User scope updated.");
   } catch (error) {
     return settingsError(getErrorMessage(error, "Could not update user scope."));
@@ -1872,7 +1866,6 @@ export async function saveProductionTeamAssignmentAction(_prevState: ActionState
     }
 
     revalidatePath("/settings");
-    await syncAppUsersSafe("production_team_assignment_saved");
     return settingsSuccess(userId ? "Production-team budget access saved." : "Production-team assignment saved. Send the magic link to create/link account access.");
   } catch (error) {
     return settingsError(getErrorMessage(error, "Could not save production-team assignment."));
@@ -1932,7 +1925,6 @@ export async function sendProductionTeamAccessLinkAction(_prevState: ActionState
     if (updateError) throw new Error(updateError.message);
 
     revalidatePath("/settings");
-    await syncAppUsersSafe("production_team_magic_link_sent");
     return settingsSuccess(linked.created ? "Account created and magic link sent." : "Magic link sent.");
   } catch (error) {
     return settingsError(getErrorMessage(error, "Could not send budget access link."));
@@ -1975,7 +1967,6 @@ export async function deactivateProductionTeamAssignmentAction(_prevState: Actio
     if (error) throw new Error(error.message);
 
     revalidatePath("/settings");
-    await syncAppUsersSafe("production_team_assignment_deactivated");
     return settingsSuccess("Production-team assignment deactivated.");
   } catch (error) {
     return settingsError(getErrorMessage(error, "Could not deactivate production-team assignment."));
@@ -2016,23 +2007,9 @@ export async function archiveUserProfileAction(_prevState: ActionState = emptySt
     revalidatePath("/overview");
     revalidatePath("/requests");
     revalidatePath("/procurement");
-    await syncAppUsersSafe("user_archived");
     return settingsSuccess("User archived. Access and memberships removed.");
   } catch (error) {
     return settingsError(getErrorMessage(error, "Could not archive user."));
-  }
-}
-
-export async function syncAppUsersAction(_prevState: ActionState = emptyState, _formData: FormData): Promise<ActionState> {
-  void _prevState;
-  void _formData;
-  try {
-    await requireSettingsAdmin();
-    const result = await syncAppUsers({ fullSync: true, reason: "settings_manual" });
-    if (!result.ok) throw new Error(result.error ?? "User sync failed.");
-    return settingsSuccess(`User sync complete (${result.count} users).`);
-  } catch (error) {
-    return settingsError((error as Error).message || "User sync failed.");
   }
 }
 
