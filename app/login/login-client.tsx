@@ -107,21 +107,12 @@ export default function LoginClient({ initialError = null }: LoginClientProps) {
     setNotice(null);
 
     try {
-      const supabase = getSupabaseBrowserClient();
       const next = sanitizeNextPath(new URLSearchParams(window.location.search).get("next"));
-      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
-      const { error: signInError } = await supabase.auth.signInWithOtp({
-        email: email.trim().toLowerCase(),
-        options: {
-          emailRedirectTo: redirectTo,
-          shouldCreateUser: false
-        }
+      await fetch("/api/auth/magic-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim().toLowerCase(), next })
       });
-
-      if (signInError) {
-        setError(signInError.message);
-        return;
-      }
       setNotice("If this email has active Theatre Budget access, a sign-in link is on its way.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to send a magic link.");
