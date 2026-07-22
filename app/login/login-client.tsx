@@ -14,8 +14,6 @@ export default function LoginClient({ initialError = null }: LoginClientProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(initialError);
   const [notice, setNotice] = useState<string | null>(null);
-  const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -81,8 +79,15 @@ export default function LoginClient({ initialError = null }: LoginClientProps) {
         password
       });
 
-      if (signInError) {
+      if (signInError && !/signups? not allowed|user not found/i.test(signInError.message)) {
         setError(signInError.message);
+        return;
+      }
+
+      const accessResponse = await fetch("/api/auth/access", { cache: "no-store" });
+      if (!accessResponse.ok) {
+        await supabase.auth.signOut({ scope: "local" });
+        setError("This account does not have active Theatre Budget access. Ask an app administrator for access.");
         return;
       }
 
@@ -96,40 +101,30 @@ export default function LoginClient({ initialError = null }: LoginClientProps) {
     }
   }
 
-  async function signUpWithPassword(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function sendMagicLink() {
     setLoading(true);
     setError(null);
     setNotice(null);
 
     try {
       const supabase = getSupabaseBrowserClient();
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
+      const next = sanitizeNextPath(new URLSearchParams(window.location.search).get("next"));
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
+      const { error: signInError } = await supabase.auth.signInWithOtp({
+        email: email.trim().toLowerCase(),
         options: {
-          data: {
-            full_name: fullName.trim()
-          }
+          emailRedirectTo: redirectTo,
+          shouldCreateUser: false
         }
       });
 
-      if (signUpError) {
-        setError(signUpError.message);
+      if (signInError) {
+        setError(signInError.message);
         return;
       }
-
-      if (data.session) {
-        await upsertCurrentUserProfile(fullName);
-        const next = sanitizeNextPath(new URLSearchParams(window.location.search).get("next"));
-        router.push(next);
-        router.refresh();
-        return;
-      }
-
-      setNotice("Account created. Check your email to confirm, then sign in.");
+      setNotice("If this email has active Theatre Budget access, a sign-in link is on its way.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to create account.");
+      setError(err instanceof Error ? err.message : "Unable to send a magic link.");
     } finally {
       setLoading(false);
     }
@@ -140,46 +135,9 @@ export default function LoginClient({ initialError = null }: LoginClientProps) {
       <article className="authCard">
         <p className="eyebrow">Theatre Budget App</p>
         <h1>Sign in</h1>
-        <p className="heroSubtitle">Use Google or email/password to access project budgets and purchase workflows.</p>
+        <p className="heroSubtitle">Use Google, an emailed magic link, or an existing password to access assigned budgets and purchase workflows.</p>
 
-        <div className="authModeSwitch" role="tablist" aria-label="Sign in options">
-          <button
-            type="button"
-            className={`authModeButton ${mode === "signin" ? "active" : ""}`}
-            onClick={() => {
-              setMode("signin");
-              setError(null);
-              setNotice(null);
-            }}
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
-            className={`authModeButton ${mode === "signup" ? "active" : ""}`}
-            onClick={() => {
-              setMode("signup");
-              setError(null);
-              setNotice(null);
-            }}
-          >
-            Create Account
-          </button>
-        </div>
-
-        <form className="authForm" onSubmit={mode === "signin" ? signInWithPassword : signUpWithPassword}>
-          {mode === "signup" ? (
-            <label>
-              Full name
-              <input
-                type="text"
-                value={fullName}
-                onChange={(event) => setFullName(event.target.value)}
-                placeholder="Your name"
-                autoComplete="name"
-              />
-            </label>
-          ) : null}
+        <form className="authForm" onSubmit={signInWithPassword}>
           <label>
             Email
             <input
@@ -200,13 +158,18 @@ export default function LoginClient({ initialError = null }: LoginClientProps) {
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               placeholder="At least 6 characters"
-              autoComplete={mode === "signin" ? "current-password" : "new-password"}
+              autoComplete="current-password"
             />
           </label>
           <button type="submit" className="authButton" disabled={loading}>
-            {loading ? "Working..." : mode === "signin" ? "Sign In with Email" : "Create Email Account"}
+            {loading ? "Working..." : "Sign In with Password"}
+          </button>
+          <button type="button" className="authButton" onClick={sendMagicLink} disabled={loading || !email.trim()}>
+            {loading ? "Working..." : "Email me a magic link"}
           </button>
         </form>
+
+        <p className="heroSubtitle">New access is assigned by a Theatre Budget administrator. Public account creation is disabled.</p>
 
         <div className="authDivider" aria-hidden="true">
           <span>or</span>
