@@ -1084,7 +1084,12 @@ export function SettingsPageClient({
                       <div className="muted">{assignment.profileEmail ?? assignment.userName ?? "No email yet"}</div>
                     </td>
                     <td>{assignment.productionRole ?? "-"}</td>
-                    <td>{assignment.productionCategoryName ?? "All"}</td>
+                    <td>
+                      {assignment.productionCategoryNames.length
+                        ? assignment.productionCategoryNames.join(", ")
+                        : assignment.productionCategoryName ?? "All"}
+                      {assignment.sourceApp === "production_management" ? <div className="muted">Managed in Production Management</div> : null}
+                    </td>
                     <td>{assignment.budgetAccessRole}</td>
                     <td>{assignment.active ? "Active" : "Inactive"}</td>
                     <td>
@@ -1106,7 +1111,11 @@ export function SettingsPageClient({
                         }}
                       >
                         <input type="hidden" name="assignmentId" value={assignment.id} />
-                        <button type="submit" className="tinyButton dangerButton" disabled={!assignment.active || assignment.userId === accessUserId}>
+                        <button
+                          type="submit"
+                          className="tinyButton dangerButton"
+                          disabled={!assignment.active || assignment.userId === accessUserId || assignment.sourceApp === "production_management"}
+                        >
                           Deactivate
                         </button>
                       </form>

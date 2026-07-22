@@ -637,10 +637,13 @@ export type SettingsProductionTeamAssignmentRow = {
   productionRole: string | null;
   productionCategoryId: string | null;
   productionCategoryName: string | null;
+  productionCategoryIds: string[];
+  productionCategoryNames: string[];
   budgetAccessRole: "none" | "viewer" | "project_manager";
   derivedAccessScopeId: string | null;
   active: boolean;
   lastInvitedAt: string | null;
+  sourceApp: string | null;
 };
 
 export async function getDashboardProjects(params: { fiscalYearId?: string } = {}): Promise<DashboardProject[]> {
@@ -2009,28 +2012,37 @@ export async function getSettingsProjectMemberships(): Promise<{
 export async function getSettingsProductionTeamAssignments(): Promise<SettingsProductionTeamAssignmentRow[]> {
   const supabase = await getSupabaseServerClient();
   const access = await getAccessContext();
+  const roleBudgetBridgeEnabled = process.env.ENABLE_ROLE_BUDGET_ACCESS_BRIDGE === "true";
 
   const [
     assignmentsResponse,
     usersResponse,
     projectsResponse,
-    categoriesResponse
+    categoriesResponse,
+    categoryScopesResponse
   ] = await Promise.all([
     supabase
       .from("production_team_assignments")
       .select(
-        "id, project_id, user_id, profile_name, profile_email, production_role, production_category_id, budget_access_role, derived_access_scope_id, active, last_invited_at, created_at"
+        "id, project_id, user_id, profile_name, profile_email, production_role, production_category_id, budget_access_role, derived_access_scope_id, active, last_invited_at, created_at, source_app"
       )
       .order("created_at", { ascending: false }),
     supabase.from("users").select("id, full_name"),
     supabase.from("projects").select("id, name, season"),
-    supabase.from("production_categories").select("id, name")
+    supabase.from("production_categories").select("id, name"),
+    roleBudgetBridgeEnabled
+      ? supabase
+          .from("production_team_budget_scopes")
+          .select("production_team_assignment_id, production_category_id, active")
+          .eq("active", true)
+      : Promise.resolve({ data: [], error: null })
   ]);
 
   if (assignmentsResponse.error) throw assignmentsResponse.error;
   if (usersResponse.error) throw usersResponse.error;
   if (projectsResponse.error) throw projectsResponse.error;
   if (categoriesResponse.error) throw categoriesResponse.error;
+  if (categoryScopesResponse.error) throw categoryScopesResponse.error;
 
   const isAdmin = access.role === "admin";
   const manageableProjects = access.manageableProjectIds;
@@ -2047,6 +2059,14 @@ export async function getSettingsProductionTeamAssignments(): Promise<SettingsPr
     ])
   );
   const categoryNameById = new Map((categoriesResponse.data ?? []).map((row) => [row.id as string, row.name as string]));
+  const categoryIdsByAssignment = new Map<string, string[]>();
+  for (const row of categoryScopesResponse.data ?? []) {
+    const assignmentId = row.production_team_assignment_id as string;
+    const categoryId = row.production_category_id as string;
+    const current = categoryIdsByAssignment.get(assignmentId) ?? [];
+    if (!current.includes(categoryId)) current.push(categoryId);
+    categoryIdsByAssignment.set(assignmentId, current);
+  }
 
   return ((assignmentsResponse.data ?? []) as Array<{
     id?: string;
@@ -2060,6 +2080,7 @@ export async function getSettingsProductionTeamAssignments(): Promise<SettingsPr
     derived_access_scope_id?: string | null;
     active?: boolean | null;
     last_invited_at?: string | null;
+    source_app?: string | null;
   }>)
     .filter((row) => {
       const projectId = row.project_id ?? "";
@@ -2069,6 +2090,8 @@ export async function getSettingsProductionTeamAssignments(): Promise<SettingsPr
       const projectId = row.project_id ?? "";
       const userId = row.user_id ?? null;
       const productionCategoryId = row.production_category_id ?? null;
+      const productionCategoryIds = categoryIdsByAssignment.get(row.id ?? "")
+        ?? (productionCategoryId ? [productionCategoryId] : []);
       const budgetAccessRole = row.budget_access_role === "project_manager" || row.budget_access_role === "none"
         ? row.budget_access_role
         : "viewer";
@@ -2083,10 +2106,13 @@ export async function getSettingsProductionTeamAssignments(): Promise<SettingsPr
         productionRole: row.production_role ?? null,
         productionCategoryId,
         productionCategoryName: productionCategoryId ? categoryNameById.get(productionCategoryId) ?? productionCategoryId : null,
+        productionCategoryIds,
+        productionCategoryNames: productionCategoryIds.map((categoryId) => categoryNameById.get(categoryId) ?? categoryId),
         budgetAccessRole: budgetAccessRole as "none" | "viewer" | "project_manager",
         derivedAccessScopeId: row.derived_access_scope_id ?? null,
         active: row.active ?? true,
-        lastInvitedAt: row.last_invited_at ?? null
+        lastInvitedAt: row.last_invited_at ?? null,
+        sourceApp: row.source_app ?? null
       };
     })
     .sort((a, b) => a.projectLabel.localeCompare(b.projectLabel) || a.profileName.localeCompare(b.profileName));

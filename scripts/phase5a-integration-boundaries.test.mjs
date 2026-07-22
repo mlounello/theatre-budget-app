@@ -6,6 +6,7 @@ const syncSource = readFileSync(new URL("../lib/production-management-sync.ts", 
 const actionsSource = readFileSync(new URL("../app/guest-artists/actions.ts", import.meta.url), "utf8");
 const migration = readFileSync(new URL("../supabase/migrations/202607221500_phase5a_guest_artist_bridge.sql", import.meta.url), "utf8");
 const entitlementMigration = readFileSync(new URL("../supabase/migrations/202607221510_phase5a_lighting_designer_budget_access.sql", import.meta.url), "utf8");
+const phase6Migration = readFileSync(new URL("../supabase/migrations/202607221700_phase6_role_budget_access.sql", import.meta.url), "utf8");
 
 test("guest-artist reconciliation is disabled unless explicitly enabled", () => {
   assert.match(syncSource, /ENABLE_PRODUCTION_MANAGEMENT_GUEST_ARTIST_SYNC/);
@@ -42,4 +43,21 @@ test("database bridge is service-role-only and copies no financial or tax fields
   assert.match(migration, /grant execute on function app_production_management\.reconcile_theatre_budget_guest_artist\(uuid\) to service_role/);
   const personInsert = migration.match(/insert into app_production_management\.people \(([\s\S]*?)\) values/i)?.[1] ?? "";
   assert.doesNotMatch(personInsert, /vendor_number|tax_id|foapal|address|notes/i);
+});
+
+test("Phase 6 replaces the hard-coded role with explicit multi-category Viewer selections", () => {
+  assert.match(phase6Migration, /role_assignment_budget_access/);
+  assert.match(phase6Migration, /production_team_budget_scopes/);
+  assert.match(phase6Migration, /unique \(role_assignment_id, production_category_id\)/);
+  assert.match(phase6Migration, /access_role text not null default 'viewer' check \(access_role = 'viewer'\)/);
+  assert.match(phase6Migration, /'role_assignment_budget_viewer',[\s\S]*?false/);
+  assert.doesNotMatch(phase6Migration, /insert into core\.app_memberships/i);
+});
+
+test("Phase 6 configuration is manager-authorized and reconciliation remains service-role-only", () => {
+  assert.match(phase6Migration, /revoke all on function app_production_management\.configure_role_assignment_budget_access\(uuid, uuid\[\], uuid\)[\s\S]*?from public, anon, authenticated/);
+  assert.match(phase6Migration, /grant execute on function app_production_management\.configure_role_assignment_budget_access\(uuid, uuid\[\], uuid\)[\s\S]*?to authenticated/);
+  assert.match(phase6Migration, /caller_user_id uuid := auth\.uid\(\)/);
+  assert.match(phase6Migration, /has_project_role\([\s\S]*?array\['project_manager', 'producer', 'department_head'\]/);
+  assert.match(phase6Migration, /revoke all on function app_production_management\.reconcile_role_assignment_budget_access\(uuid\)[\s\S]*?from public, anon, authenticated/);
 });

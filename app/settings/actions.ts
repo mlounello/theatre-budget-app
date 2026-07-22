@@ -5,6 +5,7 @@ import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
 import { APP_ID } from "@/lib/supabase-schema";
 import { ensureBudgetAccessUser, sendBudgetAccessMagicLink } from "@/lib/budget-access-invite";
+import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 
 export type ActionState = {
   ok: boolean;
@@ -1882,7 +1883,7 @@ export async function sendProductionTeamAccessLinkAction(_prevState: ActionState
     const assignmentId = requiredText(formData, "assignmentId", "Assignment");
     const { data: assignment, error: assignmentError } = await supabase
       .from("production_team_assignments")
-      .select("id, project_id, user_id, profile_name, profile_email, production_category_id, budget_access_role, active")
+      .select("id, project_id, user_id, profile_name, profile_email, production_category_id, budget_access_role, active, source_app, source_assignment_id")
       .eq("id", assignmentId)
       .single();
     if (assignmentError || !assignment) throw new Error(assignmentError?.message ?? "Assignment not found.");
@@ -1901,14 +1902,31 @@ export async function sendProductionTeamAccessLinkAction(_prevState: ActionState
       fullName: String(assignment.profile_name ?? "").trim() || email
     });
 
-    await applyProductionTeamBudgetAccess({
-      supabase,
-      assignmentId,
-      userId: linked.userId,
-      projectId,
-      productionCategoryId: (assignment.production_category_id as string | null) ?? null,
-      budgetAccessRole
-    });
+    const sourceApp = String(assignment.source_app ?? "");
+    const sourceAssignmentId = String(assignment.source_assignment_id ?? "");
+
+    const { error: userLinkError } = await supabase
+      .from("production_team_assignments")
+      .update({ user_id: linked.userId, updated_by_user_id: access.userId })
+      .eq("id", assignmentId);
+    if (userLinkError) throw new Error(userLinkError.message);
+
+    if (process.env.ENABLE_ROLE_BUDGET_ACCESS_BRIDGE === "true" && sourceApp === "production_management" && sourceAssignmentId) {
+      const admin = createSupabaseAdminClient();
+      const { error: reconcileError } = await admin
+        .schema("app_production_management")
+        .rpc("reconcile_role_assignment_budget_access", { target_assignment_id: sourceAssignmentId });
+      if (reconcileError) throw new Error(reconcileError.message);
+    } else {
+      await applyProductionTeamBudgetAccess({
+        supabase,
+        assignmentId,
+        userId: linked.userId,
+        projectId,
+        productionCategoryId: (assignment.production_category_id as string | null) ?? null,
+        budgetAccessRole
+      });
+    }
 
     if (!linked.created) {
       await sendBudgetAccessMagicLink(email);
@@ -1917,7 +1935,6 @@ export async function sendProductionTeamAccessLinkAction(_prevState: ActionState
     const { error: updateError } = await supabase
       .from("production_team_assignments")
       .update({
-        user_id: linked.userId,
         last_invited_at: new Date().toISOString(),
         updated_by_user_id: access.userId
       })
@@ -1941,12 +1958,15 @@ export async function deactivateProductionTeamAssignmentAction(_prevState: Actio
     const assignmentId = requiredText(formData, "assignmentId", "Assignment");
     const { data: assignment, error: assignmentError } = await supabase
       .from("production_team_assignments")
-      .select("id, project_id, user_id, derived_access_scope_id")
+      .select("id, project_id, user_id, derived_access_scope_id, source_app")
       .eq("id", assignmentId)
       .single();
     if (assignmentError || !assignment) throw new Error(assignmentError?.message ?? "Assignment not found.");
 
     await requireProjectSettingsWrite(supabase, assignment.project_id as string);
+    if (assignment.source_app === "production_management") {
+      throw new Error("This access is managed in Production Management. Remove its selected Budget departments there.");
+    }
     if ((assignment.user_id as string | null) === access.userId) {
       throw new Error("You cannot deactivate your own production-team assignment.");
     }
