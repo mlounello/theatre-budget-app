@@ -33,7 +33,7 @@ using (
     where assignment.id = role_assignment_budget_access.role_assignment_id
       and app_production_management.has_project_role(
         assignment.project_id,
-        array['project_manager', 'producer', 'department_head']
+        array['project_manager', 'producer']
       )
   )
 )
@@ -45,7 +45,7 @@ with check (
     where assignment.id = role_assignment_budget_access.role_assignment_id
       and app_production_management.has_project_role(
         assignment.project_id,
-        array['project_manager', 'producer', 'department_head']
+        array['project_manager', 'producer']
       )
   )
 );
@@ -437,6 +437,9 @@ begin
         scope_managed := true;
       else
         update app_theatre_budget.user_access_scopes set active = true where id = scope_id;
+        -- An already-active manual scope remains manual. If this bridge
+        -- reactivates an inactive scope, it owns only that activation and will
+        -- return the same row to inactive when the selection is removed.
         scope_managed := not scope_was_active;
       end if;
     end if;
@@ -608,7 +611,7 @@ begin
       app_production_management.has_app_role(array['admin', 'producer'])
       or app_production_management.has_project_role(
         assignment_project_id,
-        array['project_manager', 'producer', 'department_head']
+        array['project_manager', 'producer']
       )
     ) then
     raise exception 'You are not authorized to manage Budget access for this project.'
@@ -725,10 +728,9 @@ begin
 end;
 $$;
 
-drop trigger if exists phase5a_lighting_designer_budget_access
-  on app_production_management.role_assignments;
-drop trigger if exists phase5a_budget_project_link_reconciliation
-  on app_production_management.external_links;
+-- Keep the Phase 5A compatibility triggers installed while this new control
+-- remains disabled. During activation, the old control is disabled in the same
+-- transaction that enables this one, so there is no access-maintenance gap.
 
 drop trigger if exists phase6_role_assignment_budget_access
   on app_production_management.role_assignments;

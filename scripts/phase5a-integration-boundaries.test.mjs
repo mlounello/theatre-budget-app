@@ -58,6 +58,13 @@ test("Phase 6 configuration is manager-authorized and reconciliation remains ser
   assert.match(phase6Migration, /revoke all on function app_production_management\.configure_role_assignment_budget_access\(uuid, uuid\[\], uuid\)[\s\S]*?from public, anon, authenticated/);
   assert.match(phase6Migration, /grant execute on function app_production_management\.configure_role_assignment_budget_access\(uuid, uuid\[\], uuid\)[\s\S]*?to authenticated/);
   assert.match(phase6Migration, /caller_user_id uuid := auth\.uid\(\)/);
-  assert.match(phase6Migration, /has_project_role\([\s\S]*?array\['project_manager', 'producer', 'department_head'\]/);
+  assert.match(phase6Migration, /has_project_role\([\s\S]*?array\['project_manager', 'producer'\]/);
+  assert.doesNotMatch(phase6Migration, /array\['project_manager', 'producer', 'department_head'\]/);
   assert.match(phase6Migration, /revoke all on function app_production_management\.reconcile_role_assignment_budget_access\(uuid\)[\s\S]*?from public, anon, authenticated/);
+});
+
+test("Phase 6 preserves manual scopes and the disabled-first Phase 5A bridge", () => {
+  assert.match(phase6Migration, /already-active manual scope remains manual[\s\S]*?scope_managed := not scope_was_active/);
+  assert.doesNotMatch(phase6Migration, /drop trigger if exists phase5a_lighting_designer_budget_access/);
+  assert.doesNotMatch(phase6Migration, /drop trigger if exists phase5a_budget_project_link_reconciliation/);
 });
