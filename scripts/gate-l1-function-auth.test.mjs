@@ -9,6 +9,10 @@ const migration = readFileSync(
   ),
   "utf8",
 );
+const rollback = readFileSync(
+  new URL("./gate-l1-production-rollback.sql", import.meta.url),
+  "utf8",
+);
 
 test("maintenance seed routines are service-only", () => {
   for (const signature of [
@@ -79,4 +83,22 @@ test("migration changes no Theatre Budget business rows", () => {
   assert.doesNotMatch(topLevelMigration, /\bupdate\s+app_theatre_budget\./i);
   assert.doesNotMatch(topLevelMigration, /\binsert\s+into\s+app_theatre_budget\./i);
   assert.doesNotMatch(topLevelMigration, /\bselect\s+app_theatre_budget\.seed_/i);
+});
+
+test("emergency rollback restores only the prior function and grants", () => {
+  assert.match(
+    rollback,
+    /create or replace function app_theatre_budget\.ensure_project_category_line/,
+  );
+  assert.match(
+    rollback,
+    /grant execute on function app_theatre_budget\.ensure_project_category_line\(uuid, uuid\)[\s\S]*?to public, anon, authenticated, service_role/,
+  );
+  assert.match(
+    rollback,
+    /grant execute on function app_theatre_budget\.seed_all_project_budget_lines_from_account_codes\(\)[\s\S]*?to public, anon, authenticated, service_role/,
+  );
+  assert.doesNotMatch(rollback, /\bdelete\s+from\b/i);
+  assert.doesNotMatch(rollback, /\btruncate\b/i);
+  assert.doesNotMatch(rollback, /\bdrop\s+(table|schema|column)\b/i);
 });
