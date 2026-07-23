@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "npm run build && tsc --noEmit",
-    "test:phase5a-integrations": "node --test scripts/phase5a-integration-boundaries.test.mjs"
+    "test:phase5a-integrations": "node --test scripts/phase5a-integration-boundaries.test.mjs",
+    "test:gate-l1-function-auth": "node --test scripts/gate-l1-function-auth.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
