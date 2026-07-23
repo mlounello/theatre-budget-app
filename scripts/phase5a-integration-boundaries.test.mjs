@@ -7,6 +7,7 @@ const actionsSource = readFileSync(new URL("../app/guest-artists/actions.ts", im
 const migration = readFileSync(new URL("../supabase/migrations/202607221500_phase5a_guest_artist_bridge.sql", import.meta.url), "utf8");
 const entitlementMigration = readFileSync(new URL("../supabase/migrations/202607221510_phase5a_lighting_designer_budget_access.sql", import.meta.url), "utf8");
 const phase6Migration = readFileSync(new URL("../supabase/migrations/202607221700_phase6_role_budget_access.sql", import.meta.url), "utf8");
+const phase6GuestArtistContract = readFileSync(new URL("../supabase/migrations/202607221710_phase6_pm_guest_artist_contract.sql", import.meta.url), "utf8");
 
 test("guest-artist reconciliation is disabled unless explicitly enabled", () => {
   assert.match(syncSource, /ENABLE_PRODUCTION_MANAGEMENT_GUEST_ARTIST_SYNC/);
@@ -67,4 +68,14 @@ test("Phase 6 preserves manual scopes and the disabled-first Phase 5A bridge", (
   assert.match(phase6Migration, /already-active manual scope remains manual[\s\S]*?scope_managed := not scope_was_active/);
   assert.doesNotMatch(phase6Migration, /drop trigger if exists phase5a_lighting_designer_budget_access/);
   assert.doesNotMatch(phase6Migration, /drop trigger if exists phase5a_budget_project_link_reconciliation/);
+});
+
+test("Production Management guest-artist access uses narrow service-only contracts", () => {
+  assert.match(phase6GuestArtistContract, /production_management_guest_artists/);
+  assert.match(phase6GuestArtistContract, /production_management_create_guest_artist/);
+  assert.match(phase6GuestArtistContract, /revoke all on function app_theatre_budget\.production_management_guest_artists\(uuid\)[\s\S]*?from public, anon, authenticated/);
+  assert.match(phase6GuestArtistContract, /grant execute on function app_theatre_budget\.production_management_guest_artists\(uuid\)[\s\S]*?to service_role/);
+  assert.match(phase6GuestArtistContract, /grant execute on function app_theatre_budget\.production_management_create_guest_artist\(text, text, text, text\)[\s\S]*?to service_role/);
+  const createColumns = phase6GuestArtistContract.match(/insert into app_theatre_budget\.guest_artists \(([\s\S]*?)\) values/i)?.[1] ?? "";
+  assert.doesNotMatch(createColumns, /tax|bank|payment|contract|budget|foapal|address/i);
 });
