@@ -84,27 +84,25 @@ th {
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  flex: 0 0 auto;
+  text-decoration: none;
+}
+
+.brandLogoFrame {
+  display: block;
+  width: clamp(190px, 16vw, 230px);
+  padding: 0.35rem 0.55rem;
+  border: 1px solid #ffffff80;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 3px 12px #002b2038;
 }
 
 .brandLogo {
-  width: 42px;
-  height: 42px;
-  object-fit: contain;
   display: block;
-}
-
-.brandTitle {
-  margin: 0;
-  font-family: "Oswald", "Arial Narrow", sans-serif;
-  text-transform: uppercase;
-  font-size: 1.1rem;
-}
-
-.brandSubtitle {
-  margin: 0;
-  opacity: 0.9;
-  font-size: 0.85rem;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
 }
 
 .mainNav {
@@ -640,6 +638,13 @@ th {
 
 .authCard h1 {
   margin: 0.4rem 0;
+}
+
+.authLogo {
+  display: block;
+  width: min(240px, 72%);
+  height: auto;
+  margin: 0 auto 0.75rem;
 }
 
 .authModeSwitch {
@@ -1402,6 +1407,10 @@ th {
   .topNavInner {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .brandLogoFrame {
+    width: min(230px, 78vw);
   }
 
   .mainNav {

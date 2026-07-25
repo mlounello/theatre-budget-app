@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-client";
@@ -124,7 +125,14 @@ export default function LoginClient({ initialError = null }: LoginClientProps) {
   return (
     <section className="authShell">
       <article className="authCard">
-        <p className="eyebrow">Theatre Budget App</p>
+        <Image
+          src="/tktba-square.png"
+          alt="Theatre Budget App"
+          className="authLogo"
+          width={1000}
+          height={1000}
+          priority
+        />
         <h1>Sign in</h1>
         <p className="heroSubtitle">Use Google, an emailed magic link, or an existing password to access assigned budgets and purchase workflows.</p>
 

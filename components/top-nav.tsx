@@ -84,13 +84,18 @@ export async function TopNav() {
   return (
     <header className="topNav">
       <div className="topNavInner">
-        <div className="brand">
-          <Image src="/site-logo.svg" alt="Theatre Budget App logo" className="brandLogo" width={42} height={42} />
-          <div>
-            <p className="brandTitle">Theatre Budget App</p>
-            <p className="brandSubtitle">Siena Production Budgeting</p>
-          </div>
-        </div>
+        <Link href="/" className="brand" aria-label="Theatre Budget App home">
+          <span className="brandLogoFrame">
+            <Image
+              src="/tktba-horizontal.png"
+              alt="Theatre Budget App"
+              className="brandLogo"
+              width={1200}
+              height={391}
+              priority
+            />
+          </span>
+        </Link>
         <nav className="mainNav" aria-label="Primary">
           {links.map((link) => (
             <Link key={link.href} href={link.href} className="navLink">
