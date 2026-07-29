@@ -14,6 +14,7 @@ function isAuthorized(request: Request) {
   const header = request.headers.get("authorization") ?? "";
   const received = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
   const configured = [
+    process.env.BUDGET_ACCESS_INTEGRATION_SECRET?.trim(),
     process.env.SUPABASE_SECRET_KEY?.trim(),
     process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
   ].filter((value): value is string => Boolean(value));
