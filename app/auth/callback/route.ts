@@ -37,7 +37,10 @@ export async function GET(request: Request) {
     if (!access.userId || access.role === "none") {
       await supabase.auth.signOut({ scope: "local" });
       const loginUrl = new URL("/login", requestUrl.origin);
-      loginUrl.searchParams.set("error", "This account does not have active Theatre Budget access.");
+      loginUrl.searchParams.set(
+        "error",
+        "This account does not have active Theatre Budget access. Use the exact email that was authorized or contact the production manager."
+      );
       loginUrl.searchParams.set("next", next);
       return NextResponse.redirect(loginUrl);
     }

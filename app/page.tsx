@@ -93,6 +93,7 @@ export default async function DashboardPage({
 }) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
+  if (access.role === "none") redirect("/auth/denied");
   if (access.role === "procurement_tracker") {
     redirect("/procurement-tracker");
   }

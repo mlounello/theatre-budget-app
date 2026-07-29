@@ -2161,6 +2161,7 @@ export async function getSettingsProductionTeamAssignments(): Promise<SettingsPr
       .select(
         "id, project_id, user_id, profile_name, profile_email, production_role, production_category_id, budget_access_role, derived_access_scope_id, active, last_invited_at, created_at"
       )
+      .eq("active", true)
       .order("created_at", { ascending: false }),
     supabase.from("users").select("id, full_name"),
     supabase.from("projects").select("id, name, season"),

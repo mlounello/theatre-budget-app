@@ -114,7 +114,9 @@ export default function LoginClient({ initialError = null }: LoginClientProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase(), next })
       });
-      setNotice("If this email has active Theatre Budget access, a sign-in link is on its way.");
+      setNotice(
+        "If this email has active Theatre Budget access, a sign-in link is on its way. If it does not arrive, verify the address or contact the production manager."
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to send a magic link.");
     } finally {

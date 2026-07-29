@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
+import { redirect } from "next/navigation";
 import { signOut } from "@/app/auth/actions";
 import { getAccessContext } from "@/lib/access";
 import { getFiscalYearOptions } from "@/lib/db";
@@ -68,7 +69,7 @@ export async function TopNav() {
     hasUser = Boolean(context.userId);
     userEmail = context.email;
     role = context.role;
-    if (hasUser) {
+    if (hasUser && role !== "none") {
       const fiscalYearOptions = await getFiscalYearOptions();
       fiscalYears = fiscalYearOptions.map((fy) => ({ id: fy.id, name: fy.name }));
       defaultFiscalYearId = resolveCurrentFiscalYearId(fiscalYearOptions);
@@ -79,7 +80,12 @@ export async function TopNav() {
     role = "none";
   }
 
+  if (hasUser && role === "none") {
+    redirect("/auth/denied");
+  }
+
   const links = linksForRole(role);
+  if (!hasUser) return null;
 
   return (
     <header className="topNav">

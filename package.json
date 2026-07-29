@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "typecheck": "npm run build && tsc --noEmit",
+    "test:auth-boundary": "node --test scripts/auth-access-boundary.test.mjs",
+    "test:active-production-team-settings": "node --test scripts/active-production-team-settings.test.mjs",
     "test:phase5a-integrations": "node --test scripts/phase5a-integration-boundaries.test.mjs"
   },
   "dependencies": {

@@ -29,6 +29,7 @@ export default async function MyBudgetPage({
 }) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
+  if (access.role === "none") redirect("/auth/denied");
   if (access.role === "procurement_tracker") redirect("/procurement-tracker");
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const isAdminView = access.role === "admin" || access.role === "project_manager";

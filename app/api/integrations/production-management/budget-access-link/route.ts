@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { sendAuthorizedBudgetMagicLink } from "@/lib/branded-magic-link";
+import { sendBudgetAccessReadyEmail } from "@/lib/branded-magic-link";
 
 export const dynamic = "force-dynamic";
 
@@ -23,17 +23,16 @@ function isAuthorized(request: Request) {
 
 export async function POST(request: Request) {
   if (!isAuthorized(request)) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-  const body = await request.json().catch(() => null) as { email?: string } | null;
+  const body = await request.json().catch(() => null) as { email?: string; fullName?: string } | null;
   const email = String(body?.email ?? "").trim().toLowerCase();
   if (!email) return NextResponse.json({ error: "Email is required." }, { status: 400 });
 
   try {
-    const origin = new URL(request.url).origin;
-    await sendAuthorizedBudgetMagicLink(email, `${origin}/auth/callback`);
+    await sendBudgetAccessReadyEmail(email, String(body?.fullName ?? ""));
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Theatre Budget access email failed." },
+      { error: error instanceof Error ? error.message : "Theatre Budget access-ready email failed." },
       { status: 502 }
     );
   }
