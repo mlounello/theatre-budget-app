@@ -102,10 +102,48 @@ function parseCheckRequestHandling(value: FormDataEntryValue | null): CheckReque
   return "mail";
 }
 
-function parseContractSession(value: FormDataEntryValue | null): ContractSession | null {
-  const raw = String(value ?? "").trim().toLowerCase();
-  if (raw === "summer" || raw === "fall" || raw === "winter" || raw === "spring") return raw;
-  return null;
+function parseContractSessions(formData: FormData): ContractSession[] {
+  const valid = new Set<ContractSession>(["summer", "fall", "winter", "spring"]);
+  return Array.from(
+    new Set(
+      formData
+        .getAll("contractSessions")
+        .map((value) => String(value).trim().toLowerCase())
+        .filter((value): value is ContractSession => valid.has(value as ContractSession))
+    )
+  );
+}
+
+function parseProductionProjectIds(formData: FormData, accountingProjectId: string): string[] {
+  const selected = Array.from(
+    new Set(
+      formData
+        .getAll("productionProjectIds")
+        .map((value) => String(value).trim())
+        .filter(Boolean)
+    )
+  );
+  return selected.length > 0 ? selected : [accountingProjectId];
+}
+
+async function syncContractProductions(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  contractId: string,
+  projectIds: string[]
+): Promise<void> {
+  const { error: deleteError } = await supabase
+    .from("contract_productions")
+    .delete()
+    .eq("contract_id", contractId);
+  if (deleteError) throw new Error(deleteError.message);
+
+  const { error: insertError } = await supabase.from("contract_productions").insert(
+    projectIds.map((projectId) => ({
+      contract_id: contractId,
+      project_id: projectId
+    }))
+  );
+  if (insertError) throw new Error(insertError.message);
 }
 
 function nullableFormText(formData: FormData, name: string): string | null {
@@ -320,7 +358,7 @@ export async function createContractAction(
     if (!user) return err("You must be signed in.");
 
     const projectId = String(formData.get("projectId") ?? "").trim();
-    const productionProjectId = String(formData.get("productionProjectId") ?? "").trim() || projectId;
+    const productionProjectIds = parseProductionProjectIds(formData, projectId);
     const guestArtistId = String(formData.get("guestArtistId") ?? "").trim();
     const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
@@ -383,7 +421,7 @@ export async function createContractAction(
         fiscal_year_id: resolvedFiscalYearId,
         organization_id: resolvedOrganizationId,
         project_id: projectId,
-        production_project_id: productionProjectId,
+        production_project_id: productionProjectIds[0],
         banner_account_code_id: bannerAccountCodeId,
         guest_artist_id: guestArtist?.id ?? null,
         production_category_id: miscCategoryId,
@@ -394,7 +432,7 @@ export async function createContractAction(
         contractor_phone: contractorPhone || null,
         contract_value: contractValue,
         installment_count: installmentCount,
-        contract_session: parseContractSession(formData.get("contractSession")),
+        contract_session: parseContractSessions(formData),
         ...contractCheckRequestValues,
         workflow_status: "w9_requested",
         notes: notes || null
@@ -402,6 +440,7 @@ export async function createContractAction(
       .select("id")
       .single();
     if (contractError || !contract) return err(contractError?.message ?? "Could not create contract.");
+    await syncContractProductions(supabase, contract.id as string, productionProjectIds);
 
     const installmentAmounts = splitAmounts(contractValue, installmentCount);
     for (let index = 0; index < installmentAmounts.length; index += 1) {
@@ -543,7 +582,7 @@ export async function updateContractDetailsAction(
     const contractId = String(formData.get("contractId") ?? "").trim();
     const guestArtistId = String(formData.get("guestArtistId") ?? "").trim();
     const projectId = String(formData.get("projectId") ?? "").trim();
-    const productionProjectId = String(formData.get("productionProjectId") ?? "").trim() || projectId;
+    const productionProjectIds = parseProductionProjectIds(formData, projectId);
     const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
     const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
@@ -642,7 +681,7 @@ export async function updateContractDetailsAction(
         fiscal_year_id: resolvedFiscalYearId,
         organization_id: resolvedOrganizationId,
         project_id: projectId,
-        production_project_id: productionProjectId,
+        production_project_id: productionProjectIds[0],
         banner_account_code_id: bannerAccountCodeId,
         guest_artist_id: guestArtist?.id ?? null,
         contractor_name: contractorName,
@@ -651,7 +690,7 @@ export async function updateContractDetailsAction(
         contractor_phone: contractorPhone || null,
         contract_value: contractValue,
         installment_count: installmentCount,
-        contract_session: parseContractSession(formData.get("contractSession")),
+        contract_session: parseContractSessions(formData),
         ...contractCheckRequestValues,
         notes: notes || null
       })
@@ -660,6 +699,7 @@ export async function updateContractDetailsAction(
       .maybeSingle();
     if (contractUpdateError) return err(contractUpdateError.message);
     if (!contractUpdated?.id) return err("Contract update was not applied.");
+    await syncContractProductions(supabase, contractId, productionProjectIds);
 
     for (const installment of removedInstallments) {
       const purchaseId = (installment.purchase_id as string | null) ?? null;

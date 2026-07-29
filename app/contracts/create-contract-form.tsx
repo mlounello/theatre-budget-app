@@ -142,15 +142,17 @@ export function CreateContractForm({
       </label>
       <label>
         Associated Production / Show
-        <select name="productionProjectId" defaultValue="">
-          <option value="">Same as accounting project</option>
+        <select name="productionProjectIds" multiple size={6} defaultValue={[]}>
           {projectOptions.map((project) => (
             <option key={project.id} value={project.id}>
               {project.label}
             </option>
           ))}
         </select>
-        <span className="helperText">Choose the show this artist is working on, even when the contract is tracked in a shared Guest Artists project.</span>
+        <span className="helperText">
+          Choose one or more shows. Hold Command (Mac) or Ctrl (Windows) to select multiple. Leave all unselected to
+          use the accounting project.
+        </span>
       </label>
       <label>
         Banner Account Code
@@ -224,14 +226,16 @@ export function CreateContractForm({
         <input name="contractRole" placeholder="Designer, Director, Musician..." />
       </label>
       <label>
-        Session
-        <select name="contractSession" defaultValue="">
-          <option value="">Select session</option>
+        Sessions
+        <select name="contractSessions" multiple size={4} defaultValue={[]}>
           <option value="summer">Summer</option>
           <option value="fall">Fall</option>
           <option value="winter">Winter</option>
           <option value="spring">Spring</option>
         </select>
+        <span className="helperText">
+          Choose every session covered by this contract. Hold Command (Mac) or Ctrl (Windows) to select multiple.
+        </span>
       </label>
       <label>
         Check Request FOAPAL

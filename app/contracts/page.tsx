@@ -35,12 +35,14 @@ function installmentClass(value: string): string {
   return "status-requested";
 }
 
-function contractSessionLabel(value: string | null): string | null {
-  if (value === "summer") return "Summer";
-  if (value === "fall") return "Fall";
-  if (value === "winter") return "Winter";
-  if (value === "spring") return "Spring";
-  return null;
+function contractSessionLabels(values: string[]): string[] {
+  const labels = new Map([
+    ["summer", "Summer"],
+    ["fall", "Fall"],
+    ["winter", "Winter"],
+    ["spring", "Spring"]
+  ]);
+  return values.map((value) => labels.get(value)).filter((value): value is string => Boolean(value));
 }
 
 function shortDate(value: string | null): string {
@@ -167,7 +169,10 @@ export default async function ContractsPage({
                 </tr>
               ) : (
                 visibleContracts.map((contract) => {
-                  const sessionLabel = contractSessionLabel(contract.contractSession);
+                  const sessionLabels = contractSessionLabels(contract.contractSessions);
+                  const associatedProductions = contract.productionProjects.filter(
+                    (production) => production.id !== contract.projectId
+                  );
                   const rows = (installmentByContract.get(contract.id) ?? []).sort(
                     (a, b) => a.installmentNumber - b.installmentNumber
                   );
@@ -180,13 +185,15 @@ export default async function ContractsPage({
                         <strong>{contract.contractorName}</strong>
                         <br />
                         <span>Vendor #: {contract.contractorEmployeeId ?? "-"}</span>
-                        {contract.contractRole || sessionLabel ? (
+                        {contract.contractRole || sessionLabels.length > 0 ? (
                           <>
                             <br />
                             <span className="helperText">
                               {contract.contractRole ? `Role: ${contract.contractRole}` : ""}
-                              {contract.contractRole && sessionLabel ? " · " : ""}
-                              {sessionLabel ? `Session: ${sessionLabel}` : ""}
+                              {contract.contractRole && sessionLabels.length > 0 ? " · " : ""}
+                              {sessionLabels.length > 0
+                                ? `${sessionLabels.length === 1 ? "Session" : "Sessions"}: ${sessionLabels.join(", ")}`
+                                : ""}
                             </span>
                           </>
                         ) : null}
@@ -196,7 +203,20 @@ export default async function ContractsPage({
                       <td>
                         {contract.projectName}
                         {contract.season ? ` (${contract.season})` : ""}
-                        {contract.productionProjectId !== contract.projectId ? <><br/><span className="helperText">For {contract.productionProjectName}{contract.productionProjectSeason ? ` (${contract.productionProjectSeason})` : ""}</span></> : null}
+                        {associatedProductions.length > 0 ? (
+                          <>
+                            <br />
+                            <span className="helperText">
+                              For{" "}
+                              {associatedProductions
+                                .map(
+                                  (production) =>
+                                    `${production.name}${production.season ? ` (${production.season})` : ""}`
+                                )
+                                .join(", ")}
+                            </span>
+                          </>
+                        ) : null}
                       </td>
                       <td>{contract.bannerAccountCode ?? "-"}</td>
                       <td>{formatCurrency(contract.contractValue)}</td>

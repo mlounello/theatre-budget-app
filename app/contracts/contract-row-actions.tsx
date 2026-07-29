@@ -45,7 +45,9 @@ export function ContractRowActions({
 
   const open = useMemo(() => searchParams.get("ct_edit") === contract.id, [searchParams, contract.id]);
   const [editProjectId, setEditProjectId] = useState(contract.projectId);
-  const [editProductionProjectId, setEditProductionProjectId] = useState(contract.productionProjectId);
+  const [editProductionProjectIds, setEditProductionProjectIds] = useState(
+    contract.productionProjects.map((project) => project.id)
+  );
   const [editFiscalYearId, setEditFiscalYearId] = useState(contract.fiscalYearId ?? "");
   const [editOrganizationId, setEditOrganizationId] = useState(contract.organizationId ?? "");
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState(contract.bannerAccountCodeId ?? "");
@@ -58,7 +60,7 @@ export function ContractRowActions({
   const [editInstallmentCount, setEditInstallmentCount] = useState(String(contract.installmentCount ?? 1));
   const [editContractNumber, setEditContractNumber] = useState(contract.contractNumber ?? "");
   const [editContractRole, setEditContractRole] = useState(contract.contractRole ?? "");
-  const [editContractSession, setEditContractSession] = useState(contract.contractSession ?? "");
+  const [editContractSessions, setEditContractSessions] = useState<string[]>(contract.contractSessions);
   const [editFoapalId, setEditFoapalId] = useState(contract.checkRequestFoapalId ?? "");
   const [editHandling, setEditHandling] = useState(contract.checkRequestHandling ?? "mail");
   const [editOtherLocation, setEditOtherLocation] = useState(contract.checkRequestOtherLocation ?? "");
@@ -89,7 +91,7 @@ export function ContractRowActions({
     if (lastEditIdRef.current === contract.id) return;
     lastEditIdRef.current = contract.id;
     setEditProjectId(contract.projectId);
-    setEditProductionProjectId(contract.productionProjectId);
+    setEditProductionProjectIds(contract.productionProjects.map((project) => project.id));
     setEditFiscalYearId(contract.fiscalYearId ?? "");
     setEditOrganizationId(contract.organizationId ?? "");
     setEditBannerAccountCodeId(contract.bannerAccountCodeId ?? "");
@@ -102,7 +104,7 @@ export function ContractRowActions({
     setEditInstallmentCount(String(contract.installmentCount ?? 1));
     setEditContractNumber(contract.contractNumber ?? "");
     setEditContractRole(contract.contractRole ?? "");
-    setEditContractSession(contract.contractSession ?? "");
+    setEditContractSessions(contract.contractSessions);
     setEditFoapalId(contract.checkRequestFoapalId ?? "");
     setEditHandling(contract.checkRequestHandling ?? "mail");
     setEditOtherLocation(contract.checkRequestOtherLocation ?? "");
@@ -260,18 +262,25 @@ export function ContractRowActions({
                 <input name="contractRole" value={editContractRole} onChange={(event) => setEditContractRole(event.target.value)} />
               </label>
               <label>
-                Session
+                Sessions
                 <select
-                  name="contractSession"
-                  value={editContractSession}
-                  onChange={(event) => setEditContractSession(event.target.value)}
+                  name="contractSessions"
+                  multiple
+                  size={4}
+                  value={editContractSessions}
+                  onChange={(event) =>
+                    setEditContractSessions(Array.from(event.currentTarget.selectedOptions, (option) => option.value))
+                  }
                 >
-                  <option value="">Select session</option>
                   <option value="summer">Summer</option>
                   <option value="fall">Fall</option>
                   <option value="winter">Winter</option>
                   <option value="spring">Spring</option>
                 </select>
+                <span className="helperText">
+                  Choose every session covered by this contract. Hold Command (Mac) or Ctrl (Windows) to select
+                  multiple.
+                </span>
               </label>
               <label>
                 Check Request FOAPAL
@@ -412,10 +421,13 @@ export function ContractRowActions({
               <label>
                 Associated Production / Show
                 <select
-                  name="productionProjectId"
-                  value={editProductionProjectId}
-                  onChange={(event) => setEditProductionProjectId(event.target.value)}
-                  required
+                  name="productionProjectIds"
+                  multiple
+                  size={6}
+                  value={editProductionProjectIds}
+                  onChange={(event) =>
+                    setEditProductionProjectIds(Array.from(event.currentTarget.selectedOptions, (option) => option.value))
+                  }
                 >
                   {projectOptions.map((project) => (
                     <option key={project.id} value={project.id}>
@@ -423,7 +435,10 @@ export function ContractRowActions({
                     </option>
                   ))}
                 </select>
-                <span className="helperText">This may differ from the accounting project that carries the contract expense.</span>
+                <span className="helperText">
+                  Choose one or more shows. Hold Command (Mac) or Ctrl (Windows) to select multiple. Leave all
+                  unselected to use the accounting project.
+                </span>
               </label>
               <label>
                 Banner Account
