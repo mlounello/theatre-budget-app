@@ -1166,6 +1166,7 @@ export function SettingsPageClient({
                 <thead>
                   <tr>
                     <th>User</th>
+                    <th>View Scope</th>
                     <th>Archive</th>
                   </tr>
                 </thead>
@@ -1173,6 +1174,18 @@ export function SettingsPageClient({
                   {accessUsers.map((userRow) => (
                     <tr key={`user-archive-${userRow.id}`}>
                       <td>{userRow.fullName}</td>
+                      <td>
+                        {userRow.id === accessUserId ? (
+                          <span>(current account)</span>
+                        ) : (
+                          <form method="post" action="/api/admin/impersonation/start">
+                            <input type="hidden" name="targetUserId" value={userRow.id} />
+                            <button type="submit" className="tinyButton">
+                              View as User
+                            </button>
+                          </form>
+                        )}
+                      </td>
                       <td>
                         {userRow.id === accessUserId ? (
                           <span>(current account)</span>
@@ -1189,7 +1202,7 @@ export function SettingsPageClient({
                   ))}
                   {accessUsers.length === 0 ? (
                     <tr>
-                      <td colSpan={2}>(none)</td>
+                      <td colSpan={3}>(none)</td>
                     </tr>
                   ) : null}
                 </tbody>

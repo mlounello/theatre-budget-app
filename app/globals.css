@@ -70,6 +70,25 @@ th {
   border-bottom: 4px solid var(--siena-yellow);
 }
 
+.impersonationBanner {
+  width: 100%;
+  padding: 0.7rem clamp(0.75rem, 2.2vw, 1.5rem);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  background: #b42318;
+  color: #fff;
+  border-bottom: 3px solid #ffcf33;
+  font-family: "Gudea", "Arial", sans-serif;
+}
+
+.impersonationBanner a {
+  color: #fff;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
 .topNavInner {
   width: 100%;
   max-width: none;

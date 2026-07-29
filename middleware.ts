@@ -1,6 +1,25 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
+const VIEW_AS_COOKIE = "tba_view_as";
+
+function viewAsRole(request: NextRequest): "viewer" | "procurement_tracker" | null {
+  const token = request.cookies.get(VIEW_AS_COOKIE)?.value;
+  const encoded = token?.split(".")[0];
+  if (!encoded) return null;
+  try {
+    const base64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    const normalized = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const payload = JSON.parse(atob(normalized)) as { targetRole?: unknown; expiresAt?: unknown };
+    if (Number(payload.expiresAt ?? 0) <= Date.now()) return null;
+    return payload.targetRole === "viewer" || payload.targetRole === "procurement_tracker"
+      ? payload.targetRole
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 const PUBLIC_PATHS = [
   "/login",
   "/auth/callback",
@@ -55,6 +74,25 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   const isPublic = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`));
   const isAsset = pathname.startsWith("/_next") || pathname.startsWith("/favicon") || pathname.includes(".");
+  const impersonatedRole = viewAsRole(request);
+
+  if (impersonatedRole && !["GET", "HEAD", "OPTIONS"].includes(request.method)) {
+    return new NextResponse("View as User is read-only. Exit impersonation to make changes.", { status: 403 });
+  }
+
+  if (impersonatedRole && !isAsset) {
+    const isExit = pathname === "/api/admin/impersonation/exit";
+    const isAllowed =
+      isExit ||
+      (impersonatedRole === "viewer" && (pathname === "/" || pathname === "/my-budget")) ||
+      (impersonatedRole === "procurement_tracker" && pathname === "/procurement-tracker");
+    if (!isAllowed) {
+      const url = request.nextUrl.clone();
+      url.pathname = impersonatedRole === "procurement_tracker" ? "/procurement-tracker" : "/";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+  }
 
   if (!user && !isPublic && !isAsset) {
     const url = request.nextUrl.clone();

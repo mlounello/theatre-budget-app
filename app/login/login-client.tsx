@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase-client";
 import { sanitizeNextPath } from "@/lib/sanitize-next";
 
@@ -11,35 +10,10 @@ type LoginClientProps = {
 };
 
 export default function LoginClient({ initialError = null }: LoginClientProps) {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(initialError);
   const [notice, setNotice] = useState<string | null>(null);
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-
-  async function upsertCurrentUserProfile(displayName?: string) {
-    const supabase = getSupabaseBrowserClient();
-    const {
-      data: { user }
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
-    const resolvedName =
-      (displayName && displayName.trim()) ||
-      (user.user_metadata?.full_name as string | undefined) ||
-      (user.user_metadata?.name as string | undefined) ||
-      user.email ||
-      "User";
-
-    await supabase.from("users").upsert(
-      {
-        id: user.id,
-        full_name: resolvedName
-      },
-      { onConflict: "id" }
-    );
-  }
 
   async function signInWithGoogle() {
     setLoading(true);
@@ -61,42 +35,6 @@ export default function LoginClient({ initialError = null }: LoginClientProps) {
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to start Google sign-in.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function signInWithPassword(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setLoading(true);
-    setError(null);
-    setNotice(null);
-
-    try {
-      const supabase = getSupabaseBrowserClient();
-      const next = sanitizeNextPath(new URLSearchParams(window.location.search).get("next"));
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password
-      });
-
-      if (signInError && !/signups? not allowed|user not found/i.test(signInError.message)) {
-        setError(signInError.message);
-        return;
-      }
-
-      const accessResponse = await fetch("/api/auth/access", { cache: "no-store" });
-      if (!accessResponse.ok) {
-        await supabase.auth.signOut({ scope: "local" });
-        setError("This account does not have active Theatre Budget access. Ask an app administrator for access.");
-        return;
-      }
-
-      await upsertCurrentUserProfile();
-      router.push(next);
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to sign in.");
     } finally {
       setLoading(false);
     }
@@ -136,9 +74,15 @@ export default function LoginClient({ initialError = null }: LoginClientProps) {
           priority
         />
         <h1>Sign in</h1>
-        <p className="heroSubtitle">Use Google, an emailed magic link, or an existing password to access assigned budgets and purchase workflows.</p>
+        <p className="heroSubtitle">Use Google or an emailed magic link to access assigned budgets and purchase workflows.</p>
 
-        <form className="authForm" onSubmit={signInWithPassword}>
+        <form
+          className="authForm"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void sendMagicLink();
+          }}
+        >
           <label>
             Email
             <input
@@ -150,22 +94,7 @@ export default function LoginClient({ initialError = null }: LoginClientProps) {
               autoComplete="email"
             />
           </label>
-          <label>
-            Password
-            <input
-              type="password"
-              required
-              minLength={6}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              placeholder="At least 6 characters"
-              autoComplete="current-password"
-            />
-          </label>
-          <button type="submit" className="authButton" disabled={loading}>
-            {loading ? "Working..." : "Sign In with Password"}
-          </button>
-          <button type="button" className="authButton" onClick={sendMagicLink} disabled={loading || !email.trim()}>
+          <button type="submit" className="authButton" disabled={loading || !email.trim()}>
             {loading ? "Working..." : "Email me a magic link"}
           </button>
         </form>

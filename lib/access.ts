@@ -1,6 +1,8 @@
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { APP_ID } from "@/lib/supabase-schema";
 import type { AppRole } from "@/lib/types";
+import { cookies } from "next/headers";
+import { IMPERSONATION_COOKIE, verifyImpersonationToken } from "@/lib/impersonation";
 
 export type EffectiveAppRole = AppRole | "none";
 
@@ -15,6 +17,10 @@ export type AccessScopeRow = {
 export type AccessContext = {
   userId: string | null;
   email: string | null;
+  actorUserId: string | null;
+  actorEmail: string | null;
+  isImpersonating: boolean;
+  impersonatedUserName: string | null;
   role: EffectiveAppRole;
   membershipRoles: Set<AppRole>;
   scopedRoles: Set<AppRole>;
@@ -22,6 +28,77 @@ export type AccessContext = {
   projectMembershipRolesByProjectId: Map<string, Set<AppRole>>;
   scopes: AccessScopeRow[];
 };
+
+async function resolveTargetAccessContext(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  targetUserId: string,
+  targetName: string,
+  actor: { userId: string; email: string | null }
+): Promise<AccessContext> {
+  const [coreMembership, membershipResponse, scopeResponse] = await Promise.all([
+    supabase
+      .schema("core")
+      .from("app_memberships")
+      .select("role")
+      .eq("user_id", targetUserId)
+      .eq("app_id", APP_ID)
+      .eq("is_active", true)
+      .maybeSingle(),
+    supabase.from("project_memberships").select("project_id, role").eq("user_id", targetUserId),
+    supabase
+      .from("user_access_scopes")
+      .select("scope_role, fiscal_year_id, organization_id, project_id, production_category_id")
+      .eq("user_id", targetUserId)
+      .eq("active", true)
+  ]);
+  if (coreMembership.error) throw coreMembership.error;
+  if (membershipResponse.error) throw membershipResponse.error;
+  if (scopeResponse.error) throw scopeResponse.error;
+
+  const membershipRoles = new Set<AppRole>();
+  const scopedRoles = new Set<AppRole>();
+  const manageableProjectIds = new Set<string>();
+  const projectMembershipRolesByProjectId = new Map<string, Set<AppRole>>();
+  const scopes: AccessScopeRow[] = [];
+  for (const row of membershipResponse.data ?? []) {
+    const role = toRole(row.role);
+    if (!role) continue;
+    membershipRoles.add(role);
+    addProjectMembershipRole(projectMembershipRolesByProjectId, row.project_id as string, role);
+    if (role === "admin" || role === "project_manager") manageableProjectIds.add(row.project_id as string);
+  }
+  for (const row of scopeResponse.data ?? []) {
+    const scopeRole = toRole(row.scope_role);
+    if (!scopeRole) continue;
+    scopedRoles.add(scopeRole);
+    scopes.push({
+      scopeRole,
+      fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
+      organizationId: (row.organization_id as string | null) ?? null,
+      projectId: (row.project_id as string | null) ?? null,
+      productionCategoryId: (row.production_category_id as string | null) ?? null
+    });
+  }
+  const preferredRole = toRole(coreMembership.data?.role);
+  const role =
+    preferredRole ??
+    selectHighestRole([...membershipRoles, ...scopedRoles]) ??
+    "none";
+  return {
+    userId: targetUserId,
+    email: null,
+    actorUserId: actor.userId,
+    actorEmail: actor.email,
+    isImpersonating: true,
+    impersonatedUserName: targetName,
+    role,
+    membershipRoles,
+    scopedRoles,
+    manageableProjectIds,
+    projectMembershipRolesByProjectId,
+    scopes
+  };
+}
 
 type ProjectAccessTarget = {
   id: string;
@@ -162,7 +239,7 @@ export async function requireProjectRole(
   throw new Error(options?.errorMessage ?? "You do not have permission for this project.");
 }
 
-export async function getAccessContext(): Promise<AccessContext> {
+export async function getAccessContext(options?: { ignoreImpersonation?: boolean }): Promise<AccessContext> {
   const supabase = await getSupabaseServerClient();
   const debugAccess = process.env.DEBUG_DASHBOARD_ACCESS === "true";
   const {
@@ -173,6 +250,10 @@ export async function getAccessContext(): Promise<AccessContext> {
     return {
       userId: null,
       email: null,
+      actorUserId: null,
+      actorEmail: null,
+      isImpersonating: false,
+      impersonatedUserName: null,
       role: "none",
       membershipRoles: new Set<AppRole>(),
       scopedRoles: new Set<AppRole>(),
@@ -280,9 +361,13 @@ export async function getAccessContext(): Promise<AccessContext> {
     console.info(`[access] uid=${user.id} email=${user.email ?? ""} role=${role} source=${source}`);
   }
 
-  return {
+  const actualContext: AccessContext = {
     userId: user.id,
     email: user.email ?? null,
+    actorUserId: user.id,
+    actorEmail: user.email ?? null,
+    isImpersonating: false,
+    impersonatedUserName: null,
     role,
     membershipRoles,
     scopedRoles,
@@ -290,4 +375,13 @@ export async function getAccessContext(): Promise<AccessContext> {
     projectMembershipRolesByProjectId,
     scopes
   };
+
+  if (options?.ignoreImpersonation || actualContext.role !== "admin") return actualContext;
+  const cookieStore = await cookies();
+  const impersonation = verifyImpersonationToken(cookieStore.get(IMPERSONATION_COOKIE)?.value);
+  if (!impersonation || impersonation.actorUserId !== user.id) return actualContext;
+  return resolveTargetAccessContext(supabase, impersonation.targetUserId, impersonation.targetName, {
+    userId: user.id,
+    email: user.email ?? null
+  });
 }

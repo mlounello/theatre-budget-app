@@ -63,6 +63,8 @@ export async function TopNav() {
   let userEmail: string | null = null;
   let hasUser = false;
   let role = "none";
+  let isImpersonating = false;
+  let impersonatedUserName: string | null = null;
   let fiscalYears: Array<{ id: string; name: string }> = [];
   let defaultFiscalYearId = "";
 
@@ -71,6 +73,8 @@ export async function TopNav() {
     hasUser = Boolean(context.userId);
     userEmail = context.email;
     role = context.role;
+    isImpersonating = context.isImpersonating;
+    impersonatedUserName = context.impersonatedUserName;
     if (hasUser && role !== "none") {
       const fiscalYearOptions = await getFiscalYearOptions();
       fiscalYears = fiscalYearOptions.map((fy) => ({ id: fy.id, name: fy.name }));
@@ -91,6 +95,12 @@ export async function TopNav() {
 
   return (
     <header className="topNav">
+      {isImpersonating ? (
+        <div className="impersonationBanner">
+          <strong>READ-ONLY: Viewing as {impersonatedUserName ?? "user"}</strong>
+          <a href="/api/admin/impersonation/exit">Exit View as User</a>
+        </div>
+      ) : null}
       <div className="topNavInner">
         <Link href="/" className="brand" aria-label="Theatre Budget App home">
           <span className="brandLogoFrame">
@@ -111,7 +121,7 @@ export async function TopNav() {
             </Link>
           ))}
           {hasUser ? <GlobalFiscalYearPicker fiscalYears={fiscalYears} defaultFiscalYearId={defaultFiscalYearId} /> : null}
-          {hasUser ? (
+          {hasUser && !isImpersonating ? (
             <form action={signOut}>
               <button className="navButton" type="submit">
                 Sign Out
@@ -120,7 +130,7 @@ export async function TopNav() {
           ) : null}
         </nav>
       </div>
-      {userEmail ? (
+      {!isImpersonating && userEmail ? (
         <div className="userBar">
           <p className="userBarText">Signed in as {userEmail}</p>
         </div>
