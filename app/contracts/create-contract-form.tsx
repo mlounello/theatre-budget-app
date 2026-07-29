@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { createContractAction, type ActionState } from "@/app/contracts/actions";
 import { SensitiveTextInput } from "@/components/sensitive-text-input";
 import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
@@ -29,6 +29,7 @@ export function CreateContractForm({
   const [fiscalYearId, setFiscalYearId] = useState("");
   const [organizationId, setOrganizationId] = useState("");
   const [projectId, setProjectId] = useState("");
+  const [productionProjectIds, setProductionProjectIds] = useState<string[]>([]);
   const [bannerAccountCodeId, setBannerAccountCodeId] = useState("");
   const [guestArtistId, setGuestArtistId] = useState("");
   const [contractorName, setContractorName] = useState("");
@@ -43,6 +44,12 @@ export function CreateContractForm({
   const [vendorAddress3, setVendorAddress3] = useState("");
   const [installmentCount, setInstallmentCount] = useState(1);
   const [dueDates, setDueDates] = useState<Record<number, string>>({});
+  const accountingProject = projectOptions.find((project) => project.id === projectId);
+  const contractFiscalYearId = fiscalYearId || accountingProject?.fiscalYearId || "";
+  const associatedProjectOptions = useMemo(
+    () => projectOptions.filter((project) => project.fiscalYearId === contractFiscalYearId),
+    [contractFiscalYearId, projectOptions]
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -71,6 +78,7 @@ export function CreateContractForm({
     formRef.current.reset();
     setInstallmentCount(1);
     setDueDates({});
+    setProductionProjectIds([]);
     setGuestArtistId("");
     setContractorName("");
     setContractorEmployeeId("");
@@ -83,6 +91,14 @@ export function CreateContractForm({
     setVendorAddress2("");
     setVendorAddress3("");
   }, [state]);
+
+  useEffect(() => {
+    const allowedIds = new Set(associatedProjectOptions.map((project) => project.id));
+    setProductionProjectIds((current) => {
+      const filtered = current.filter((id) => allowedIds.has(id));
+      return filtered.length === current.length ? current : filtered;
+    });
+  }, [associatedProjectOptions]);
 
   function applyGuestArtist(nextGuestArtistId: string) {
     setGuestArtistId(nextGuestArtistId);
@@ -142,16 +158,26 @@ export function CreateContractForm({
       </label>
       <label>
         Associated Production / Show
-        <select name="productionProjectIds" multiple size={6} defaultValue={[]}>
-          {projectOptions.map((project) => (
+        <select
+          name="productionProjectIds"
+          multiple
+          size={6}
+          value={productionProjectIds}
+          onChange={(event) =>
+            setProductionProjectIds(Array.from(event.currentTarget.selectedOptions, (option) => option.value))
+          }
+          disabled={!contractFiscalYearId}
+        >
+          {associatedProjectOptions.map((project) => (
             <option key={project.id} value={project.id}>
               {project.label}
             </option>
           ))}
         </select>
         <span className="helperText">
-          Choose one or more shows. Hold Command (Mac) or Ctrl (Windows) to select multiple. Leave all unselected to
-          use the accounting project.
+          {contractFiscalYearId
+            ? "Only shows from the contract fiscal year are listed. Hold Command (Mac) or Ctrl (Windows) to select multiple."
+            : "Choose a fiscal year or accounting project to see available shows."}
         </span>
       </label>
       <label>

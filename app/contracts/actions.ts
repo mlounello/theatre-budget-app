@@ -126,6 +126,27 @@ function parseProductionProjectIds(formData: FormData, accountingProjectId: stri
   return selected.length > 0 ? selected : [accountingProjectId];
 }
 
+async function validateProductionProjectFiscalYear(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  projectIds: string[],
+  fiscalYearId: string | null
+): Promise<string | null> {
+  if (!fiscalYearId) return "Select a fiscal year before choosing an associated production or show.";
+
+  const { data, error } = await supabase
+    .from("projects")
+    .select("id, fiscal_year_id")
+    .in("id", projectIds);
+  if (error) return error.message;
+
+  const projects = data ?? [];
+  if (projects.length !== projectIds.length) return "One or more associated productions or shows could not be found.";
+  if (projects.some((project) => project.fiscal_year_id !== fiscalYearId)) {
+    return "Every associated production or show must be in the contract's fiscal year.";
+  }
+  return null;
+}
+
 async function syncContractProductions(
   supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
   contractId: string,
@@ -396,6 +417,12 @@ export async function createContractAction(
 
     const resolvedOrganizationId = organizationId || ((projectRow.organization_id as string | null) ?? null);
     const resolvedFiscalYearId = fiscalYearId || ((projectRow.fiscal_year_id as string | null) ?? null);
+    const productionFiscalYearError = await validateProductionProjectFiscalYear(
+      supabase,
+      productionProjectIds,
+      resolvedFiscalYearId
+    );
+    if (productionFiscalYearError) return err(productionFiscalYearError);
 
     const { data: miscCategory, error: miscCategoryError } = await supabase
       .from("production_categories")
@@ -624,6 +651,12 @@ export async function updateContractDetailsAction(
 
     const resolvedOrganizationId = organizationId || ((projectRow.organization_id as string | null) ?? null);
     const resolvedFiscalYearId = fiscalYearId || ((projectRow.fiscal_year_id as string | null) ?? null);
+    const productionFiscalYearError = await validateProductionProjectFiscalYear(
+      supabase,
+      productionProjectIds,
+      resolvedFiscalYearId
+    );
+    if (productionFiscalYearError) return err(productionFiscalYearError);
     const productionCategoryId = (existing.production_category_id as string | null) ?? null;
     if (!productionCategoryId) return err("Contract production category is missing.");
     const taxSource = guestArtist

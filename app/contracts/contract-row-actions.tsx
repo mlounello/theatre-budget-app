@@ -70,6 +70,12 @@ export function ContractRowActions({
   const [editDueDates, setEditDueDates] = useState<Record<number, string>>({});
   const [editNotes, setEditNotes] = useState(contract.notes ?? "");
   const lastEditIdRef = useRef<string | null>(null);
+  const editAccountingProject = projectOptions.find((project) => project.id === editProjectId);
+  const editContractFiscalYearId = editFiscalYearId || editAccountingProject?.fiscalYearId || "";
+  const editAssociatedProjectOptions = useMemo(
+    () => projectOptions.filter((project) => project.fiscalYearId === editContractFiscalYearId),
+    [editContractFiscalYearId, projectOptions]
+  );
 
   const openEdit = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -119,6 +125,14 @@ export function ContractRowActions({
     if (!deleteState.ok || !deleteState.message) return;
     if (open) closeEdit();
   }, [deleteState, open, closeEdit]);
+
+  useEffect(() => {
+    const allowedIds = new Set(editAssociatedProjectOptions.map((project) => project.id));
+    setEditProductionProjectIds((current) => {
+      const filtered = current.filter((id) => allowedIds.has(id));
+      return filtered.length === current.length ? current : filtered;
+    });
+  }, [editAssociatedProjectOptions]);
 
   function applyGuestArtist(nextGuestArtistId: string) {
     setEditGuestArtistId(nextGuestArtistId);
@@ -428,16 +442,18 @@ export function ContractRowActions({
                   onChange={(event) =>
                     setEditProductionProjectIds(Array.from(event.currentTarget.selectedOptions, (option) => option.value))
                   }
+                  disabled={!editContractFiscalYearId}
                 >
-                  {projectOptions.map((project) => (
+                  {editAssociatedProjectOptions.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.label}
                     </option>
                   ))}
                 </select>
                 <span className="helperText">
-                  Choose one or more shows. Hold Command (Mac) or Ctrl (Windows) to select multiple. Leave all
-                  unselected to use the accounting project.
+                  {editContractFiscalYearId
+                    ? "Only shows from the contract fiscal year are listed. Hold Command (Mac) or Ctrl (Windows) to select multiple."
+                    : "Choose a fiscal year or accounting project to see available shows."}
                 </span>
               </label>
               <label>
