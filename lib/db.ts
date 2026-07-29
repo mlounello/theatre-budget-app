@@ -287,6 +287,7 @@ export type ContractWorkflowStatus =
   | "siena_signed";
 
 export type ContractInstallmentStatus = "planned" | "check_request_submitted" | "check_paid";
+export type ContractSession = "summer" | "fall" | "winter" | "spring";
 
 export type ContractRow = {
   id: string;
@@ -297,6 +298,9 @@ export type ContractRow = {
   projectId: string;
   projectName: string;
   season: string | null;
+  productionProjectId: string;
+  productionProjectName: string;
+  productionProjectSeason: string | null;
   bannerAccountCodeId: string;
   bannerAccountCode: string | null;
   guestArtistId: string | null;
@@ -308,6 +312,7 @@ export type ContractRow = {
   installmentCount: number;
   contractNumber: string | null;
   contractRole: string | null;
+  contractSession: ContractSession | null;
   checkRequestFoapalId: string | null;
   checkRequestHandling: "mail" | "business_affairs_pickup" | "other";
   checkRequestOtherLocation: string | null;
@@ -442,6 +447,19 @@ export type SettingsProject = {
   fiscalYearId: string | null;
   planningRequestsEnabled: boolean;
   sortOrder: number;
+};
+
+export type ProjectDeletionImpact = {
+  projectId: string;
+  budgetLines: number;
+  purchases: number;
+  creditCardStatementMonths: number;
+  incomeEntries: number;
+  contracts: number;
+  projectMemberships: number;
+  productionTeamAssignments: number;
+  accessScopesDetached: number;
+  associatedContractsDetached: number;
 };
 
 export type AccountCodeOption = {
@@ -1564,14 +1582,16 @@ export async function getContractsData(): Promise<{
   let contractsResponse = (await supabase
     .from("contracts")
     .select(
-      "id, fiscal_year_id, organization_id, project_id, banner_account_code_id, guest_artist_id, contractor_name, contractor_employee_id, contractor_email, contractor_phone, contract_value, installment_count, contract_number, contract_role, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, workflow_status, notes, created_at, fiscal_years(name), organizations(name, org_code), projects(name, season), account_codes(code)"
+      "id, fiscal_year_id, organization_id, project_id, production_project_id, banner_account_code_id, guest_artist_id, contractor_name, contractor_employee_id, contractor_email, contractor_phone, contract_value, installment_count, contract_number, contract_role, contract_session, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, workflow_status, notes, created_at, fiscal_years(name), organizations(name, org_code), projects(name, season), production_project:projects!contracts_production_project_id_fkey(name, season), account_codes(code)"
     )
     .order("created_at", { ascending: false })
     .limit(200)) as DbListResponse;
   if (
     contractsResponse.error &&
     (contractsResponse.error.message.toLowerCase().includes("contract_number") ||
+      contractsResponse.error.message.toLowerCase().includes("contract_session") ||
       contractsResponse.error.message.toLowerCase().includes("guest_artist_id") ||
+      contractsResponse.error.message.toLowerCase().includes("production_project") ||
       contractsResponse.error.message.toLowerCase().includes("check_request_foapal_id") ||
       contractsResponse.error.message.toLowerCase().includes("tax_id"))
   ) {
@@ -1612,6 +1632,7 @@ export async function getContractsData(): Promise<{
     const fy = row.fiscal_years as { name?: string } | null;
     const org = row.organizations as { name?: string; org_code?: string } | null;
     const project = row.projects as { name?: string; season?: string | null } | null;
+    const productionProject = row.production_project as { name?: string; season?: string | null } | null;
     const account = row.account_codes as { code?: string } | null;
     const projectMeta = projectById.get(row.project_id as string);
     return {
@@ -1625,6 +1646,9 @@ export async function getContractsData(): Promise<{
       projectId: row.project_id as string,
       projectName: project?.name ?? "Unknown Project",
       season: (project?.season as string | null) ?? null,
+      productionProjectId: ((row.production_project_id as string | null) ?? row.project_id) as string,
+      productionProjectName: productionProject?.name ?? project?.name ?? "Unknown Production",
+      productionProjectSeason: (productionProject?.season as string | null) ?? (project?.season as string | null) ?? null,
       bannerAccountCodeId: row.banner_account_code_id as string,
       bannerAccountCode: account?.code ?? null,
       guestArtistId: (row.guest_artist_id as string | null) ?? null,
@@ -1636,6 +1660,7 @@ export async function getContractsData(): Promise<{
       installmentCount: Number(row.installment_count ?? 1),
       contractNumber: (row.contract_number as string | null) ?? null,
       contractRole: (row.contract_role as string | null) ?? null,
+      contractSession: (row.contract_session as ContractSession | null) ?? null,
       checkRequestFoapalId: (row.check_request_foapal_id as string | null) ?? null,
       checkRequestHandling: ((row.check_request_handling as string | null) ?? "mail") as "mail" | "business_affairs_pickup" | "other",
       checkRequestOtherLocation: (row.check_request_other_location as string | null) ?? null,
@@ -1735,6 +1760,64 @@ export async function getSettingsProjects(): Promise<SettingsProject[]> {
     planningRequestsEnabled: (row.planning_requests_enabled as boolean | null) ?? true,
     sortOrder: (row.sort_order as number | null) ?? 0
   }));
+}
+
+export async function getProjectDeletionImpact(projectId: string): Promise<ProjectDeletionImpact> {
+  const supabase = await getSupabaseServerClient();
+
+  async function countLinkedRows(
+    table: string,
+    column = "project_id",
+    excludeDirectProject = false,
+    optionalColumn = false
+  ): Promise<number> {
+    let query = supabase
+      .from(table)
+      .select("id", { count: "exact", head: true })
+      .eq(column, projectId);
+    if (excludeDirectProject) query = query.neq("project_id", projectId);
+    const { count, error } = await query;
+    if (error) {
+      if (optionalColumn && (error.code === "42703" || error.message.includes(column))) return 0;
+      throw error;
+    }
+    return count ?? 0;
+  }
+
+  const [
+    budgetLines,
+    purchases,
+    creditCardStatementMonths,
+    incomeEntries,
+    contracts,
+    projectMemberships,
+    productionTeamAssignments,
+    accessScopesDetached,
+    associatedContractsDetached
+  ] = await Promise.all([
+    countLinkedRows("project_budget_lines"),
+    countLinkedRows("purchases"),
+    countLinkedRows("cc_statement_months"),
+    countLinkedRows("income_lines"),
+    countLinkedRows("contracts"),
+    countLinkedRows("project_memberships"),
+    countLinkedRows("production_team_assignments"),
+    countLinkedRows("user_access_scopes"),
+    countLinkedRows("contracts", "production_project_id", true, true)
+  ]);
+
+  return {
+    projectId,
+    budgetLines,
+    purchases,
+    creditCardStatementMonths,
+    incomeEntries,
+    contracts,
+    projectMemberships,
+    productionTeamAssignments,
+    accessScopesDetached,
+    associatedContractsDetached
+  };
 }
 
 export async function getSettingsAccessScopes(): Promise<{

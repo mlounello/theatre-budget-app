@@ -35,6 +35,14 @@ function installmentClass(value: string): string {
   return "status-requested";
 }
 
+function contractSessionLabel(value: string | null): string | null {
+  if (value === "summer") return "Summer";
+  if (value === "fall") return "Fall";
+  if (value === "winter") return "Winter";
+  if (value === "spring") return "Spring";
+  return null;
+}
+
 function shortDate(value: string | null): string {
   if (!value) return "-";
   const [year, month, day] = value.split("-");
@@ -143,7 +151,7 @@ export default async function ContractsPage({
                 <th>Contractor</th>
                 <th>FY</th>
                 <th>Org</th>
-                <th>Project</th>
+                <th>Accounting / Production</th>
                 <th>Banner Code</th>
                 <th>Contract Value</th>
                 <th>Installments</th>
@@ -159,6 +167,7 @@ export default async function ContractsPage({
                 </tr>
               ) : (
                 visibleContracts.map((contract) => {
+                  const sessionLabel = contractSessionLabel(contract.contractSession);
                   const rows = (installmentByContract.get(contract.id) ?? []).sort(
                     (a, b) => a.installmentNumber - b.installmentNumber
                   );
@@ -170,13 +179,24 @@ export default async function ContractsPage({
                       <td>
                         <strong>{contract.contractorName}</strong>
                         <br />
-                        <span>{contract.contractorEmployeeId ?? "-"}</span>
+                        <span>Vendor #: {contract.contractorEmployeeId ?? "-"}</span>
+                        {contract.contractRole || sessionLabel ? (
+                          <>
+                            <br />
+                            <span className="helperText">
+                              {contract.contractRole ? `Role: ${contract.contractRole}` : ""}
+                              {contract.contractRole && sessionLabel ? " · " : ""}
+                              {sessionLabel ? `Session: ${sessionLabel}` : ""}
+                            </span>
+                          </>
+                        ) : null}
                       </td>
                       <td>{contract.fiscalYearName ?? "-"}</td>
                       <td>{contract.organizationLabel ?? "-"}</td>
                       <td>
                         {contract.projectName}
                         {contract.season ? ` (${contract.season})` : ""}
+                        {contract.productionProjectId !== contract.projectId ? <><br/><span className="helperText">For {contract.productionProjectName}{contract.productionProjectSeason ? ` (${contract.productionProjectSeason})` : ""}</span></> : null}
                       </td>
                       <td>{contract.bannerAccountCode ?? "-"}</td>
                       <td>{formatCurrency(contract.contractValue)}</td>

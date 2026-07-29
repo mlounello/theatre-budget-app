@@ -835,6 +835,58 @@ export async function updateProjectAction(_prevState: ActionState = emptyState, 
   }
 }
 
+export async function deleteProjectAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
+  void _prevState;
+  try {
+    await requireSettingsAdmin();
+    const supabase = await getSupabaseServerClient();
+    const id = String(formData.get("id") ?? "").trim();
+    const confirmationName = String(formData.get("confirmationName") ?? "").trim();
+    const acknowledged = formData.get("acknowledgeProjectDeletion") === "on";
+    if (!id) throw new Error("Project id is required.");
+
+    const { data: project, error: projectError } = await supabase
+      .from("projects")
+      .select("id, name")
+      .eq("id", id)
+      .maybeSingle();
+    if (projectError) throw new Error(projectError.message);
+    if (!project?.id) throw new Error("Project was not found or has already been deleted.");
+
+    const projectName = String(project.name ?? "").trim();
+    if (isExternalProcurementProjectName(projectName)) {
+      throw new Error("The External Procurement system project cannot be deleted.");
+    }
+    if (!acknowledged) {
+      throw new Error("Acknowledge that linked project data will be permanently deleted.");
+    }
+    if (confirmationName !== projectName) {
+      throw new Error(`Type the exact project name “${projectName}” to confirm deletion.`);
+    }
+
+    const { data: deletedProjectName, error } = await supabase.rpc("delete_project_cascade", {
+      p_project_id: id,
+      p_confirmation_name: confirmationName
+    });
+    if (error) throw new Error(error.message);
+    if (String(deletedProjectName ?? "").trim() !== projectName) {
+      throw new Error("Project deletion was not applied.");
+    }
+
+    revalidatePath("/settings");
+    revalidatePath("/overview");
+    revalidatePath("/requests");
+    revalidatePath("/procurement");
+    revalidatePath("/contracts");
+    revalidatePath("/income");
+    revalidatePath("/cc");
+    revalidatePath("/");
+    return settingsSuccess(`Project “${projectName}” deleted.`);
+  } catch (error) {
+    return settingsError(getErrorMessage(error, "Could not delete project."));
+  }
+}
+
 export async function updateBudgetLineAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {
   void _prevState;
   try {

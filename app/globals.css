@@ -1130,6 +1130,40 @@ th {
   gap: 0.5rem;
 }
 
+.projectDeletePanel {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 2px solid #e6b8be;
+}
+
+.projectDeletePanel h3 {
+  color: var(--siena-red);
+}
+
+.projectDeleteWarning {
+  margin: 0.75rem 0;
+  padding: 0.8rem 1rem;
+  border: 1px solid #d78a95;
+  border-radius: 10px;
+  background: #fff4f5;
+  color: #701724;
+}
+
+.projectDeleteWarning p {
+  margin: 0.35rem 0;
+}
+
+.projectDeleteWarning ul {
+  margin: 0.6rem 0;
+  padding-left: 1.3rem;
+  columns: 2;
+}
+
+.projectDeletePanel .dangerButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .contractBulkPanel {
   padding: 0.6rem;
 }
@@ -1411,6 +1445,10 @@ th {
 
   .brandLogoFrame {
     width: min(230px, 78vw);
+  }
+
+  .projectDeleteWarning ul {
+    columns: 1;
   }
 
   .mainNav {

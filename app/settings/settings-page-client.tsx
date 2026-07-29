@@ -9,6 +9,7 @@ import {
   archiveUserProfileAction,
   deleteFiscalYearAction,
   deleteOrganizationAction,
+  deleteProjectAction,
   deleteProductionCategoryAction,
   deleteAccountCodeAction,
   saveProductionTeamAssignmentAction,
@@ -41,6 +42,7 @@ import type {
   ProductionManagementProfileOption,
   ProductionCategoryAdminRow,
   ProductionCategoryOption,
+  ProjectDeletionImpact,
   SettingsProject,
   SettingsProductionTeamAssignmentRow,
   SettingsUserRow
@@ -91,6 +93,7 @@ type Props = {
   productionManagementProfiles: ProductionManagementProfileOption[];
   productionManagementProfilesWarning: string | null;
   productionTeamAssignments: SettingsProductionTeamAssignmentRow[];
+  projectDeletionImpact: ProjectDeletionImpact | null;
 };
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
@@ -112,7 +115,8 @@ export function SettingsPageClient({
   accessUsers,
   productionManagementProfiles,
   productionManagementProfilesWarning,
-  productionTeamAssignments
+  productionTeamAssignments,
+  projectDeletionImpact
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -167,6 +171,7 @@ export function SettingsPageClient({
   const [updateOrganizationState, updateOrganizationActionForm] = useActionState(updateOrganizationAction, initialState);
   const [deleteOrganizationModalState, deleteOrganizationModalAction] = useActionState(deleteOrganizationAction, initialState);
   const [updateProjectState, updateProjectActionForm] = useActionState(updateProjectAction, initialState);
+  const [deleteProjectState, deleteProjectActionForm] = useActionState(deleteProjectAction, initialState);
   const [updateBudgetLineState, updateBudgetLineActionForm] = useActionState(updateBudgetLineAction, initialState);
   const [updateAccountCodeState, updateAccountCodeActionForm] = useActionState(updateAccountCodeAction, initialState);
   const [updateProductionCategoryState, updateProductionCategoryActionForm] = useActionState(updateProductionCategoryAction, initialState);
@@ -268,6 +273,18 @@ export function SettingsPageClient({
   const editingFiscalYear = editType === "fy" && editId ? fiscalYearLookup.get(editId) : null;
   const editingOrganization = editType === "org" && editId ? organizationLookup.get(editId) : null;
   const editingProject = editType === "project" && editId ? projectLookup.get(editId) : null;
+  const projectDeletionRows = projectDeletionImpact
+    ? [
+        { label: "Budget lines", count: projectDeletionImpact.budgetLines },
+        { label: "Purchases and requests", count: projectDeletionImpact.purchases },
+        { label: "Credit-card statement months", count: projectDeletionImpact.creditCardStatementMonths },
+        { label: "Income entries", count: projectDeletionImpact.incomeEntries },
+        { label: "Contracts", count: projectDeletionImpact.contracts },
+        { label: "Project memberships", count: projectDeletionImpact.projectMemberships },
+        { label: "Production-team assignments", count: projectDeletionImpact.productionTeamAssignments }
+      ]
+    : [];
+  const projectRecordsDeleted = projectDeletionRows.reduce((total, row) => total + row.count, 0);
 
   const settingsProjectById = useMemo(() => new Map(projects.map((project) => [project.id, project] as const)), [projects]);
 
@@ -307,6 +324,8 @@ export function SettingsPageClient({
     organizationId: "",
     planningRequestsEnabled: true
   });
+  const [projectDeleteConfirmation, setProjectDeleteConfirmation] = useState("");
+  const [projectDeleteAcknowledged, setProjectDeleteAcknowledged] = useState(false);
   const [lineForm, setLineForm] = useState({
     targetProjectId: "",
     productionCategoryId: "",
@@ -381,6 +400,8 @@ export function SettingsPageClient({
       organizationId: projectRecord?.organizationId ?? "",
       planningRequestsEnabled: projectRecord?.planningRequestsEnabled ?? true
     });
+    setProjectDeleteConfirmation("");
+    setProjectDeleteAcknowledged(false);
   }, [editingProject, settingsProjectById]);
 
   useEffect(() => {
@@ -453,6 +474,12 @@ export function SettingsPageClient({
       closeEditor();
     }
   }, [closeEditor, deleteOrganizationModalState, editType, editId]);
+
+  useEffect(() => {
+    if (deleteProjectState.ok && deleteProjectState.message && editType === "project" && editId) {
+      closeEditor();
+    }
+  }, [closeEditor, deleteProjectState, editType, editId]);
 
   useEffect(() => {
     if (lastDeleted?.type === "org" && deleteOrganizationInlineState.ok && deleteOrganizationInlineState.message) {
@@ -1372,6 +1399,88 @@ export function SettingsPageClient({
                 </button>
               </div>
             </form>
+            {isAdmin ? (
+              <section className="projectDeletePanel" aria-labelledby="delete-project-heading">
+                <h3 id="delete-project-heading">Delete Project</h3>
+                {deleteProjectState.message ? (
+                  <p className={deleteProjectState.ok ? "successNote" : "errorNote"} key={deleteProjectState.timestamp}>
+                    {deleteProjectState.message}
+                  </p>
+                ) : null}
+                {editingProject.name.trim().toLowerCase() === "external procurement" ? (
+                  <p className="errorNote">The External Procurement system project cannot be deleted.</p>
+                ) : projectDeletionImpact?.projectId === editingProject.id ? (
+                  <>
+                    <div className="projectDeleteWarning" role="alert">
+                      <p>
+                        <strong>This permanently deletes {projectRecordsDeleted} directly linked record{projectRecordsDeleted === 1 ? "" : "s"}.</strong>
+                      </p>
+                      {projectDeletionRows.some((row) => row.count > 0) ? (
+                        <ul>
+                          {projectDeletionRows
+                            .filter((row) => row.count > 0)
+                            .map((row) => (
+                              <li key={row.label}>
+                                {row.label}: {row.count}
+                              </li>
+                            ))}
+                        </ul>
+                      ) : (
+                        <p>No directly linked records were found.</p>
+                      )}
+                      <p>
+                        Child records—including allocations, receipts, receiving documents, workflow history, statement lines, and contract
+                        installments—will also be deleted with their parent records.
+                      </p>
+                      {projectDeletionImpact.accessScopesDetached > 0 ? (
+                        <p>
+                          Project access rules detached (not deleted): {projectDeletionImpact.accessScopesDetached}
+                        </p>
+                      ) : null}
+                      {projectDeletionImpact.associatedContractsDetached > 0 ? (
+                        <p>
+                          Contracts that reference this as their associated production will be retained but detached:{" "}
+                          {projectDeletionImpact.associatedContractsDetached}
+                        </p>
+                      ) : null}
+                    </div>
+                    <form action={deleteProjectActionForm} className="requestForm">
+                      <input type="hidden" name="id" value={editingProject.id} />
+                      <label className="checkboxLabel">
+                        <input
+                          name="acknowledgeProjectDeletion"
+                          type="checkbox"
+                          checked={projectDeleteAcknowledged}
+                          onChange={(event) => setProjectDeleteAcknowledged(event.target.checked)}
+                        />
+                        I understand that the linked project data listed above will be permanently deleted.
+                      </label>
+                      <label>
+                        <span>
+                          Type <strong>{editingProject.name}</strong> to confirm
+                        </span>
+                        <input
+                          name="confirmationName"
+                          value={projectDeleteConfirmation}
+                          onChange={(event) => setProjectDeleteConfirmation(event.target.value)}
+                          autoComplete="off"
+                          required
+                        />
+                      </label>
+                      <button
+                        type="submit"
+                        className="tinyButton dangerButton"
+                        disabled={!projectDeleteAcknowledged || projectDeleteConfirmation.trim() !== editingProject.name.trim()}
+                      >
+                        Permanently Delete Project
+                      </button>
+                    </form>
+                  </>
+                ) : (
+                  <p className="errorNote">Linked-record counts could not be loaded, so deletion is disabled.</p>
+                )}
+              </section>
+            ) : null}
           </div>
         </div>
       ) : null}

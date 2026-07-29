@@ -130,7 +130,7 @@ export function CreateContractForm({
         </select>
       </label>
       <label>
-        Project
+        Accounting Project
         <select name="projectId" value={projectId} onChange={(event) => setProjectId(event.target.value)} required>
           <option value="">Select project</option>
           {projectOptions.map((project) => (
@@ -139,6 +139,18 @@ export function CreateContractForm({
             </option>
           ))}
         </select>
+      </label>
+      <label>
+        Associated Production / Show
+        <select name="productionProjectId" defaultValue="">
+          <option value="">Same as accounting project</option>
+          {projectOptions.map((project) => (
+            <option key={project.id} value={project.id}>
+              {project.label}
+            </option>
+          ))}
+        </select>
+        <span className="helperText">Choose the show this artist is working on, even when the contract is tracked in a shared Guest Artists project.</span>
       </label>
       <label>
         Banner Account Code
@@ -210,6 +222,16 @@ export function CreateContractForm({
       <label>
         Role
         <input name="contractRole" placeholder="Designer, Director, Musician..." />
+      </label>
+      <label>
+        Session
+        <select name="contractSession" defaultValue="">
+          <option value="">Select session</option>
+          <option value="summer">Summer</option>
+          <option value="fall">Fall</option>
+          <option value="winter">Winter</option>
+          <option value="spring">Spring</option>
+        </select>
       </label>
       <label>
         Check Request FOAPAL

@@ -45,6 +45,7 @@ export function ContractRowActions({
 
   const open = useMemo(() => searchParams.get("ct_edit") === contract.id, [searchParams, contract.id]);
   const [editProjectId, setEditProjectId] = useState(contract.projectId);
+  const [editProductionProjectId, setEditProductionProjectId] = useState(contract.productionProjectId);
   const [editFiscalYearId, setEditFiscalYearId] = useState(contract.fiscalYearId ?? "");
   const [editOrganizationId, setEditOrganizationId] = useState(contract.organizationId ?? "");
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState(contract.bannerAccountCodeId ?? "");
@@ -57,6 +58,7 @@ export function ContractRowActions({
   const [editInstallmentCount, setEditInstallmentCount] = useState(String(contract.installmentCount ?? 1));
   const [editContractNumber, setEditContractNumber] = useState(contract.contractNumber ?? "");
   const [editContractRole, setEditContractRole] = useState(contract.contractRole ?? "");
+  const [editContractSession, setEditContractSession] = useState(contract.contractSession ?? "");
   const [editFoapalId, setEditFoapalId] = useState(contract.checkRequestFoapalId ?? "");
   const [editHandling, setEditHandling] = useState(contract.checkRequestHandling ?? "mail");
   const [editOtherLocation, setEditOtherLocation] = useState(contract.checkRequestOtherLocation ?? "");
@@ -87,6 +89,7 @@ export function ContractRowActions({
     if (lastEditIdRef.current === contract.id) return;
     lastEditIdRef.current = contract.id;
     setEditProjectId(contract.projectId);
+    setEditProductionProjectId(contract.productionProjectId);
     setEditFiscalYearId(contract.fiscalYearId ?? "");
     setEditOrganizationId(contract.organizationId ?? "");
     setEditBannerAccountCodeId(contract.bannerAccountCodeId ?? "");
@@ -99,6 +102,7 @@ export function ContractRowActions({
     setEditInstallmentCount(String(contract.installmentCount ?? 1));
     setEditContractNumber(contract.contractNumber ?? "");
     setEditContractRole(contract.contractRole ?? "");
+    setEditContractSession(contract.contractSession ?? "");
     setEditFoapalId(contract.checkRequestFoapalId ?? "");
     setEditHandling(contract.checkRequestHandling ?? "mail");
     setEditOtherLocation(contract.checkRequestOtherLocation ?? "");
@@ -256,6 +260,20 @@ export function ContractRowActions({
                 <input name="contractRole" value={editContractRole} onChange={(event) => setEditContractRole(event.target.value)} />
               </label>
               <label>
+                Session
+                <select
+                  name="contractSession"
+                  value={editContractSession}
+                  onChange={(event) => setEditContractSession(event.target.value)}
+                >
+                  <option value="">Select session</option>
+                  <option value="summer">Summer</option>
+                  <option value="fall">Fall</option>
+                  <option value="winter">Winter</option>
+                  <option value="spring">Spring</option>
+                </select>
+              </label>
+              <label>
                 Check Request FOAPAL
                 <select name="checkRequestFoapalId" value={editFoapalId} onChange={(event) => setEditFoapalId(event.target.value)}>
                   <option value="">Use contract organization only</option>
@@ -377,7 +395,7 @@ export function ContractRowActions({
                 </select>
               </label>
               <label>
-                Project
+                Accounting Project
                 <select
                   name="projectId"
                   value={editProjectId}
@@ -390,6 +408,22 @@ export function ContractRowActions({
                     </option>
                   ))}
                 </select>
+              </label>
+              <label>
+                Associated Production / Show
+                <select
+                  name="productionProjectId"
+                  value={editProductionProjectId}
+                  onChange={(event) => setEditProductionProjectId(event.target.value)}
+                  required
+                >
+                  {projectOptions.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="helperText">This may differ from the accounting project that carries the contract expense.</span>
               </label>
               <label>
                 Banner Account

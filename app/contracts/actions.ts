@@ -17,6 +17,7 @@ type ActionState = {
 type ContractWorkflowStatus = "w9_requested" | "contract_sent" | "contract_signed_returned" | "siena_signed";
 type InstallmentStatus = "planned" | "check_request_submitted" | "check_paid";
 type CheckRequestHandling = "mail" | "business_affairs_pickup" | "other";
+type ContractSession = "summer" | "fall" | "winter" | "spring";
 type GuestArtistDefaults = {
   id: string;
   display_name: string;
@@ -99,6 +100,12 @@ function parseCheckRequestHandling(value: FormDataEntryValue | null): CheckReque
   const raw = String(value ?? "mail").trim();
   if (raw === "business_affairs_pickup" || raw === "other") return raw;
   return "mail";
+}
+
+function parseContractSession(value: FormDataEntryValue | null): ContractSession | null {
+  const raw = String(value ?? "").trim().toLowerCase();
+  if (raw === "summer" || raw === "fall" || raw === "winter" || raw === "spring") return raw;
+  return null;
 }
 
 function nullableFormText(formData: FormData, name: string): string | null {
@@ -313,6 +320,7 @@ export async function createContractAction(
     if (!user) return err("You must be signed in.");
 
     const projectId = String(formData.get("projectId") ?? "").trim();
+    const productionProjectId = String(formData.get("productionProjectId") ?? "").trim() || projectId;
     const guestArtistId = String(formData.get("guestArtistId") ?? "").trim();
     const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
@@ -375,6 +383,7 @@ export async function createContractAction(
         fiscal_year_id: resolvedFiscalYearId,
         organization_id: resolvedOrganizationId,
         project_id: projectId,
+        production_project_id: productionProjectId,
         banner_account_code_id: bannerAccountCodeId,
         guest_artist_id: guestArtist?.id ?? null,
         production_category_id: miscCategoryId,
@@ -385,6 +394,7 @@ export async function createContractAction(
         contractor_phone: contractorPhone || null,
         contract_value: contractValue,
         installment_count: installmentCount,
+        contract_session: parseContractSession(formData.get("contractSession")),
         ...contractCheckRequestValues,
         workflow_status: "w9_requested",
         notes: notes || null
@@ -533,6 +543,7 @@ export async function updateContractDetailsAction(
     const contractId = String(formData.get("contractId") ?? "").trim();
     const guestArtistId = String(formData.get("guestArtistId") ?? "").trim();
     const projectId = String(formData.get("projectId") ?? "").trim();
+    const productionProjectId = String(formData.get("productionProjectId") ?? "").trim() || projectId;
     const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
     const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
@@ -631,6 +642,7 @@ export async function updateContractDetailsAction(
         fiscal_year_id: resolvedFiscalYearId,
         organization_id: resolvedOrganizationId,
         project_id: projectId,
+        production_project_id: productionProjectId,
         banner_account_code_id: bannerAccountCodeId,
         guest_artist_id: guestArtist?.id ?? null,
         contractor_name: contractorName,
@@ -639,6 +651,7 @@ export async function updateContractDetailsAction(
         contractor_phone: contractorPhone || null,
         contract_value: contractValue,
         installment_count: installmentCount,
+        contract_session: parseContractSession(formData.get("contractSession")),
         ...contractCheckRequestValues,
         notes: notes || null
       })

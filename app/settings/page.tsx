@@ -9,6 +9,7 @@ import {
   getProgramOptions,
   getProductionCategoriesAdmin,
   getProductionCategoryOptions,
+  getProjectDeletionImpact,
   getProductionManagementProfileOptions,
   getSettingsAccessScopes,
   getSettingsProductionTeamAssignments,
@@ -20,11 +21,18 @@ import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
   const isAdmin = access.role === "admin";
+  const resolvedSearchParams = await searchParams;
+  const editType = typeof resolvedSearchParams.editType === "string" ? resolvedSearchParams.editType : "";
+  const editId = typeof resolvedSearchParams.editId === "string" ? resolvedSearchParams.editId : "";
 
   const projectsAll = await getSettingsProjects();
   const templates = await getTemplateNames();
@@ -47,6 +55,10 @@ export default async function SettingsPage() {
   const productionTeamAssignments = isAdmin
     ? productionTeamAssignmentsAll
     : productionTeamAssignmentsAll.filter((assignment) => manageableProjectIds.has(assignment.projectId));
+  const projectDeletionImpact =
+    isAdmin && editType === "project" && projectsAll.some((project) => project.id === editId)
+      ? await getProjectDeletionImpact(editId)
+      : null;
 
   return (
     <SettingsPageClient
@@ -67,6 +79,7 @@ export default async function SettingsPage() {
       productionManagementProfiles={productionManagementProfiles.profiles}
       productionManagementProfilesWarning={productionManagementProfiles.warning}
       productionTeamAssignments={productionTeamAssignments}
+      projectDeletionImpact={projectDeletionImpact}
     />
   );
 }
