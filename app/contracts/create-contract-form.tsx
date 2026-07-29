@@ -5,7 +5,15 @@ import { createContractAction, type ActionState } from "@/app/contracts/actions"
 import { SensitiveTextInput } from "@/components/sensitive-text-input";
 import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
 import { GLOBAL_FISCAL_YEAR_STORAGE_KEY } from "@/lib/fiscal-year-context";
-import type { AccountCodeOption, FiscalYearOption, FoapalOption, GuestArtistOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
+import type {
+  AccountCodeOption,
+  FiscalYearOption,
+  FoapalOption,
+  GuestArtistOption,
+  OrganizationOption,
+  ProcurementProjectOption,
+  UnionAgreementOption
+} from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
@@ -15,7 +23,8 @@ export function CreateContractForm({
   projectOptions,
   accountCodeOptions,
   foapalOptions,
-  guestArtistOptions
+  guestArtistOptions,
+  unionAgreementOptions
 }: {
   fiscalYearOptions: FiscalYearOption[];
   organizationOptions: OrganizationOption[];
@@ -23,6 +32,7 @@ export function CreateContractForm({
   accountCodeOptions: AccountCodeOption[];
   foapalOptions: FoapalOption[];
   guestArtistOptions: GuestArtistOption[];
+  unionAgreementOptions: UnionAgreementOption[];
 }) {
   const [state, formAction] = useActionState(createContractAction, initialState);
   const formRef = useRef<HTMLFormElement | null>(null);
@@ -36,6 +46,10 @@ export function CreateContractForm({
   const [contractorEmployeeId, setContractorEmployeeId] = useState("");
   const [contractorEmail, setContractorEmail] = useState("");
   const [contractorPhone, setContractorPhone] = useState("");
+  const [contractValue, setContractValue] = useState("");
+  const [isUnion, setIsUnion] = useState(false);
+  const [unionAgreementId, setUnionAgreementId] = useState("");
+  const [unionDueDates, setUnionDueDates] = useState<Record<string, string>>({});
   const [checkRequestFoapalId, setCheckRequestFoapalId] = useState("");
   const [checkRequestHandling, setCheckRequestHandling] = useState<"mail" | "business_affairs_pickup" | "other">("mail");
   const [checkRequestOtherLocation, setCheckRequestOtherLocation] = useState("");
@@ -50,6 +64,8 @@ export function CreateContractForm({
     () => projectOptions.filter((project) => project.fiscalYearId === contractFiscalYearId),
     [contractFiscalYearId, projectOptions]
   );
+  const selectedUnionAgreement = unionAgreementOptions.find((agreement) => agreement.id === unionAgreementId);
+  const numericContractValue = Number.parseFloat(contractValue) || 0;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -84,6 +100,10 @@ export function CreateContractForm({
     setContractorEmployeeId("");
     setContractorEmail("");
     setContractorPhone("");
+    setContractValue("");
+    setIsUnion(false);
+    setUnionAgreementId("");
+    setUnionDueDates({});
     setCheckRequestFoapalId("");
     setCheckRequestHandling("mail");
     setCheckRequestOtherLocation("");
@@ -108,6 +128,9 @@ export function CreateContractForm({
     setContractorEmployeeId(guestArtist.vendorNumber ?? "");
     setContractorEmail(guestArtist.email ?? "");
     setContractorPhone(guestArtist.phone ?? "");
+    setIsUnion(guestArtist.isUnion);
+    setUnionAgreementId(guestArtist.defaultUnionAgreementId ?? "");
+    setUnionDueDates({});
     setCheckRequestFoapalId(guestArtist.defaultFoapalId ?? "");
     setCheckRequestHandling(guestArtist.defaultCheckRequestHandling);
     setCheckRequestOtherLocation(guestArtist.defaultCheckRequestOtherLocation ?? "");
@@ -228,7 +251,14 @@ export function CreateContractForm({
       </label>
       <label>
         Contract Value
-        <input name="contractValue" type="number" step="0.01" required />
+        <input
+          name="contractValue"
+          type="number"
+          step="0.01"
+          value={contractValue}
+          onChange={(event) => setContractValue(event.target.value)}
+          required
+        />
       </label>
       <label>
         Payment Installments
@@ -251,6 +281,64 @@ export function CreateContractForm({
         Role
         <input name="contractRole" placeholder="Designer, Director, Musician..." />
       </label>
+      <input type="hidden" name="isUnion" value="false" />
+      <label className="checkboxLabel">
+        <input
+          name="isUnion"
+          value="true"
+          type="checkbox"
+          checked={isUnion}
+          onChange={(event) => setIsUnion(event.target.checked)}
+        />
+        Is Union?
+      </label>
+      {isUnion ? (
+        <div className="stackedDetails">
+          <label>
+            Union Agreement
+            <select
+              name="unionAgreementId"
+              value={unionAgreementId}
+              onChange={(event) => {
+                setUnionAgreementId(event.target.value);
+                setUnionDueDates({});
+              }}
+              required
+            >
+              <option value="">Select agreement</option>
+              {unionAgreementOptions.filter((agreement) => agreement.active).map((agreement) => (
+                <option key={agreement.id} value={agreement.id}>
+                  {agreement.name} — {agreement.versionLabel}
+                </option>
+              ))}
+            </select>
+          </label>
+          {selectedUnionAgreement ? (
+            <div className="panel nestedPanel">
+              <h3>Union Contribution Preview</h3>
+              {selectedUnionAgreement.funds.map((fund) => {
+                const amount = Math.round(numericContractValue * fund.percentage) / 100;
+                return (
+                  <label key={fund.id}>
+                    {fund.fundName} — {fund.percentage}% —{" "}
+                    {fund.contributionType === "artist_withholding" ? "Artist withholding" : "Employer-paid"} —{" "}
+                    {amount.toLocaleString("en-US", { style: "currency", currency: "USD" })}
+                    <input
+                      name={`unionDueDate_${fund.id}`}
+                      type="date"
+                      value={unionDueDates[fund.id] ?? dueDates[1] ?? ""}
+                      onChange={(event) =>
+                        setUnionDueDates((current) => ({ ...current, [fund.id]: event.target.value }))
+                      }
+                    />
+                    <span className="helperText">Separate-check due date; defaults to installment 1.</span>
+                  </label>
+                );
+              })}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <label>
         Sessions
         <select name="contractSessions" multiple size={4} defaultValue={[]}>

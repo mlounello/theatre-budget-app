@@ -66,6 +66,8 @@ function profilePayload(formData: FormData, existingTax?: { encrypted: string | 
     email: nullableText(formData, "email"),
     phone: nullableText(formData, "phone"),
     default_foapal_id: nullableText(formData, "defaultFoapalId"),
+    is_union: formData.get("isUnion") === "on",
+    default_union_agreement_id: nullableText(formData, "defaultUnionAgreementId"),
     default_check_request_handling: parseHandling(formData.get("defaultCheckRequestHandling")),
     default_check_request_other_location: nullableText(formData, "defaultCheckRequestOtherLocation"),
     vendor_address1: nullableText(formData, "vendorAddress1"),

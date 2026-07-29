@@ -288,6 +288,8 @@ export type ContractWorkflowStatus =
 
 export type ContractInstallmentStatus = "planned" | "check_request_submitted" | "check_paid";
 export type ContractSession = "summer" | "fall" | "winter" | "spring";
+export type UnionSignatureStatus = "not_started" | "sent_to_union" | "union_countersigned" | "complete";
+export type UnionContributionType = "employer_paid" | "artist_withholding";
 
 export type ContractRow = {
   id: string;
@@ -326,6 +328,10 @@ export type ContractRow = {
   vendorAddress3: string | null;
   taxIdLast4: string | null;
   workflowStatus: ContractWorkflowStatus;
+  isUnion: boolean;
+  unionAgreementId: string | null;
+  unionAgreementName: string | null;
+  unionSignatureStatus: UnionSignatureStatus;
   notes: string | null;
   createdAt: string;
 };
@@ -346,6 +352,25 @@ export type ContractInstallmentRow = {
   vendorAddress1: string | null;
   vendorAddress2: string | null;
   vendorAddress3: string | null;
+  taxIdLast4: string | null;
+  checkRequestSubmittedOn: string | null;
+  checkPaidOn: string | null;
+};
+
+export type ContractUnionContributionRow = {
+  id: string;
+  contractId: string;
+  purchaseId: string | null;
+  fundName: string;
+  vendorNumber: string | null;
+  contributionType: UnionContributionType;
+  percentage: number;
+  calculationBase: number;
+  amount: number;
+  dueDate: string | null;
+  apReceiveBy: string | null;
+  mailBy: string | null;
+  status: ContractInstallmentStatus;
   taxIdLast4: string | null;
   checkRequestSubmittedOn: string | null;
   checkPaidOn: string | null;
@@ -393,8 +418,46 @@ export type GuestArtistOption = {
   vendorAddress2: string | null;
   vendorAddress3: string | null;
   taxIdLast4: string | null;
+  isUnion: boolean;
+  defaultUnionAgreementId: string | null;
   notes: string | null;
   active: boolean;
+};
+
+export type UnionFundOption = {
+  id: string;
+  name: string;
+  vendorNumber: string | null;
+  foapalId: string | null;
+  checkRequestHandling: "mail" | "business_affairs_pickup" | "other";
+  checkRequestOtherLocation: string | null;
+  vendorAddress1: string | null;
+  vendorAddress2: string | null;
+  vendorAddress3: string | null;
+  taxIdLast4: string | null;
+  notes: string | null;
+  active: boolean;
+};
+
+export type UnionAgreementFundOption = {
+  id: string;
+  unionFundId: string;
+  fundName: string;
+  percentage: number;
+  contributionType: UnionContributionType;
+  sortOrder: number;
+};
+
+export type UnionAgreementOption = {
+  id: string;
+  name: string;
+  unionName: string;
+  versionLabel: string;
+  effectiveFrom: string | null;
+  effectiveTo: string | null;
+  notes: string | null;
+  active: boolean;
+  funds: UnionAgreementFundOption[];
 };
 
 export type VendorOption = {
@@ -1564,30 +1627,33 @@ export async function getProcurementTrackerData(): Promise<{
 export async function getContractsData(): Promise<{
   contracts: ContractRow[];
   installments: ContractInstallmentRow[];
+  unionContributions: ContractUnionContributionRow[];
   fiscalYearOptions: FiscalYearOption[];
   organizationOptions: OrganizationOption[];
   projectOptions: ProcurementProjectOption[];
   accountCodeOptions: AccountCodeOption[];
   foapalOptions: FoapalOption[];
   guestArtistOptions: GuestArtistOption[];
+  unionAgreementOptions: UnionAgreementOption[];
   canManageContracts: boolean;
 }> {
   const supabase = await getSupabaseServerClient();
   const access = await getAccessContext();
 
-  const [fiscalYears, organizations, projects, accountCodes, foapalOptions, guestArtistOptions] = await Promise.all([
+  const [fiscalYears, organizations, projects, accountCodes, foapalOptions, guestArtistOptions, unionAgreementOptions] = await Promise.all([
     getFiscalYearOptions(),
     getOrganizationOptions(),
     getSettingsProjects(),
     getAccountCodeOptions(),
     getFoapalOptions(),
-    getGuestArtistOptions()
+    getGuestArtistOptions(),
+    getUnionAgreementOptions()
   ]);
 
   let contractsResponse = (await supabase
     .from("contracts")
     .select(
-      "id, fiscal_year_id, organization_id, project_id, production_project_id, banner_account_code_id, guest_artist_id, contractor_name, contractor_employee_id, contractor_email, contractor_phone, contract_value, installment_count, contract_number, contract_role, contract_session, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, workflow_status, notes, created_at, fiscal_years(name), organizations(name, org_code), accounting_project:projects!contracts_project_id_fkey(name, season), production_project:projects!contracts_production_project_id_fkey(name, season), contract_productions(project_id, production:projects!contract_productions_project_id_fkey(name, season)), account_codes(code)"
+      "id, fiscal_year_id, organization_id, project_id, production_project_id, banner_account_code_id, guest_artist_id, contractor_name, contractor_employee_id, contractor_email, contractor_phone, contract_value, installment_count, contract_number, contract_role, contract_session, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, workflow_status, is_union, union_agreement_id, union_agreement_name_snapshot, union_signature_status, notes, created_at, fiscal_years(name), organizations(name, org_code), accounting_project:projects!contracts_project_id_fkey(name, season), production_project:projects!contracts_production_project_id_fkey(name, season), contract_productions(project_id, production:projects!contract_productions_project_id_fkey(name, season)), account_codes(code)"
     )
     .order("created_at", { ascending: false })
     .limit(200)) as DbListResponse;
@@ -1596,6 +1662,7 @@ export async function getContractsData(): Promise<{
     (contractsResponse.error.message.toLowerCase().includes("contract_number") ||
       contractsResponse.error.message.toLowerCase().includes("contract_session") ||
       contractsResponse.error.message.toLowerCase().includes("contract_productions") ||
+      contractsResponse.error.message.toLowerCase().includes("is_union") ||
       contractsResponse.error.message.toLowerCase().includes("guest_artist_id") ||
       contractsResponse.error.message.toLowerCase().includes("production_project") ||
       contractsResponse.error.message.toLowerCase().includes("check_request_foapal_id") ||
@@ -1628,6 +1695,14 @@ export async function getContractsData(): Promise<{
       .order("installment_number", { ascending: true })) as DbListResponse;
   }
   if (installmentsResponse.error) throw installmentsResponse.error;
+
+  const { data: unionContributionRows, error: unionContributionsError } = await supabase
+    .from("contract_union_contributions")
+    .select(
+      "id, contract_id, purchase_id, fund_name_snapshot, vendor_number_snapshot, contribution_type, percentage, calculation_base, amount, due_date, ap_receive_by, mail_by, status, tax_id_last4_snapshot, check_request_submitted_on, check_paid_on"
+    )
+    .order("created_at", { ascending: true });
+  if (unionContributionsError) throw unionContributionsError;
 
   const canManageContracts = access.role === "admin" || access.role === "project_manager";
 
@@ -1701,6 +1776,10 @@ export async function getContractsData(): Promise<{
       vendorAddress3: (row.vendor_address3 as string | null) ?? null,
       taxIdLast4: (row.tax_id_last4 as string | null) ?? null,
       workflowStatus: (row.workflow_status as ContractWorkflowStatus) ?? "w9_requested",
+      isUnion: Boolean(row.is_union as boolean | null),
+      unionAgreementId: (row.union_agreement_id as string | null) ?? null,
+      unionAgreementName: (row.union_agreement_name_snapshot as string | null) ?? null,
+      unionSignatureStatus: ((row.union_signature_status as string | null) ?? "not_started") as UnionSignatureStatus,
       notes: (row.notes as string | null) ?? null,
       createdAt: row.created_at as string
     };
@@ -1727,6 +1806,25 @@ export async function getContractsData(): Promise<{
     checkPaidOn: (row.check_paid_on as string | null) ?? null
   }));
 
+  const unionContributions: ContractUnionContributionRow[] = (unionContributionRows ?? []).map((row) => ({
+    id: row.id as string,
+    contractId: row.contract_id as string,
+    purchaseId: (row.purchase_id as string | null) ?? null,
+    fundName: row.fund_name_snapshot as string,
+    vendorNumber: (row.vendor_number_snapshot as string | null) ?? null,
+    contributionType: row.contribution_type as UnionContributionType,
+    percentage: asNumber(row.percentage as string | number | null),
+    calculationBase: asNumber(row.calculation_base as string | number | null),
+    amount: asNumber(row.amount as string | number | null),
+    dueDate: (row.due_date as string | null) ?? null,
+    apReceiveBy: (row.ap_receive_by as string | null) ?? null,
+    mailBy: (row.mail_by as string | null) ?? null,
+    status: ((row.status as string | null) ?? "planned") as ContractInstallmentStatus,
+    taxIdLast4: (row.tax_id_last4_snapshot as string | null) ?? null,
+    checkRequestSubmittedOn: (row.check_request_submitted_on as string | null) ?? null,
+    checkPaidOn: (row.check_paid_on as string | null) ?? null
+  }));
+
   const projectOptions: ProcurementProjectOption[] = projects.map((project) => ({
     id: project.id,
     name: project.name,
@@ -1739,12 +1837,14 @@ export async function getContractsData(): Promise<{
   return {
     contracts,
     installments,
+    unionContributions,
     fiscalYearOptions: fiscalYears,
     organizationOptions: organizations,
     projectOptions,
     accountCodeOptions: accountCodes,
     foapalOptions,
     guestArtistOptions,
+    unionAgreementOptions,
     canManageContracts
   };
 }
@@ -2434,7 +2534,7 @@ export async function getGuestArtistOptions(): Promise<GuestArtistOption[]> {
   const { data, error } = await supabase
     .from("guest_artists")
     .select(
-      "id, display_name, vendor_number, email, phone, default_foapal_id, default_check_request_handling, default_check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, notes, active"
+      "id, display_name, vendor_number, email, phone, default_foapal_id, default_check_request_handling, default_check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, is_union, default_union_agreement_id, notes, active"
     )
     .order("display_name", { ascending: true });
   if (error) {
@@ -2457,8 +2557,80 @@ export async function getGuestArtistOptions(): Promise<GuestArtistOption[]> {
     vendorAddress2: (row.vendor_address2 as string | null) ?? null,
     vendorAddress3: (row.vendor_address3 as string | null) ?? null,
     taxIdLast4: (row.tax_id_last4 as string | null) ?? null,
+    isUnion: Boolean(row.is_union as boolean | null),
+    defaultUnionAgreementId: (row.default_union_agreement_id as string | null) ?? null,
     notes: (row.notes as string | null) ?? null,
     active: Boolean(row.active as boolean | null)
+  }));
+}
+
+export async function getUnionFundOptions(): Promise<UnionFundOption[]> {
+  const supabase = await getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("union_funds")
+    .select(
+      "id, name, vendor_number, foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, notes, active"
+    )
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    vendorNumber: (row.vendor_number as string | null) ?? null,
+    foapalId: (row.foapal_id as string | null) ?? null,
+    checkRequestHandling: ((row.check_request_handling as string | null) ?? "mail") as
+      | "mail"
+      | "business_affairs_pickup"
+      | "other",
+    checkRequestOtherLocation: (row.check_request_other_location as string | null) ?? null,
+    vendorAddress1: (row.vendor_address1 as string | null) ?? null,
+    vendorAddress2: (row.vendor_address2 as string | null) ?? null,
+    vendorAddress3: (row.vendor_address3 as string | null) ?? null,
+    taxIdLast4: (row.tax_id_last4 as string | null) ?? null,
+    notes: (row.notes as string | null) ?? null,
+    active: Boolean(row.active as boolean | null)
+  }));
+}
+
+export async function getUnionAgreementOptions(): Promise<UnionAgreementOption[]> {
+  const supabase = await getSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("union_agreements")
+    .select(
+      "id, name, union_name, version_label, effective_from, effective_to, notes, active, union_agreement_funds(id, union_fund_id, percentage, contribution_type, sort_order, union_funds(name))"
+    )
+    .order("active", { ascending: false })
+    .order("effective_from", { ascending: false })
+    .order("name", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    unionName: row.union_name as string,
+    versionLabel: row.version_label as string,
+    effectiveFrom: (row.effective_from as string | null) ?? null,
+    effectiveTo: (row.effective_to as string | null) ?? null,
+    notes: (row.notes as string | null) ?? null,
+    active: Boolean(row.active as boolean | null),
+    funds: (
+      (row.union_agreement_funds as Array<{
+        id?: string;
+        union_fund_id?: string;
+        percentage?: string | number;
+        contribution_type?: string;
+        sort_order?: number;
+        union_funds?: { name?: string } | null;
+      }> | null) ?? []
+    )
+      .map((fund) => ({
+        id: fund.id as string,
+        unionFundId: fund.union_fund_id as string,
+        fundName: fund.union_funds?.name ?? "Union Fund",
+        percentage: asNumber(fund.percentage ?? 0),
+        contributionType: (fund.contribution_type ?? "employer_paid") as UnionContributionType,
+        sortOrder: Number(fund.sort_order ?? 0)
+      }))
+      .sort((a, b) => a.sortOrder - b.sortOrder || a.fundName.localeCompare(b.fundName))
   }));
 }
 

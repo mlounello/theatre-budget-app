@@ -9,11 +9,13 @@ import type {
   AccountCodeOption,
   ContractInstallmentRow,
   ContractRow,
+  ContractUnionContributionRow,
   FiscalYearOption,
   FoapalOption,
   GuestArtistOption,
   OrganizationOption,
-  ProcurementProjectOption
+  ProcurementProjectOption,
+  UnionAgreementOption
 } from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
@@ -26,7 +28,9 @@ export function ContractRowActions({
   projectOptions,
   accountCodeOptions,
   foapalOptions,
-  guestArtistOptions
+  guestArtistOptions,
+  unionAgreementOptions,
+  unionContributions
 }: {
   contract: ContractRow;
   installments: ContractInstallmentRow[];
@@ -36,6 +40,8 @@ export function ContractRowActions({
   accountCodeOptions: AccountCodeOption[];
   foapalOptions: FoapalOption[];
   guestArtistOptions: GuestArtistOption[];
+  unionAgreementOptions: UnionAgreementOption[];
+  unionContributions: ContractUnionContributionRow[];
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -60,6 +66,18 @@ export function ContractRowActions({
   const [editInstallmentCount, setEditInstallmentCount] = useState(String(contract.installmentCount ?? 1));
   const [editContractNumber, setEditContractNumber] = useState(contract.contractNumber ?? "");
   const [editContractRole, setEditContractRole] = useState(contract.contractRole ?? "");
+  const [editIsUnion, setEditIsUnion] = useState(contract.isUnion);
+  const [editUnionAgreementId, setEditUnionAgreementId] = useState(contract.unionAgreementId ?? "");
+  const [editUnionDueDates, setEditUnionDueDates] = useState<Record<string, string>>(
+    Object.fromEntries(
+      unionContributions.map((contribution) => [
+        unionAgreementOptions
+          .flatMap((agreement) => agreement.funds)
+          .find((fund) => fund.fundName === contribution.fundName)?.id ?? contribution.id,
+        contribution.dueDate ?? ""
+      ])
+    )
+  );
   const [editContractSessions, setEditContractSessions] = useState<string[]>(contract.contractSessions);
   const [editFoapalId, setEditFoapalId] = useState(contract.checkRequestFoapalId ?? "");
   const [editHandling, setEditHandling] = useState(contract.checkRequestHandling ?? "mail");
@@ -76,6 +94,8 @@ export function ContractRowActions({
     () => projectOptions.filter((project) => project.fiscalYearId === editContractFiscalYearId),
     [editContractFiscalYearId, projectOptions]
   );
+  const editUnionAgreement = unionAgreementOptions.find((agreement) => agreement.id === editUnionAgreementId);
+  const numericEditContractValue = Number.parseFloat(editContractValue) || 0;
 
   const openEdit = useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -110,6 +130,17 @@ export function ContractRowActions({
     setEditInstallmentCount(String(contract.installmentCount ?? 1));
     setEditContractNumber(contract.contractNumber ?? "");
     setEditContractRole(contract.contractRole ?? "");
+    setEditIsUnion(contract.isUnion);
+    setEditUnionAgreementId(contract.unionAgreementId ?? "");
+    const contributionByFundName = new Map(unionContributions.map((contribution) => [contribution.fundName, contribution]));
+    setEditUnionDueDates(
+      Object.fromEntries(
+        (unionAgreementOptions.find((agreement) => agreement.id === contract.unionAgreementId)?.funds ?? []).map((fund) => [
+          fund.id,
+          contributionByFundName.get(fund.fundName)?.dueDate ?? ""
+        ])
+      )
+    );
     setEditContractSessions(contract.contractSessions);
     setEditFoapalId(contract.checkRequestFoapalId ?? "");
     setEditHandling(contract.checkRequestHandling ?? "mail");
@@ -119,7 +150,7 @@ export function ContractRowActions({
     setEditVendorAddress3(contract.vendorAddress3 ?? "");
     setEditDueDates(Object.fromEntries(installments.map((installment) => [installment.installmentNumber, installment.dueDate ?? ""])));
     setEditNotes(contract.notes ?? "");
-  }, [open, contract, installments]);
+  }, [open, contract, installments, unionAgreementOptions, unionContributions]);
 
   useEffect(() => {
     if (!deleteState.ok || !deleteState.message) return;
@@ -148,6 +179,9 @@ export function ContractRowActions({
     setEditVendorAddress1(guestArtist.vendorAddress1 ?? "");
     setEditVendorAddress2(guestArtist.vendorAddress2 ?? "");
     setEditVendorAddress3(guestArtist.vendorAddress3 ?? "");
+    setEditIsUnion(guestArtist.isUnion);
+    setEditUnionAgreementId(guestArtist.defaultUnionAgreementId ?? "");
+    setEditUnionDueDates({});
   }
 
   return (
@@ -275,6 +309,65 @@ export function ContractRowActions({
                 Role
                 <input name="contractRole" value={editContractRole} onChange={(event) => setEditContractRole(event.target.value)} />
               </label>
+              <input type="hidden" name="isUnion" value="false" />
+              <label className="checkboxLabel">
+                <input
+                  name="isUnion"
+                  value="true"
+                  type="checkbox"
+                  checked={editIsUnion}
+                  onChange={(event) => setEditIsUnion(event.target.checked)}
+                />
+                Is Union?
+              </label>
+              {editIsUnion ? (
+                <div className="stackedDetails">
+                  <label>
+                    Union Agreement
+                    <select
+                      name="unionAgreementId"
+                      value={editUnionAgreementId}
+                      onChange={(event) => {
+                        setEditUnionAgreementId(event.target.value);
+                        setEditUnionDueDates({});
+                      }}
+                      required
+                    >
+                      <option value="">Select agreement</option>
+                      {unionAgreementOptions
+                        .filter((agreement) => agreement.active || agreement.id === contract.unionAgreementId)
+                        .map((agreement) => (
+                          <option key={agreement.id} value={agreement.id}>
+                            {agreement.name} — {agreement.versionLabel}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                  {editUnionAgreement ? (
+                    <div className="panel nestedPanel">
+                      <h3>Union Contribution Preview</h3>
+                      {editUnionAgreement.funds.map((fund) => {
+                        const amount = Math.round(numericEditContractValue * fund.percentage) / 100;
+                        return (
+                          <label key={fund.id}>
+                            {fund.fundName} — {fund.percentage}% —{" "}
+                            {fund.contributionType === "artist_withholding" ? "Artist withholding" : "Employer-paid"} —{" "}
+                            {amount.toLocaleString("en-US", { style: "currency", currency: "USD" })}
+                            <input
+                              name={`unionDueDate_${fund.id}`}
+                              type="date"
+                              value={editUnionDueDates[fund.id] ?? editDueDates[1] ?? ""}
+                              onChange={(event) =>
+                                setEditUnionDueDates((current) => ({ ...current, [fund.id]: event.target.value }))
+                              }
+                            />
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <label>
                 Sessions
                 <select

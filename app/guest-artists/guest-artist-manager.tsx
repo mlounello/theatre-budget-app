@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { createGuestArtistAction, updateGuestArtistAction, type ActionState } from "@/app/guest-artists/actions";
 import { SensitiveTextInput } from "@/components/sensitive-text-input";
-import type { FoapalOption, GuestArtistOption } from "@/lib/db";
+import type { FoapalOption, GuestArtistOption, UnionAgreementOption } from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
@@ -18,10 +18,12 @@ function Notice({ state }: { state: ActionState }) {
 
 function GuestArtistFields({
   artist,
-  foapalOptions
+  foapalOptions,
+  unionAgreementOptions
 }: {
   artist?: GuestArtistOption;
   foapalOptions: FoapalOption[];
+  unionAgreementOptions: UnionAgreementOption[];
 }) {
   return (
     <>
@@ -48,6 +50,20 @@ function GuestArtistFields({
           {foapalOptions.map((foapal) => (
             <option key={foapal.id} value={foapal.id}>
               {foapal.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="checkboxLabel">
+        <input name="isUnion" type="checkbox" defaultChecked={artist?.isUnion ?? false} /> Is Union?
+      </label>
+      <label>
+        Default Union Agreement
+        <select name="defaultUnionAgreementId" defaultValue={artist?.defaultUnionAgreementId ?? ""}>
+          <option value="">No default agreement</option>
+          {unionAgreementOptions.map((agreement) => (
+            <option key={agreement.id} value={agreement.id}>
+              {agreement.name} — {agreement.versionLabel}
             </option>
           ))}
         </select>
@@ -104,7 +120,15 @@ function GuestArtistFields({
   );
 }
 
-function GuestArtistEditCard({ artist, foapalOptions }: { artist: GuestArtistOption; foapalOptions: FoapalOption[] }) {
+function GuestArtistEditCard({
+  artist,
+  foapalOptions,
+  unionAgreementOptions
+}: {
+  artist: GuestArtistOption;
+  foapalOptions: FoapalOption[];
+  unionAgreementOptions: UnionAgreementOption[];
+}) {
   const [state, action] = useActionState(updateGuestArtistAction, initialState);
   return (
     <details className="panel nestedPanel">
@@ -115,7 +139,7 @@ function GuestArtistEditCard({ artist, foapalOptions }: { artist: GuestArtistOpt
       <form action={action} className="requestForm">
         <input type="hidden" name="guestArtistId" value={artist.id} />
         <Notice state={state} />
-        <GuestArtistFields artist={artist} foapalOptions={foapalOptions} />
+        <GuestArtistFields artist={artist} foapalOptions={foapalOptions} unionAgreementOptions={unionAgreementOptions} />
         <button type="submit" className="buttonLink buttonPrimary">
           Save Profile
         </button>
@@ -126,10 +150,12 @@ function GuestArtistEditCard({ artist, foapalOptions }: { artist: GuestArtistOpt
 
 export function GuestArtistManager({
   guestArtists,
-  foapalOptions
+  foapalOptions,
+  unionAgreementOptions
 }: {
   guestArtists: GuestArtistOption[];
   foapalOptions: FoapalOption[];
+  unionAgreementOptions: UnionAgreementOption[];
 }) {
   const [createState, createAction] = useActionState(createGuestArtistAction, initialState);
   return (
@@ -138,7 +164,7 @@ export function GuestArtistManager({
         <h2>Add Guest Artist</h2>
         <form action={createAction} className="requestForm">
           <Notice state={createState} />
-          <GuestArtistFields foapalOptions={foapalOptions} />
+          <GuestArtistFields foapalOptions={foapalOptions} unionAgreementOptions={unionAgreementOptions} />
           <button type="submit" className="buttonLink buttonPrimary">
             Save Guest Artist
           </button>
@@ -151,7 +177,14 @@ export function GuestArtistManager({
           {guestArtists.length === 0 ? (
             <p>No guest artists yet.</p>
           ) : (
-            guestArtists.map((artist) => <GuestArtistEditCard key={artist.id} artist={artist} foapalOptions={foapalOptions} />)
+            guestArtists.map((artist) => (
+              <GuestArtistEditCard
+                key={artist.id}
+                artist={artist}
+                foapalOptions={foapalOptions}
+                unionAgreementOptions={unionAgreementOptions}
+              />
+            ))
           )}
         </div>
       </article>

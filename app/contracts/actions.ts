@@ -32,11 +32,41 @@ type GuestArtistDefaults = {
   vendor_address3: string | null;
   tax_id_encrypted: string | null;
   tax_id_last4: string | null;
+  is_union: boolean;
+  default_union_agreement_id: string | null;
 };
 type BulkContractLine = {
   contractorName: string;
   contractValue: string;
   installmentCount?: string;
+};
+
+type UnionCalculationRule = {
+  agreementFundId: string;
+  unionFundId: string;
+  fundName: string;
+  vendorNumber: string | null;
+  foapalId: string | null;
+  checkRequestHandling: CheckRequestHandling;
+  checkRequestOtherLocation: string | null;
+  vendorAddress1: string | null;
+  vendorAddress2: string | null;
+  vendorAddress3: string | null;
+  taxIdEncrypted: string | null;
+  taxIdLast4: string | null;
+  contributionType: "employer_paid" | "artist_withholding";
+  percentage: number;
+  amount: number;
+  dueDate: string | null;
+  apReceiveBy: string | null;
+  mailBy: string | null;
+};
+
+type UnionCalculation = {
+  agreementId: string;
+  agreementName: string;
+  totalWithholding: number;
+  rules: UnionCalculationRule[];
 };
 
 const emptyState: ActionState = { ok: true, message: "", timestamp: 0 };
@@ -124,6 +154,198 @@ function parseProductionProjectIds(formData: FormData, accountingProjectId: stri
     )
   );
   return selected.length > 0 ? selected : [accountingProjectId];
+}
+
+function formIsUnion(formData: FormData): boolean {
+  return formData.getAll("isUnion").some((value) => value === "true" || value === "on");
+}
+
+async function loadUnionCalculation(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  formData: FormData,
+  contractValue: number,
+  defaultAgreementId: string | null
+): Promise<UnionCalculation | null> {
+  if (!formIsUnion(formData)) return null;
+  const agreementId = String(formData.get("unionAgreementId") ?? "").trim() || defaultAgreementId || "";
+  if (!agreementId) throw new Error("Select a union agreement for this union contract.");
+
+  const { data, error } = await supabase
+    .from("union_agreements")
+    .select(
+      "id, name, version_label, active, union_agreement_funds(id, union_fund_id, percentage, contribution_type, sort_order, union_funds(id, name, vendor_number, foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_encrypted, tax_id_last4, active))"
+    )
+    .eq("id", agreementId)
+    .single();
+  if (error || !data) throw new Error(error?.message ?? "Union agreement was not found.");
+
+  const rawRules = (
+    (data.union_agreement_funds as Array<{
+      id?: string;
+      union_fund_id?: string;
+      percentage?: string | number;
+      contribution_type?: string;
+      sort_order?: number;
+      union_funds?: {
+        id?: string;
+        name?: string;
+        vendor_number?: string | null;
+        foapal_id?: string | null;
+        check_request_handling?: string | null;
+        check_request_other_location?: string | null;
+        vendor_address1?: string | null;
+        vendor_address2?: string | null;
+        vendor_address3?: string | null;
+        tax_id_encrypted?: string | null;
+        tax_id_last4?: string | null;
+        active?: boolean;
+      } | null;
+    }> | null) ?? []
+  ).sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0));
+  if (rawRules.length === 0) throw new Error("The selected union agreement has no contribution funds.");
+
+  const rules = rawRules.map((rule) => {
+    const fund = rule.union_funds;
+    if (!rule.id || !rule.union_fund_id || !fund?.id) throw new Error("A union agreement fund is incomplete.");
+    if (!fund.foapal_id) throw new Error(`${fund.name ?? "Union fund"} needs a FOAPAL before it can be used.`);
+    if (!fund.tax_id_encrypted) throw new Error(`${fund.name ?? "Union fund"} needs W-9/Tax ID information before it can be used.`);
+    const percentage = Number(rule.percentage ?? 0);
+    const amount = Math.round(contractValue * percentage) / 100;
+    const dueDate =
+      String(formData.get(`unionDueDate_${rule.id}`) ?? "").trim() ||
+      String(formData.get("installmentDueDate1") ?? "").trim() ||
+      null;
+    if (!dueDate) throw new Error(`Select a payment date for ${fund.name ?? "each union fund"}.`);
+    const schedule = calculateCheckRequestSchedule(dueDate);
+    return {
+      agreementFundId: rule.id,
+      unionFundId: rule.union_fund_id,
+      fundName: fund.name ?? "Union Fund",
+      vendorNumber: fund.vendor_number ?? null,
+      foapalId: fund.foapal_id,
+      checkRequestHandling: ((fund.check_request_handling as string | null) ?? "mail") as CheckRequestHandling,
+      checkRequestOtherLocation: fund.check_request_other_location ?? null,
+      vendorAddress1: fund.vendor_address1 ?? null,
+      vendorAddress2: fund.vendor_address2 ?? null,
+      vendorAddress3: fund.vendor_address3 ?? null,
+      taxIdEncrypted: fund.tax_id_encrypted,
+      taxIdLast4: fund.tax_id_last4 ?? null,
+      contributionType:
+        rule.contribution_type === "artist_withholding" ? "artist_withholding" as const : "employer_paid" as const,
+      percentage,
+      amount,
+      dueDate: schedule?.dueDate ?? dueDate,
+      apReceiveBy: schedule?.apReceiveBy ?? null,
+      mailBy: schedule?.mailBy ?? null
+    };
+  });
+  return {
+    agreementId,
+    agreementName: `${data.name as string} — ${data.version_label as string}`,
+    totalWithholding: rules
+      .filter((rule) => rule.contributionType === "artist_withholding")
+      .reduce((sum, rule) => sum + rule.amount, 0),
+    rules
+  };
+}
+
+function artistInstallmentAmounts(
+  contractValue: number,
+  installmentCount: number,
+  unionCalculation: UnionCalculation | null
+): number[] {
+  const amounts = splitAmounts(contractValue, installmentCount);
+  const withholding = unionCalculation?.totalWithholding ?? 0;
+  if (withholding > 0) {
+    const firstAmount = Math.round(((amounts[0] ?? 0) - withholding) * 100) / 100;
+    if (firstAmount <= 0) {
+      throw new Error("Artist withholdings must be less than the artist's first installment.");
+    }
+    amounts[0] = firstAmount;
+  }
+  return amounts;
+}
+
+async function createUnionContributionRows(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  params: {
+    contractId: string;
+    projectId: string;
+    organizationId: string | null;
+    bannerAccountCodeId: string;
+    productionCategoryId: string;
+    reportingBudgetLineId: string;
+    userId: string;
+    calculation: UnionCalculation;
+    contractValue: number;
+  }
+): Promise<void> {
+  for (const rule of params.calculation.rules) {
+    const { data: purchase, error: purchaseError } = await supabase
+      .from("purchases")
+      .insert({
+        project_id: params.projectId,
+        organization_id: params.organizationId,
+        budget_line_id: params.reportingBudgetLineId,
+        production_category_id: params.productionCategoryId,
+        banner_account_code_id: params.bannerAccountCodeId,
+        budget_tracked: true,
+        entered_by_user_id: params.userId,
+        title: `${rule.fundName} Union Contribution`,
+        estimated_amount: rule.amount,
+        requested_amount: rule.amount,
+        encumbered_amount: 0,
+        pending_cc_amount: 0,
+        posted_amount: 0,
+        status: "requested",
+        request_type: "contract_payment",
+        is_credit_card: false,
+        ordered_on: rule.mailBy ?? rule.apReceiveBy ?? rule.dueDate,
+        procurement_status: "requested",
+        notes: `Separate union fund check for contract ${params.contractId}`
+      })
+      .select("id")
+      .single();
+    if (purchaseError || !purchase) throw new Error(purchaseError?.message ?? "Could not create union payment row.");
+
+    const { error: allocationError } = await supabase.from("purchase_allocations").insert({
+      purchase_id: purchase.id,
+      reporting_budget_line_id: params.reportingBudgetLineId,
+      account_code_id: params.bannerAccountCodeId,
+      production_category_id: params.productionCategoryId,
+      amount: rule.amount,
+      reporting_bucket: "direct",
+      note: "Union contribution allocation — separate check"
+    });
+    if (allocationError) throw new Error(allocationError.message);
+
+    const { error: contributionError } = await supabase.from("contract_union_contributions").insert({
+      contract_id: params.contractId,
+      union_agreement_fund_id: rule.agreementFundId,
+      union_fund_id: rule.unionFundId,
+      purchase_id: purchase.id,
+      fund_name_snapshot: rule.fundName,
+      vendor_number_snapshot: rule.vendorNumber,
+      foapal_id_snapshot: rule.foapalId,
+      check_request_handling_snapshot: rule.checkRequestHandling,
+      check_request_other_location_snapshot: rule.checkRequestOtherLocation,
+      vendor_address1_snapshot: rule.vendorAddress1,
+      vendor_address2_snapshot: rule.vendorAddress2,
+      vendor_address3_snapshot: rule.vendorAddress3,
+      tax_id_encrypted_snapshot: rule.taxIdEncrypted,
+      tax_id_last4_snapshot: rule.taxIdLast4,
+      contribution_type: rule.contributionType,
+      percentage: rule.percentage,
+      calculation_base: params.contractValue,
+      amount: rule.amount,
+      due_date: rule.dueDate,
+      ap_receive_by: rule.apReceiveBy,
+      mail_by: rule.mailBy,
+      status: "planned"
+    });
+    if (contributionError) throw new Error(contributionError.message);
+    await createInstitutionalCommitmentForPurchase(supabase, purchase.id as string, params.userId);
+  }
 }
 
 async function validateProductionProjectFiscalYear(
@@ -310,7 +532,7 @@ async function getGuestArtistDefaults(
   const { data, error } = await supabase
     .from("guest_artists")
     .select(
-      "id, display_name, vendor_number, email, phone, default_foapal_id, default_check_request_handling, default_check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_encrypted, tax_id_last4, active"
+      "id, display_name, vendor_number, email, phone, default_foapal_id, default_check_request_handling, default_check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_encrypted, tax_id_last4, is_union, default_union_agreement_id, active"
     )
     .eq("id", guestArtistId)
     .eq("active", true)
@@ -330,7 +552,9 @@ async function getGuestArtistDefaults(
     vendor_address2: (data.vendor_address2 as string | null) ?? null,
     vendor_address3: (data.vendor_address3 as string | null) ?? null,
     tax_id_encrypted: (data.tax_id_encrypted as string | null) ?? null,
-    tax_id_last4: (data.tax_id_last4 as string | null) ?? null
+    tax_id_last4: (data.tax_id_last4 as string | null) ?? null,
+    is_union: Boolean(data.is_union as boolean | null),
+    default_union_agreement_id: (data.default_union_agreement_id as string | null) ?? null
   };
 }
 
@@ -406,6 +630,14 @@ export async function createContractAction(
     if (!contractorName) return err("Contracted employee name is required.");
     if (contractValue === 0) return err("Contract value must be non-zero.");
 
+    const unionCalculation = await loadUnionCalculation(
+      supabase,
+      formData,
+      contractValue,
+      guestArtist?.default_union_agreement_id ?? null
+    );
+    const installmentAmounts = artistInstallmentAmounts(contractValue, installmentCount, unionCalculation);
+
     await ensurePmOrAdmin(projectId, user.id);
 
     const { data: projectRow, error: projectError } = await supabase
@@ -460,6 +692,10 @@ export async function createContractAction(
         contract_value: contractValue,
         installment_count: installmentCount,
         contract_session: parseContractSessions(formData),
+        is_union: Boolean(unionCalculation),
+        union_agreement_id: unionCalculation?.agreementId ?? null,
+        union_agreement_name_snapshot: unionCalculation?.agreementName ?? null,
+        union_signature_status: "not_started",
         ...contractCheckRequestValues,
         workflow_status: "w9_requested",
         notes: notes || null
@@ -469,7 +705,6 @@ export async function createContractAction(
     if (contractError || !contract) return err(contractError?.message ?? "Could not create contract.");
     await syncContractProductions(supabase, contract.id as string, productionProjectIds);
 
-    const installmentAmounts = splitAmounts(contractValue, installmentCount);
     for (let index = 0; index < installmentAmounts.length; index += 1) {
       const installmentNumber = index + 1;
       const installmentAmount = installmentAmounts[index];
@@ -534,6 +769,20 @@ export async function createContractAction(
       if (installmentError) return err(installmentError.message);
 
       await createInstitutionalCommitmentForPurchase(supabase, purchase.id as string, user.id);
+    }
+
+    if (unionCalculation) {
+      await createUnionContributionRows(supabase, {
+        contractId: contract.id as string,
+        projectId,
+        organizationId: resolvedOrganizationId,
+        bannerAccountCodeId,
+        productionCategoryId: miscCategoryId,
+        reportingBudgetLineId: reportingBudgetLineId as string,
+        userId: user.id,
+        calculation: unionCalculation,
+        contractValue
+      });
     }
 
     revalidatePath("/contracts");
@@ -630,9 +879,16 @@ export async function updateContractDetailsAction(
     if (!contractorName) return err("Contracted employee name is required.");
     if (contractValue === 0) return err("Contract value must be non-zero.");
 
+    const unionCalculation = await loadUnionCalculation(
+      supabase,
+      formData,
+      contractValue,
+      guestArtist?.default_union_agreement_id ?? null
+    );
+
     const { data: existing, error: existingError } = await supabase
       .from("contracts")
-      .select("id, project_id, installment_count, production_category_id, tax_id_encrypted, tax_id_last4")
+      .select("id, project_id, installment_count, production_category_id, tax_id_encrypted, tax_id_last4, is_union, union_agreement_id")
       .eq("id", contractId)
       .single();
     if (existingError || !existing) return err("Contract not found.");
@@ -683,6 +939,14 @@ export async function updateContractDetailsAction(
     if (installmentsError) return err(installmentsError.message);
 
     const installmentsList = installments ?? [];
+    const { data: existingUnionContributions, error: existingUnionError } = await supabase
+      .from("contract_union_contributions")
+      .select("id, purchase_id, status")
+      .eq("contract_id", contractId);
+    if (existingUnionError) return err(existingUnionError.message);
+    if ((existingUnionContributions ?? []).some((contribution) => contribution.status !== "planned")) {
+      return err("Union fund payments are locked after a check request is submitted or paid.");
+    }
     const removedInstallments = installmentsList.filter((installment) => Number(installment.installment_number ?? 1) > installmentCount);
     const removedPurchaseIds = removedInstallments
       .map((installment) => (installment.purchase_id as string | null) ?? null)
@@ -708,6 +972,21 @@ export async function updateContractDetailsAction(
       }
     }
 
+    const oldUnionPurchaseIds = (existingUnionContributions ?? [])
+      .map((contribution) => (contribution.purchase_id as string | null) ?? null)
+      .filter((id): id is string => Boolean(id));
+    if ((existingUnionContributions ?? []).length > 0) {
+      const { error: contributionDeleteError } = await supabase
+        .from("contract_union_contributions")
+        .delete()
+        .eq("contract_id", contractId);
+      if (contributionDeleteError) return err(contributionDeleteError.message);
+    }
+    if (oldUnionPurchaseIds.length > 0) {
+      const { error: purchaseDeleteError } = await supabase.from("purchases").delete().in("id", oldUnionPurchaseIds);
+      if (purchaseDeleteError) return err(purchaseDeleteError.message);
+    }
+
     const { data: contractUpdated, error: contractUpdateError } = await supabase
       .from("contracts")
       .update({
@@ -724,6 +1003,9 @@ export async function updateContractDetailsAction(
         contract_value: contractValue,
         installment_count: installmentCount,
         contract_session: parseContractSessions(formData),
+        is_union: Boolean(unionCalculation),
+        union_agreement_id: unionCalculation?.agreementId ?? null,
+        union_agreement_name_snapshot: unionCalculation?.agreementName ?? null,
         ...contractCheckRequestValues,
         notes: notes || null
       })
@@ -750,7 +1032,7 @@ export async function updateContractDetailsAction(
 
     const retainedInstallments = installmentsList.filter((installment) => Number(installment.installment_number ?? 1) <= installmentCount);
     const existingNumbers = new Set(retainedInstallments.map((installment) => Number(installment.installment_number ?? 1)));
-    const parts = splitAmounts(contractValue, installmentCount);
+    const parts = artistInstallmentAmounts(contractValue, installmentCount, unionCalculation);
 
     for (let installmentNumber = 1; installmentNumber <= installmentCount; installmentNumber += 1) {
       if (existingNumbers.has(installmentNumber)) continue;
@@ -905,6 +1187,20 @@ export async function updateContractDetailsAction(
       if (!allocationUpdated || allocationUpdated.length === 0) return err("Linked allocation update was not applied.");
 
       await createInstitutionalCommitmentForPurchase(supabase, purchaseId, user.id);
+    }
+
+    if (unionCalculation) {
+      await createUnionContributionRows(supabase, {
+        contractId,
+        projectId,
+        organizationId: resolvedOrganizationId,
+        bannerAccountCodeId,
+        productionCategoryId,
+        reportingBudgetLineId: reportingBudgetLineId as string,
+        userId: user.id,
+        calculation: unionCalculation,
+        contractValue
+      });
     }
 
     revalidatePath("/contracts");
@@ -1067,6 +1363,100 @@ export async function updateContractInstallmentStatusAction(
     return ok("Installment status updated.");
   } catch (error) {
     return err(getErrorMessage(error, "Could not update installment status."));
+  }
+}
+
+export async function updateUnionSignatureStatusAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return err("You must be signed in.");
+    const contractId = String(formData.get("contractId") ?? "").trim();
+    const raw = String(formData.get("unionSignatureStatus") ?? "not_started");
+    const status = ["not_started", "sent_to_union", "union_countersigned", "complete"].includes(raw)
+      ? raw
+      : "not_started";
+    const { data: contract, error } = await supabase
+      .from("contracts")
+      .select("id, project_id, is_union")
+      .eq("id", contractId)
+      .single();
+    if (error || !contract?.is_union) return err("Union contract not found.");
+    await ensurePmOrAdmin(contract.project_id as string, user.id);
+    const { error: updateError } = await supabase
+      .from("contracts")
+      .update({ union_signature_status: status })
+      .eq("id", contractId);
+    if (updateError) return err(updateError.message);
+    revalidatePath("/contracts");
+    return ok("Union signature status updated.");
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not update union signature status."));
+  }
+}
+
+export async function updateUnionContributionStatusAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return err("You must be signed in.");
+    const contributionId = String(formData.get("contributionId") ?? "").trim();
+    const nextStatus = parseInstallmentStatus(formData.get("status"));
+    const { data: contribution, error } = await supabase
+      .from("contract_union_contributions")
+      .select("id, purchase_id, amount, contracts!inner(project_id)")
+      .eq("id", contributionId)
+      .single();
+    if (error || !contribution) return err("Union contribution not found.");
+    const contractJoin = contribution.contracts as { project_id?: string } | Array<{ project_id?: string }> | null;
+    const projectId = (Array.isArray(contractJoin) ? contractJoin[0] : contractJoin)?.project_id;
+    if (!projectId) return err("Project could not be resolved.");
+    await ensurePmOrAdmin(projectId, user.id);
+
+    const amount = Number(contribution.amount ?? 0);
+    const purchaseStatus: PurchaseStatus =
+      nextStatus === "check_paid" ? "posted" : nextStatus === "check_request_submitted" ? "encumbered" : "requested";
+    if (contribution.purchase_id) {
+      const { error: purchaseError } = await supabase
+        .from("purchases")
+        .update({
+          status: purchaseStatus,
+          requested_amount: purchaseStatus === "requested" ? amount : 0,
+          encumbered_amount: purchaseStatus === "encumbered" ? amount : 0,
+          posted_amount: purchaseStatus === "posted" ? amount : 0,
+          pending_cc_amount: 0,
+          procurement_status: purchaseStatus === "posted" ? "paid" : purchaseStatus === "encumbered" ? "ordered" : "requested",
+          posted_date: purchaseStatus === "posted" ? new Date().toISOString().slice(0, 10) : null
+        })
+        .eq("id", contribution.purchase_id as string);
+      if (purchaseError) return err(purchaseError.message);
+      await createInstitutionalCommitmentForPurchase(supabase, contribution.purchase_id as string, user.id);
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    const { error: updateError } = await supabase
+      .from("contract_union_contributions")
+      .update({
+        status: nextStatus,
+        check_request_submitted_on: nextStatus === "planned" ? null : today,
+        check_paid_on: nextStatus === "check_paid" ? today : null
+      })
+      .eq("id", contributionId);
+    if (updateError) return err(updateError.message);
+    revalidatePath("/contracts");
+    revalidatePath("/");
+    revalidatePath("/overview");
+    revalidatePath(`/projects/${projectId}`);
+    return ok("Union fund status updated.");
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not update union fund status."));
   }
 }
 

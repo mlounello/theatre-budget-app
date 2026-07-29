@@ -1,14 +1,18 @@
 import { redirect } from "next/navigation";
 import { GuestArtistManager } from "@/app/guest-artists/guest-artist-manager";
 import { getAccessContext } from "@/lib/access";
-import { getFoapalOptions, getGuestArtistOptions } from "@/lib/db";
+import { getFoapalOptions, getGuestArtistOptions, getUnionAgreementOptions } from "@/lib/db";
 
 export default async function GuestArtistsPage() {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
 
-  const [guestArtists, foapalOptions] = await Promise.all([getGuestArtistOptions(), getFoapalOptions()]);
+  const [guestArtists, foapalOptions, unionAgreementOptions] = await Promise.all([
+    getGuestArtistOptions(),
+    getFoapalOptions(),
+    getUnionAgreementOptions()
+  ]);
 
   return (
     <section>
@@ -18,7 +22,11 @@ export default async function GuestArtistsPage() {
         <p className="heroSubtitle">Reusable payee profiles for contract check requests.</p>
       </header>
 
-      <GuestArtistManager guestArtists={guestArtists} foapalOptions={foapalOptions} />
+      <GuestArtistManager
+        guestArtists={guestArtists}
+        foapalOptions={foapalOptions}
+        unionAgreementOptions={unionAgreementOptions}
+      />
     </section>
   );
 }

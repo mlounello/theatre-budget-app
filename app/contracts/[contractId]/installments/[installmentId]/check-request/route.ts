@@ -100,7 +100,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
   let { data, error } = await supabase
     .from("contract_installments")
     .select(
-      "id, contract_id, installment_number, installment_amount, due_date, ap_receive_by, mail_by, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_encrypted, contracts!inner(id, project_id, organization_id, banner_account_code_id, contractor_name, contractor_employee_id, contract_number, contract_role, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_encrypted, notes, projects(name, season), organizations(org_code, name), account_codes(code, name))"
+      "id, contract_id, installment_number, installment_amount, due_date, ap_receive_by, mail_by, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_encrypted, contracts!inner(id, project_id, organization_id, banner_account_code_id, contractor_name, contractor_employee_id, contract_number, contract_role, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_encrypted, notes, accounting_project:projects!contracts_project_id_fkey(name, season), organization:organizations!contracts_organization_id_fkey(org_code, name), account_code:account_codes!contracts_banner_account_code_id_fkey(code, name))"
     )
     .eq("id", installmentId)
     .eq("contract_id", contractId)
@@ -109,7 +109,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
     ({ data, error } = await supabase
       .from("contract_installments")
       .select(
-        "id, contract_id, installment_number, installment_amount, contracts!inner(id, project_id, organization_id, banner_account_code_id, contractor_name, contractor_employee_id, notes, projects(name, season), organizations(org_code, name), account_codes(code, name))"
+        "id, contract_id, installment_number, installment_amount, contracts!inner(id, project_id, organization_id, banner_account_code_id, contractor_name, contractor_employee_id, notes, accounting_project:projects!contracts_project_id_fkey(name, season), organization:organizations!contracts_organization_id_fkey(org_code, name), account_code:account_codes!contracts_banner_account_code_id_fkey(code, name))"
       )
       .eq("id", installmentId)
       .eq("contract_id", contractId)
@@ -137,9 +137,9 @@ export async function GET(_request: Request, { params }: RouteParams) {
         vendor_address3?: string | null;
         tax_id_encrypted?: string | null;
         notes?: string | null;
-        projects?: { name?: string | null; season?: string | null } | null;
-        organizations?: { org_code?: string | null; name?: string | null } | null;
-        account_codes?: { code?: string | null; name?: string | null } | null;
+        accounting_project?: { name?: string | null; season?: string | null } | null;
+        organization?: { org_code?: string | null; name?: string | null } | null;
+        account_code?: { code?: string | null; name?: string | null } | null;
       }
     | null;
   const projectId = contractJoin?.project_id ?? "";
@@ -160,12 +160,12 @@ export async function GET(_request: Request, { params }: RouteParams) {
   const contractorName = contractJoin?.contractor_name ?? "Contractor";
   const installmentNumber = Number(data.installment_number ?? 1);
   const amount = data.installment_amount as string | number | null;
-  const projectName = contractJoin?.projects?.name ?? "Project";
-  const season = contractJoin?.projects?.season ?? null;
-  let orgCode = contractJoin?.organizations?.org_code ?? "";
+  const projectName = contractJoin?.accounting_project?.name ?? "Project";
+  const season = contractJoin?.accounting_project?.season ?? null;
+  let orgCode = contractJoin?.organization?.org_code ?? "";
   let fundCode = "";
   let programCode = "";
-  const accountCode = contractJoin?.account_codes?.code ?? "";
+  const accountCode = contractJoin?.account_code?.code ?? "";
   const submissionDate = (data.mail_by as string | null) ?? (data.ap_receive_by as string | null) ?? null;
   const foapalId = ((data.check_request_foapal_id as string | null) ?? contractJoin?.check_request_foapal_id ?? "").trim();
   if (foapalId) {

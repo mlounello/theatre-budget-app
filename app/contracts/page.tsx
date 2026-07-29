@@ -3,6 +3,7 @@ import { CreateContractForm } from "@/app/contracts/create-contract-form";
 import { ContractRowActions } from "@/app/contracts/contract-row-actions";
 import { ContractInstallmentControl, ContractWorkflowControl } from "@/app/contracts/contract-inline-actions";
 import { InstallmentCheckRequestActions } from "@/app/contracts/installment-check-request-actions";
+import { UnionContributionStatusControl, UnionSignatureControl } from "@/app/contracts/union-controls";
 import { formatCurrency } from "@/lib/format";
 import { getContractsData } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
@@ -85,12 +86,14 @@ export default async function ContractsPage({
   const {
     contracts,
     installments,
+    unionContributions,
     fiscalYearOptions,
     organizationOptions,
     projectOptions,
     accountCodeOptions,
     foapalOptions,
     guestArtistOptions,
+    unionAgreementOptions,
     canManageContracts
   } =
     await getContractsData();
@@ -107,6 +110,12 @@ export default async function ContractsPage({
     const list = installmentByContract.get(installment.contractId) ?? [];
     list.push(installment);
     installmentByContract.set(installment.contractId, list);
+  }
+  const unionContributionsByContract = new Map<string, typeof unionContributions>();
+  for (const contribution of unionContributions) {
+    const list = unionContributionsByContract.get(contribution.contractId) ?? [];
+    list.push(contribution);
+    unionContributionsByContract.set(contribution.contractId, list);
   }
 
   return (
@@ -127,6 +136,7 @@ export default async function ContractsPage({
             accountCodeOptions={accountCodeOptions}
             foapalOptions={foapalOptions}
             guestArtistOptions={guestArtistOptions}
+            unionAgreementOptions={unionAgreementOptions}
           />
         </article>
       ) : null}
@@ -176,6 +186,7 @@ export default async function ContractsPage({
                   const rows = (installmentByContract.get(contract.id) ?? []).sort(
                     (a, b) => a.installmentNumber - b.installmentNumber
                   );
+                  const contractUnionContributions = unionContributionsByContract.get(contract.id) ?? [];
                   const paidTotal = rows
                     .filter((row) => row.status === "check_paid")
                     .reduce((sum, row) => sum + row.installmentAmount, 0);
@@ -228,6 +239,12 @@ export default async function ContractsPage({
                               {workflowLabel(contract.workflowStatus)}
                             </span>
                             <ContractWorkflowControl contract={contract} />
+                            {contract.isUnion ? (
+                              <div className="stackedDetails">
+                                <strong>Union: {contract.unionAgreementName ?? "Agreement"}</strong>
+                                <UnionSignatureControl contract={contract} />
+                              </div>
+                            ) : null}
                           </>
                         ) : (
                           <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>
@@ -275,6 +292,40 @@ export default async function ContractsPage({
                               </div>
                             );
                           })}
+                          {contractUnionContributions.length > 0 ? (
+                            <div className="panel nestedPanel">
+                              <strong>Union Fund Checks</strong>
+                              {contractUnionContributions.map((contribution) => (
+                                <div key={contribution.id} className="inlineEditForm" style={{ marginBottom: "0.4rem" }}>
+                                  <span>
+                                    <strong>{contribution.fundName}</strong> {formatCurrency(contribution.amount)}
+                                    <br />
+                                    <span className="muted">
+                                      {contribution.percentage}% ·{" "}
+                                      {contribution.contributionType === "artist_withholding"
+                                        ? "Artist withholding"
+                                        : "Employer-paid"}
+                                      {" · "}Due {shortDate(contribution.dueDate)} · Mail by {shortDate(contribution.mailBy)}
+                                    </span>
+                                  </span>
+                                  {canManageContracts ? (
+                                    <>
+                                      <span className={`statusChip ${installmentClass(contribution.status)}`}>
+                                        {installmentLabel(contribution.status)}
+                                      </span>
+                                      <UnionContributionStatusControl contribution={contribution} />
+                                      <a
+                                        className="tinyButton"
+                                        href={`/contracts/${contract.id}/union-contributions/${contribution.id}/check-request`}
+                                      >
+                                        Separate Check PDF
+                                      </a>
+                                    </>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                       </td>
                       <td>
@@ -288,6 +339,8 @@ export default async function ContractsPage({
                             accountCodeOptions={accountCodeOptions}
                             foapalOptions={foapalOptions}
                             guestArtistOptions={guestArtistOptions}
+                            unionAgreementOptions={unionAgreementOptions}
+                            unionContributions={contractUnionContributions}
                           />
                         ) : (
                           "-"
