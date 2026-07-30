@@ -19,6 +19,7 @@ import type {
 } from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
+type DrawerSection = "artist" | "union" | "payment" | "accounting" | "notes";
 
 export function ContractRowActions({
   contract,
@@ -87,6 +88,7 @@ export function ContractRowActions({
   const [editVendorAddress3, setEditVendorAddress3] = useState(contract.vendorAddress3 ?? "");
   const [editDueDates, setEditDueDates] = useState<Record<number, string>>({});
   const [editNotes, setEditNotes] = useState(contract.notes ?? "");
+  const [openDrawerSection, setOpenDrawerSection] = useState<DrawerSection | null>("artist");
   const lastEditIdRef = useRef<string | null>(null);
   const editAccountingProject = projectOptions.find((project) => project.id === editProjectId);
   const editContractFiscalYearId = editFiscalYearId || editAccountingProject?.fiscalYearId || "";
@@ -116,6 +118,7 @@ export function ContractRowActions({
     }
     if (lastEditIdRef.current === contract.id) return;
     lastEditIdRef.current = contract.id;
+    setOpenDrawerSection("artist");
     setEditProjectId(contract.projectId);
     setEditProductionProjectIds(contract.productionProjects.map((project) => project.id));
     setEditFiscalYearId(contract.fiscalYearId ?? "");
@@ -184,6 +187,10 @@ export function ContractRowActions({
     setEditUnionDueDates({});
   }
 
+  function handleDrawerSectionToggle(section: DrawerSection, isOpen: boolean) {
+    setOpenDrawerSection((current) => (isOpen ? section : current === section ? null : current));
+  }
+
   return (
     <>
       <div className="contractCardActions">
@@ -221,7 +228,11 @@ export function ContractRowActions({
             <form action={updateAction} className="contractDrawerBody" id={`edit-contract-${contract.id}`}>
               <input type="hidden" name="contractId" value={contract.id} />
 
-              <details className="drawerSection" open>
+              <details
+                className="drawerSection"
+                open={openDrawerSection === "artist"}
+                onToggle={(event) => handleDrawerSectionToggle("artist", event.currentTarget.open)}
+              >
                 <summary>
                   <span>Artist &amp; Contract</span>
                   <small>Identity, role, value, and sessions</small>
@@ -362,7 +373,11 @@ export function ContractRowActions({
               </details>
 
               {editIsUnion ? (
-                <details className="drawerSection" open>
+                <details
+                  className="drawerSection"
+                  open={openDrawerSection === "union"}
+                  onToggle={(event) => handleDrawerSectionToggle("union", event.currentTarget.open)}
+                >
                   <summary>
                     <span>Union Agreement</span>
                     <small>Agreement and separate fund-check dates</small>
@@ -423,7 +438,11 @@ export function ContractRowActions({
                 </details>
               ) : null}
 
-              <details className="drawerSection" open>
+              <details
+                className="drawerSection"
+                open={openDrawerSection === "payment"}
+                onToggle={(event) => handleDrawerSectionToggle("payment", event.currentTarget.open)}
+              >
                 <summary>
                   <span>Payment &amp; Check Request</span>
                   <small>Dates, delivery, address, and tax information</small>
@@ -529,7 +548,11 @@ export function ContractRowActions({
                 </div>
               </details>
 
-              <details className="drawerSection">
+              <details
+                className="drawerSection"
+                open={openDrawerSection === "accounting"}
+                onToggle={(event) => handleDrawerSectionToggle("accounting", event.currentTarget.open)}
+              >
                 <summary>
                   <span>Accounting &amp; Productions</span>
                   <small>Fiscal year, organization, projects, and Banner account</small>
@@ -626,7 +649,11 @@ export function ContractRowActions({
                 </div>
               </details>
 
-              <details className="drawerSection">
+              <details
+                className="drawerSection"
+                open={openDrawerSection === "notes"}
+                onToggle={(event) => handleDrawerSectionToggle("notes", event.currentTarget.open)}
+              >
                 <summary>
                   <span>Notes</span>
                   <small>Internal contract notes</small>

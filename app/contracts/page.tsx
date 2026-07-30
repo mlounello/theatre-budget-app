@@ -108,6 +108,30 @@ export default async function ContractsPage({
     list.push(contribution);
     unionContributionsByContract.set(contribution.contractId, list);
   }
+  const bulkCheckRequestItems = visibleContracts.flatMap((contract) => {
+    const contractInstallments = (installmentByContract.get(contract.id) ?? []).sort(
+      (a, b) => a.installmentNumber - b.installmentNumber
+    );
+    const contractContributions = unionContributionsByContract.get(contract.id) ?? [];
+    return [
+      ...contractInstallments.map((installment) => ({
+        value: `installment:${contract.id}:${installment.id}`,
+        contractorName: contract.contractorName,
+        role: contract.contractRole || "Role not set",
+        title: `Installment ${installment.installmentNumber} · ${formatCurrency(installment.installmentAmount)}`,
+        details: `Due ${shortDate(installment.dueDate)} · Mail by ${shortDate(installment.mailBy)}`,
+        kind: "artist" as const
+      })),
+      ...contractContributions.map((contribution) => ({
+        value: `union:${contract.id}:${contribution.id}`,
+        contractorName: contract.contractorName,
+        role: contract.contractRole || "Role not set",
+        title: `${contribution.fundName} · ${formatCurrency(contribution.amount)}`,
+        details: `${contribution.percentage}% · Due ${shortDate(contribution.dueDate)}`,
+        kind: "union" as const
+      }))
+    ];
+  });
 
   return (
     <section>
@@ -159,7 +183,9 @@ export default async function ContractsPage({
             <p className="helperText">{visibleContracts.length} contracts in the selected fiscal year</p>
           </div>
         </div>
-        {canManageContracts && visibleContracts.length > 0 ? <BulkCheckRequestExport /> : null}
+        {canManageContracts && bulkCheckRequestItems.length > 0 ? (
+          <BulkCheckRequestExport items={bulkCheckRequestItems} />
+        ) : null}
         {visibleContracts.length === 0 ? (
           <p className="emptyState">No contracts yet.</p>
         ) : (
@@ -217,9 +243,18 @@ export default async function ContractsPage({
                       </small>
                     </div>
                     <div className="contractStatusSummary">
-                      <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>
-                        {workflowLabel(contract.workflowStatus)}
-                      </span>
+                      {canManageContracts ? (
+                        <>
+                          <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>
+                            {workflowLabel(contract.workflowStatus)}
+                          </span>
+                          <ContractWorkflowControl contract={contract} compact />
+                        </>
+                      ) : (
+                        <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>
+                          {workflowLabel(contract.workflowStatus)}
+                        </span>
+                      )}
                       {contract.isUnion ? <span className="contractUnionBadge">Union</span> : null}
                     </div>
                     {canManageContracts ? (
@@ -248,13 +283,9 @@ export default async function ContractsPage({
                     <div className="contractDetailGrid">
                       <section className="contractWorkflowPanel">
                         <h4>Contract workflow</h4>
-                        {canManageContracts ? (
-                          <ContractWorkflowControl contract={contract} />
-                        ) : (
-                          <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>
-                            {workflowLabel(contract.workflowStatus)}
-                          </span>
-                        )}
+                        <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>
+                          {workflowLabel(contract.workflowStatus)}
+                        </span>
                         {contract.isUnion ? (
                           <div className="contractUnionWorkflow">
                             <strong>{contract.unionAgreementName ?? "Union Agreement"}</strong>
@@ -268,17 +299,6 @@ export default async function ContractsPage({
                         <div className="contractCheckList">
                           {rows.map((row) => (
                             <div className="contractCheckRow" key={row.id}>
-                              {canManageContracts ? (
-                                <label className="bulkCheckSelect" title="Include in combined PDF">
-                                  <input
-                                    type="checkbox"
-                                    name="items"
-                                    form="bulk-check-request-export"
-                                    value={`installment:${contract.id}:${row.id}`}
-                                    aria-label={`Select ${contract.contractorName} installment ${row.installmentNumber} check request`}
-                                  />
-                                </label>
-                              ) : null}
                               <div className="contractCheckSummary">
                                 <strong>
                                   Installment {row.installmentNumber} · {formatCurrency(row.installmentAmount)}
@@ -312,17 +332,6 @@ export default async function ContractsPage({
                             <div className="contractCheckList">
                               {contractUnionContributions.map((contribution) => (
                                 <div className="contractCheckRow unionCheckRow" key={contribution.id}>
-                                  {canManageContracts ? (
-                                    <label className="bulkCheckSelect" title="Include in combined PDF">
-                                      <input
-                                        type="checkbox"
-                                        name="items"
-                                        form="bulk-check-request-export"
-                                        value={`union:${contract.id}:${contribution.id}`}
-                                        aria-label={`Select ${contribution.fundName} separate check request`}
-                                      />
-                                    </label>
-                                  ) : null}
                                   <div className="contractCheckSummary">
                                     <strong>
                                       {contribution.fundName} · {formatCurrency(contribution.amount)}

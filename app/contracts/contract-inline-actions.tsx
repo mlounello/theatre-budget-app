@@ -10,19 +10,30 @@ import type { ContractInstallmentRow, ContractRow } from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
-export function ContractWorkflowControl({ contract }: { contract: ContractRow }) {
+export function ContractWorkflowControl({
+  contract,
+  compact = false
+}: {
+  contract: ContractRow;
+  compact?: boolean;
+}) {
   const [state, formAction] = useActionState(updateContractWorkflowAction, initialState);
 
   return (
-    <>
+    <div className={compact ? "contractQuickStatusControl" : undefined}>
+      {compact ? <span className="contractQuickStatusLabel">Change status</span> : null}
       {state.message ? (
-        <p className={state.ok ? "successNote" : "errorNote"} key={state.timestamp}>
+        <p className={state.ok ? "successNote" : "errorNote"} key={state.timestamp} role="status">
           {state.message}
         </p>
       ) : null}
-      <form action={formAction} className="inlineEditForm">
+      <form action={formAction} className={compact ? "contractQuickStatusForm" : "inlineEditForm"}>
         <input type="hidden" name="contractId" value={contract.id} />
-        <select name="workflowStatus" defaultValue={contract.workflowStatus}>
+        <select
+          name="workflowStatus"
+          defaultValue={contract.workflowStatus}
+          aria-label={`Contract status for ${contract.contractorName}`}
+        >
           <option value="w9_requested">W9 Requested</option>
           <option value="contract_sent">Contract Sent</option>
           <option value="contract_signed_returned">Contract Signed + Returned</option>
@@ -32,7 +43,7 @@ export function ContractWorkflowControl({ contract }: { contract: ContractRow })
           Save
         </button>
       </form>
-    </>
+    </div>
   );
 }
 
