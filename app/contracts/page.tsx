@@ -1,5 +1,6 @@
 import { CreateContractBatchForm } from "@/app/contracts/create-contract-batch-form";
 import { CreateContractForm } from "@/app/contracts/create-contract-form";
+import { BulkCheckRequestExport } from "@/app/contracts/bulk-check-request-export";
 import { ContractRowActions } from "@/app/contracts/contract-row-actions";
 import { ContractCalendarSubscription } from "@/app/contracts/contract-calendar-subscription";
 import { ContractInstallmentControl, ContractWorkflowControl } from "@/app/contracts/contract-inline-actions";
@@ -151,199 +152,216 @@ export default async function ContractsPage({
         </article>
       ) : null}
 
-      <article className="panel tablePanel">
-        <h2>Contracts</h2>
-        <div className="tableWrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Contractor</th>
-                <th>FY</th>
-                <th>Org</th>
-                <th>Accounting / Production</th>
-                <th>Banner Code</th>
-                <th>Contract Value</th>
-                <th>Installments</th>
-                <th>Workflow</th>
-                <th>Installment Payments</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleContracts.length === 0 ? (
-                <tr>
-                  <td colSpan={10}>No contracts yet.</td>
-                </tr>
-              ) : (
-                visibleContracts.map((contract) => {
-                  const sessionLabels = contractSessionLabels(contract.contractSessions);
-                  const associatedProductions = contract.productionProjects.filter(
-                    (production) => production.id !== contract.projectId
-                  );
-                  const rows = (installmentByContract.get(contract.id) ?? []).sort(
-                    (a, b) => a.installmentNumber - b.installmentNumber
-                  );
-                  const contractUnionContributions = unionContributionsByContract.get(contract.id) ?? [];
-                  const paidTotal = rows
-                    .filter((row) => row.status === "check_paid")
-                    .reduce((sum, row) => sum + row.installmentAmount, 0);
-                  return (
-                    <tr key={contract.id}>
-                      <td>
-                        <strong>{contract.contractorName}</strong>
-                        <br />
-                        <span>Vendor #: {contract.contractorEmployeeId ?? "-"}</span>
-                        {contract.contractRole || sessionLabels.length > 0 ? (
-                          <>
-                            <br />
-                            <span className="helperText">
-                              {contract.contractRole ? `Role: ${contract.contractRole}` : ""}
-                              {contract.contractRole && sessionLabels.length > 0 ? " · " : ""}
-                              {sessionLabels.length > 0
-                                ? `${sessionLabels.length === 1 ? "Session" : "Sessions"}: ${sessionLabels.join(", ")}`
-                                : ""}
-                            </span>
-                          </>
-                        ) : null}
-                      </td>
-                      <td>{contract.fiscalYearName ?? "-"}</td>
-                      <td>{contract.organizationLabel ?? "-"}</td>
-                      <td>
+      <article className="panel contractsPanel">
+        <div className="contractsPanelHeader">
+          <div>
+            <h2>Contracts</h2>
+            <p className="helperText">{visibleContracts.length} contracts in the selected fiscal year</p>
+          </div>
+        </div>
+        {canManageContracts && visibleContracts.length > 0 ? <BulkCheckRequestExport /> : null}
+        {visibleContracts.length === 0 ? (
+          <p className="emptyState">No contracts yet.</p>
+        ) : (
+          <div className="contractList">
+            {visibleContracts.map((contract) => {
+              const sessionLabels = contractSessionLabels(contract.contractSessions);
+              const associatedProductions = contract.productionProjects.filter(
+                (production) => production.id !== contract.projectId
+              );
+              const rows = (installmentByContract.get(contract.id) ?? []).sort(
+                (a, b) => a.installmentNumber - b.installmentNumber
+              );
+              const contractUnionContributions = unionContributionsByContract.get(contract.id) ?? [];
+              const paidTotal = rows
+                .filter((row) => row.status === "check_paid")
+                .reduce((sum, row) => sum + row.installmentAmount, 0);
+              const nextPayment = rows.find((row) => row.status !== "check_paid") ?? rows[rows.length - 1];
+              const productionNames = associatedProductions.map(
+                (production) => `${production.name}${production.season ? ` (${production.season})` : ""}`
+              );
+
+              return (
+                <article className="contractCard" key={contract.id}>
+                  <header className="contractCardHeader">
+                    <div className="contractIdentity">
+                      <h3>{contract.contractorName}</h3>
+                      <p>
+                        {contract.contractRole || "Role not set"}
+                        {sessionLabels.length > 0 ? ` · ${sessionLabels.join(", ")}` : ""}
+                      </p>
+                      <small>Vendor #{contract.contractorEmployeeId ?? "Not assigned"}</small>
+                    </div>
+                    <div className="contractMetaItem">
+                      <span>Production</span>
+                      <strong>
                         {contract.projectName}
                         {contract.season ? ` (${contract.season})` : ""}
-                        {associatedProductions.length > 0 ? (
-                          <>
-                            <br />
-                            <span className="helperText">
-                              For{" "}
-                              {associatedProductions
-                                .map(
-                                  (production) =>
-                                    `${production.name}${production.season ? ` (${production.season})` : ""}`
-                                )
-                                .join(", ")}
-                            </span>
-                          </>
-                        ) : null}
-                      </td>
-                      <td>{contract.bannerAccountCode ?? "-"}</td>
-                      <td>{formatCurrency(contract.contractValue)}</td>
-                      <td>{contract.installmentCount}</td>
-                      <td>
+                      </strong>
+                      {productionNames.length > 0 ? <small>For {productionNames.join(", ")}</small> : null}
+                    </div>
+                    <div className="contractMetaItem">
+                      <span>Contract</span>
+                      <strong>{formatCurrency(contract.contractValue)}</strong>
+                      <small>
+                        {contract.fiscalYearName ?? "No FY"} · {contract.bannerAccountCode ?? "No Banner code"}
+                      </small>
+                    </div>
+                    <div className="contractMetaItem">
+                      <span>Next check</span>
+                      <strong>{nextPayment ? formatCurrency(nextPayment.installmentAmount) : "No installments"}</strong>
+                      <small>
+                        {nextPayment
+                          ? `Due ${shortDate(nextPayment.dueDate)} · Mail ${shortDate(nextPayment.mailBy)}`
+                          : "No date"}
+                      </small>
+                    </div>
+                    <div className="contractStatusSummary">
+                      <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>
+                        {workflowLabel(contract.workflowStatus)}
+                      </span>
+                      {contract.isUnion ? <span className="contractUnionBadge">Union</span> : null}
+                    </div>
+                    {canManageContracts ? (
+                      <ContractRowActions
+                        contract={contract}
+                        installments={rows}
+                        fiscalYearOptions={fiscalYearOptions}
+                        organizationOptions={organizationOptions}
+                        projectOptions={projectOptions}
+                        accountCodeOptions={accountCodeOptions}
+                        foapalOptions={foapalOptions}
+                        guestArtistOptions={guestArtistOptions}
+                        unionAgreementOptions={unionAgreementOptions}
+                        unionContributions={contractUnionContributions}
+                      />
+                    ) : null}
+                  </header>
+
+                  <details className="contractCardDetails">
+                    <summary>
+                      <span>Workflow &amp; check requests</span>
+                      <small>
+                        {rows.length + contractUnionContributions.length} checks · {formatCurrency(paidTotal)} paid
+                      </small>
+                    </summary>
+                    <div className="contractDetailGrid">
+                      <section className="contractWorkflowPanel">
+                        <h4>Contract workflow</h4>
                         {canManageContracts ? (
-                          <>
-                            <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>
-                              {workflowLabel(contract.workflowStatus)}
-                            </span>
-                            <ContractWorkflowControl contract={contract} />
-                            {contract.isUnion ? (
-                              <div className="stackedDetails">
-                                <strong>Union: {contract.unionAgreementName ?? "Agreement"}</strong>
-                                <UnionSignatureControl contract={contract} />
-                              </div>
-                            ) : null}
-                          </>
+                          <ContractWorkflowControl contract={contract} />
                         ) : (
                           <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>
                             {workflowLabel(contract.workflowStatus)}
                           </span>
                         )}
-                      </td>
-                      <td>
-                        <div className="stackedDetails">
-                          <p>
-                            Paid: <strong>{formatCurrency(paidTotal)}</strong>
-                          </p>
-                          {rows.map((row) => {
-                            return (
-                              <div key={row.id} className="inlineEditForm" style={{ marginBottom: "0.4rem" }}>
-                                <span>
-                                  #{row.installmentNumber} {formatCurrency(row.installmentAmount)}
-                                  <br />
-                                  <span className="muted">
-                                    Due {shortDate(row.dueDate)} | Mail by {shortDate(row.mailBy)}
-                                  </span>
-                                </span>
-                                {canManageContracts ? (
-                                  <>
-                                    <span className={`statusChip ${installmentClass(row.status)}`}>
-                                      {installmentLabel(row.status)}
-                                    </span>
-                                    <ContractInstallmentControl installment={row} />
-                                    <InstallmentCheckRequestActions installment={row} foapalOptions={foapalOptions} />
-                                    <a className="tinyButton" href={`/contracts/${contract.id}/installments/${row.id}/check-request`}>
-                                      Check Request PDF
-                                    </a>
-                                  </>
-                                ) : (
-                                  <span className={`statusChip ${installmentClass(row.status)}`}>
-                                    {installmentLabel(row.status)}
-                                  </span>
-                                )}
+                        {contract.isUnion ? (
+                          <div className="contractUnionWorkflow">
+                            <strong>{contract.unionAgreementName ?? "Union Agreement"}</strong>
+                            <UnionSignatureControl contract={contract} />
+                          </div>
+                        ) : null}
+                      </section>
+
+                      <section className="contractChecksPanel">
+                        <h4>Artist installments</h4>
+                        <div className="contractCheckList">
+                          {rows.map((row) => (
+                            <div className="contractCheckRow" key={row.id}>
+                              {canManageContracts ? (
+                                <label className="bulkCheckSelect" title="Include in combined PDF">
+                                  <input
+                                    type="checkbox"
+                                    name="items"
+                                    form="bulk-check-request-export"
+                                    value={`installment:${contract.id}:${row.id}`}
+                                    aria-label={`Select ${contract.contractorName} installment ${row.installmentNumber} check request`}
+                                  />
+                                </label>
+                              ) : null}
+                              <div className="contractCheckSummary">
+                                <strong>
+                                  Installment {row.installmentNumber} · {formatCurrency(row.installmentAmount)}
+                                </strong>
+                                <small>
+                                  Due {shortDate(row.dueDate)} · Mail by {shortDate(row.mailBy)}
+                                </small>
                               </div>
-                            );
-                          })}
-                          {contractUnionContributions.length > 0 ? (
-                            <div className="panel nestedPanel">
-                              <strong>Union Fund Checks</strong>
+                              <span className={`statusChip ${installmentClass(row.status)}`}>
+                                {installmentLabel(row.status)}
+                              </span>
+                              {canManageContracts ? (
+                                <div className="contractCheckActions">
+                                  <ContractInstallmentControl installment={row} />
+                                  <InstallmentCheckRequestActions installment={row} foapalOptions={foapalOptions} />
+                                  <a
+                                    className="tinyButton"
+                                    href={`/contracts/${contract.id}/installments/${row.id}/check-request`}
+                                  >
+                                    PDF
+                                  </a>
+                                </div>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+
+                        {contractUnionContributions.length > 0 ? (
+                          <>
+                            <h4 className="unionChecksHeading">Union fund checks</h4>
+                            <div className="contractCheckList">
                               {contractUnionContributions.map((contribution) => (
-                                <div key={contribution.id} className="inlineEditForm" style={{ marginBottom: "0.4rem" }}>
-                                  <span>
-                                    <strong>{contribution.fundName}</strong> {formatCurrency(contribution.amount)}
-                                    <br />
-                                    <span className="muted">
+                                <div className="contractCheckRow unionCheckRow" key={contribution.id}>
+                                  {canManageContracts ? (
+                                    <label className="bulkCheckSelect" title="Include in combined PDF">
+                                      <input
+                                        type="checkbox"
+                                        name="items"
+                                        form="bulk-check-request-export"
+                                        value={`union:${contract.id}:${contribution.id}`}
+                                        aria-label={`Select ${contribution.fundName} separate check request`}
+                                      />
+                                    </label>
+                                  ) : null}
+                                  <div className="contractCheckSummary">
+                                    <strong>
+                                      {contribution.fundName} · {formatCurrency(contribution.amount)}
+                                    </strong>
+                                    <small>
                                       {contribution.percentage}% ·{" "}
                                       {contribution.contributionType === "artist_withholding"
                                         ? "Artist withholding"
-                                        : "Employer-paid"}
-                                      {" · "}Due {shortDate(contribution.dueDate)} · Mail by {shortDate(contribution.mailBy)}
-                                    </span>
+                                        : "Employer-paid"}{" "}
+                                      · Due {shortDate(contribution.dueDate)}
+                                    </small>
+                                  </div>
+                                  <span className={`statusChip ${installmentClass(contribution.status)}`}>
+                                    {installmentLabel(contribution.status)}
                                   </span>
                                   {canManageContracts ? (
-                                    <>
-                                      <span className={`statusChip ${installmentClass(contribution.status)}`}>
-                                        {installmentLabel(contribution.status)}
-                                      </span>
+                                    <div className="contractCheckActions">
                                       <UnionContributionStatusControl contribution={contribution} />
                                       <a
                                         className="tinyButton"
                                         href={`/contracts/${contract.id}/union-contributions/${contribution.id}/check-request`}
                                       >
-                                        Separate Check PDF
+                                        Separate PDF
                                       </a>
-                                    </>
+                                    </div>
                                   ) : null}
                                 </div>
                               ))}
                             </div>
-                          ) : null}
-                        </div>
-                      </td>
-                      <td>
-                        {canManageContracts ? (
-                          <ContractRowActions
-                            contract={contract}
-                            installments={rows}
-                            fiscalYearOptions={fiscalYearOptions}
-                            organizationOptions={organizationOptions}
-                            projectOptions={projectOptions}
-                            accountCodeOptions={accountCodeOptions}
-                            foapalOptions={foapalOptions}
-                            guestArtistOptions={guestArtistOptions}
-                            unionAgreementOptions={unionAgreementOptions}
-                            unionContributions={contractUnionContributions}
-                          />
-                        ) : (
-                          "-"
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                          </>
+                        ) : null}
+                      </section>
+                    </div>
+                  </details>
+                </article>
+              );
+            })}
+          </div>
+        )}
       </article>
     </section>
   );

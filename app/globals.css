@@ -750,7 +750,7 @@ th {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.7rem;
-  align-items: end;
+  align-items: flex-end;
 }
 
 .requestForm label {
@@ -1119,6 +1119,500 @@ th {
   text-align: center;
 }
 
+.primaryButton {
+  background: var(--siena-dark-green);
+  color: #ffffff;
+}
+
+.primaryButton:hover {
+  background: #073f2f;
+  color: #ffffff;
+}
+
+.primaryButton:disabled,
+.tinyButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.contractsPanel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.contractsPanelHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-end;
+  padding: 1rem 1rem 0.8rem;
+}
+
+.contractsPanelHeader h2,
+.contractsPanelHeader p {
+  margin: 0;
+}
+
+.contractBulkBar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.7rem 1rem;
+  border-block: 1px solid #dce5df;
+  background: #f4f8f5;
+}
+
+.contractBulkBar > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 0.65rem;
+}
+
+.contractBulkBar span {
+  color: var(--text-muted);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.82rem;
+}
+
+.contractList {
+  display: grid;
+}
+
+.contractCard {
+  border-bottom: 1px solid #dce5df;
+  background: #ffffff;
+}
+
+.contractCard:last-child {
+  border-bottom: 0;
+}
+
+.contractCardHeader {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.45fr) minmax(165px, 1.2fr) minmax(120px, 0.8fr) minmax(150px, 1fr) auto auto;
+  gap: 0.9rem;
+  align-items: center;
+  padding: 0.9rem 1rem;
+}
+
+.contractIdentity h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: var(--siena-dark-green);
+}
+
+.contractIdentity p,
+.contractIdentity small,
+.contractMetaItem span,
+.contractMetaItem small {
+  display: block;
+  margin: 0.15rem 0 0;
+  color: var(--text-muted);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.76rem;
+  line-height: 1.3;
+}
+
+.contractIdentity p {
+  color: var(--text-main);
+  font-size: 0.82rem;
+}
+
+.contractMetaItem > span {
+  margin: 0 0 0.2rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.68rem;
+}
+
+.contractMetaItem strong {
+  display: block;
+  font-size: 0.86rem;
+  line-height: 1.3;
+}
+
+.contractStatusSummary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.contractUnionBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.24rem 0.5rem;
+  border-radius: 999px;
+  background: #fff3c8;
+  color: #6c4a00;
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.contractCardActions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.contractCardDetails {
+  border-top: 1px solid #edf1ee;
+  background: #fbfcfb;
+}
+
+.contractCardDetails > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+  color: var(--siena-dark-green);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.82rem;
+  font-weight: 800;
+  list-style-position: inside;
+}
+
+.contractCardDetails > summary small {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.contractDetailGrid {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.7fr) minmax(0, 2.3fr);
+  gap: 1rem;
+  padding: 0.25rem 1rem 1rem;
+}
+
+.contractDetailGrid h4 {
+  margin: 0 0 0.55rem;
+  color: var(--siena-dark-green);
+  font-size: 0.85rem;
+}
+
+.contractWorkflowPanel {
+  padding: 0.8rem;
+  border: 1px solid #dce5df;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.contractWorkflowPanel .inlineEditForm,
+.contractCheckActions .inlineEditForm {
+  margin-top: 0.4rem;
+}
+
+.contractUnionWorkflow {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.9rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid #e4ebe6;
+}
+
+.contractCheckList {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.contractCheckRow {
+  display: grid;
+  grid-template-columns: auto minmax(190px, 1fr) auto minmax(250px, auto);
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.7rem;
+  border: 1px solid #dce5df;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.unionCheckRow {
+  border-left: 4px solid var(--siena-gold);
+}
+
+.bulkCheckSelect {
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+}
+
+.bulkCheckSelect input {
+  width: 1rem;
+  height: 1rem;
+}
+
+.contractCheckSummary strong,
+.contractCheckSummary small {
+  display: block;
+}
+
+.contractCheckSummary strong {
+  font-size: 0.82rem;
+}
+
+.contractCheckSummary small {
+  margin-top: 0.15rem;
+  color: var(--text-muted);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.73rem;
+}
+
+.contractCheckActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.contractCheckActions .inlinePanel {
+  position: relative;
+}
+
+.contractCheckActions .checkRequestInlineForm {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 4;
+  width: min(540px, 80vw);
+  max-height: 60vh;
+  overflow: auto;
+  padding: 0.75rem;
+  border: 1px solid #cbd8cf;
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 12px 32px rgba(9, 42, 31, 0.18);
+}
+
+.unionChecksHeading {
+  margin-top: 1rem !important;
+}
+
+.contractDrawerOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  justify-content: flex-end;
+  background: rgba(10, 20, 14, 0.45);
+}
+
+.contractDrawer {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(720px, 100vw);
+  height: 100vh;
+  background: var(--surface);
+  border-left: 1px solid var(--surface-border);
+  box-shadow: -18px 0 45px rgba(8, 36, 27, 0.22);
+  animation: contractDrawerIn 160ms ease-out;
+}
+
+@keyframes contractDrawerIn {
+  from {
+    transform: translateX(24px);
+    opacity: 0.85;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.contractDrawerHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 1rem 1.1rem 0.85rem;
+  border-bottom: 1px solid #dce5df;
+  background: #ffffff;
+}
+
+.contractDrawerHeader h2,
+.contractDrawerHeader p {
+  margin: 0;
+}
+
+.drawerCloseButton {
+  display: grid;
+  place-items: center;
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 0;
+  border-radius: 999px;
+  background: #edf3ef;
+  color: var(--siena-dark-green);
+  cursor: pointer;
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.contractDrawerBody {
+  display: grid;
+  align-content: start;
+  gap: 0.7rem;
+  padding: 0.8rem 1rem 1.2rem;
+  overflow-y: auto;
+}
+
+.drawerSection {
+  border: 1px solid #d8e2db;
+  border-radius: 11px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.drawerSection > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 0.75rem 0.85rem;
+  cursor: pointer;
+  background: #f5f8f6;
+  color: var(--siena-dark-green);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-weight: 800;
+}
+
+.drawerSection > summary small {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-align: right;
+}
+
+.drawerFieldGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 0.85rem;
+}
+
+.drawerFieldGrid > label,
+.drawerChoiceGroup {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.8rem;
+}
+
+.drawerFieldGrid input,
+.drawerFieldGrid select,
+.drawerFieldGrid textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid #cbd6ce;
+  border-radius: 8px;
+  padding: 0.5rem 0.55rem;
+  background: #ffffff;
+  color: var(--text-main);
+  font: inherit;
+}
+
+.drawerFieldGrid textarea {
+  resize: vertical;
+}
+
+.drawerFieldWide {
+  grid-column: 1 / -1;
+}
+
+.drawerChoiceGroup {
+  margin: 0;
+  padding: 0.7rem;
+  border: 1px solid #e0e7e2;
+  border-radius: 9px;
+}
+
+.drawerChoiceGroup legend {
+  padding: 0 0.3rem;
+  color: var(--text-main);
+}
+
+.drawerChoiceGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.drawerProductionChoices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.drawerFieldGrid .checkboxLabel,
+.drawerChoiceGrid .checkboxLabel,
+.drawerProductionChoices .checkboxLabel {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.drawerFieldGrid .checkboxLabel input,
+.drawerChoiceGrid .checkboxLabel input,
+.drawerProductionChoices .checkboxLabel input {
+  width: auto;
+}
+
+.unionToggle {
+  padding: 0.65rem 0.75rem;
+  border-radius: 9px;
+  background: #fff8df;
+  font-weight: 800;
+}
+
+.drawerContributionList {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.drawerContribution {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.75rem !important;
+  align-items: center;
+  padding: 0.65rem;
+  border: 1px solid #dfe7e1;
+  border-radius: 9px;
+}
+
+.drawerContribution small {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--text-muted);
+}
+
+.drawerContribution input {
+  width: auto;
+}
+
+.contractDrawerFooter {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid #dce5df;
+  background: #ffffff;
+}
+
+.contractDrawerFooter > div {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .modalOverlay {
   position: fixed;
   inset: 0;
@@ -1457,6 +1951,58 @@ th {
 }
 
 @media (max-width: 720px) {
+  .contractBulkBar,
+  .contractDrawerFooter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .contractBulkBar .bulkActions,
+  .contractDrawerFooter > div {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .contractCardHeader {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .contractIdentity {
+    grid-column: 1 / -1;
+  }
+
+  .contractStatusSummary,
+  .contractCardActions {
+    justify-content: flex-start;
+  }
+
+  .contractDetailGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .contractCheckRow {
+    grid-template-columns: auto 1fr;
+  }
+
+  .contractCheckRow .statusChip,
+  .contractCheckActions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+
+  .drawerFieldGrid,
+  .drawerProductionChoices {
+    grid-template-columns: 1fr;
+  }
+
+  .drawerChoiceGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .drawerFieldWide {
+    grid-column: auto;
+  }
+
   .topNavInner {
     flex-direction: column;
     align-items: flex-start;

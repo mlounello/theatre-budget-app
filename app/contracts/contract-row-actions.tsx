@@ -186,33 +186,28 @@ export function ContractRowActions({
 
   return (
     <>
-      <div className="actionCell">
+      <div className="contractCardActions">
         <button type="button" className="tinyButton" onClick={openEdit}>
           Edit
         </button>
-        <form
-          action={deleteAction}
-          onSubmit={(event) => {
-            if (!window.confirm("Delete this contract and all linked installment rows? This cannot be undone.")) {
-              event.preventDefault();
-            }
-          }}
-        >
-          <input type="hidden" name="contractId" value={contract.id} />
-          <button type="submit" className="tinyButton dangerButton">
-            Trash
-          </button>
-        </form>
       </div>
 
       {open ? (
-        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit contract">
-          <div className="modalPanel">
-            <h2>Edit Contract</h2>
-            <p className="heroSubtitle">
-              {contract.projectName}
-              {contract.season ? ` (${contract.season})` : ""}
-            </p>
+        <div className="contractDrawerOverlay" role="dialog" aria-modal="true" aria-label="Edit contract">
+          <div className="contractDrawer">
+            <header className="contractDrawerHeader">
+              <div>
+                <p className="eyebrow">Edit Contract</p>
+                <h2>{contract.contractorName}</h2>
+                <p className="helperText">
+                  {contract.projectName}
+                  {contract.season ? ` (${contract.season})` : ""}
+                </p>
+              </div>
+              <button type="button" className="drawerCloseButton" onClick={closeEdit} aria-label="Close edit drawer">
+                ×
+              </button>
+            </header>
             {updateState.message ? (
               <p className={updateState.ok ? "successNote" : "errorNote"} key={updateState.timestamp}>
                 {updateState.message}
@@ -223,360 +218,455 @@ export function ContractRowActions({
                 {deleteState.message}
               </p>
             ) : null}
-            <form action={updateAction} className="requestForm">
+            <form action={updateAction} className="contractDrawerBody" id={`edit-contract-${contract.id}`}>
               <input type="hidden" name="contractId" value={contract.id} />
-              <label>
-                Guest Artist Profile
-                <select name="guestArtistId" value={editGuestArtistId} onChange={(event) => applyGuestArtist(event.target.value)}>
-                  <option value="">Manual entry</option>
-                  {guestArtistOptions
-                    .filter((artist) => artist.active || artist.id === editGuestArtistId)
-                    .map((artist) => (
-                      <option key={artist.id} value={artist.id}>
-                        {artist.displayName}
-                        {artist.taxIdLast4 ? ` (Tax ID ending ${artist.taxIdLast4})` : ""}
-                      </option>
-                    ))}
-                </select>
-              </label>
-              <label>
-                Name
-                <input
-                  name="contractorName"
-                  value={editContractorName}
-                  onChange={(event) => setEditContractorName(event.target.value)}
-                  required
-                />
-              </label>
-              <label>
-                Employee ID
-                <input
-                  name="contractorEmployeeId"
-                  value={editContractorEmployeeId}
-                  onChange={(event) => setEditContractorEmployeeId(event.target.value)}
-                />
-              </label>
-              <label>
-                Email
-                <input
-                  name="contractorEmail"
-                  type="email"
-                  value={editContractorEmail}
-                  onChange={(event) => setEditContractorEmail(event.target.value)}
-                />
-              </label>
-              <label>
-                Phone
-                <input
-                  name="contractorPhone"
-                  value={editContractorPhone}
-                  onChange={(event) => setEditContractorPhone(event.target.value)}
-                />
-              </label>
-              <label>
-                Contract Value
-                <input
-                  name="contractValue"
-                  type="number"
-                  step="0.01"
-                  value={editContractValue}
-                  onChange={(event) => setEditContractValue(event.target.value)}
-                  required
-                />
-              </label>
-              <label>
-                Payment Installments
-                <select
-                  name="installmentCount"
-                  value={editInstallmentCount}
-                  onChange={(event) => setEditInstallmentCount(event.target.value)}
-                >
-                  <option value="1">1</option>
-                  <option value="2">2</option>
-                  <option value="3">3</option>
-                  <option value="4">4</option>
-                </select>
-              </label>
-              <label>
-                Contract Number
-                <input
-                  name="contractNumber"
-                  value={editContractNumber}
-                  onChange={(event) => setEditContractNumber(event.target.value)}
-                />
-              </label>
-              <label>
-                Role
-                <input name="contractRole" value={editContractRole} onChange={(event) => setEditContractRole(event.target.value)} />
-              </label>
-              <input type="hidden" name="isUnion" value="false" />
-              <label className="checkboxLabel">
-                <input
-                  name="isUnion"
-                  value="true"
-                  type="checkbox"
-                  checked={editIsUnion}
-                  onChange={(event) => setEditIsUnion(event.target.checked)}
-                />
-                Is Union?
-              </label>
-              {editIsUnion ? (
-                <div className="stackedDetails">
-                  <label>
-                    Union Agreement
+
+              <details className="drawerSection" open>
+                <summary>
+                  <span>Artist &amp; Contract</span>
+                  <small>Identity, role, value, and sessions</small>
+                </summary>
+                <div className="drawerFieldGrid">
+                  <label className="drawerFieldWide">
+                    Guest Artist Profile
                     <select
-                      name="unionAgreementId"
-                      value={editUnionAgreementId}
-                      onChange={(event) => {
-                        setEditUnionAgreementId(event.target.value);
-                        setEditUnionDueDates({});
-                      }}
-                      required
+                      name="guestArtistId"
+                      value={editGuestArtistId}
+                      onChange={(event) => applyGuestArtist(event.target.value)}
                     >
-                      <option value="">Select agreement</option>
-                      {unionAgreementOptions
-                        .filter((agreement) => agreement.active || agreement.id === contract.unionAgreementId)
-                        .map((agreement) => (
-                          <option key={agreement.id} value={agreement.id}>
-                            {agreement.name} — {agreement.versionLabel}
+                      <option value="">Manual entry</option>
+                      {guestArtistOptions
+                        .filter((artist) => artist.active || artist.id === editGuestArtistId)
+                        .map((artist) => (
+                          <option key={artist.id} value={artist.id}>
+                            {artist.displayName}
+                            {artist.taxIdLast4 ? ` (Tax ID ending ${artist.taxIdLast4})` : ""}
                           </option>
                         ))}
                     </select>
                   </label>
-                  {editUnionAgreement ? (
-                    <div className="panel nestedPanel">
-                      <h3>Union Contribution Preview</h3>
-                      {editUnionAgreement.funds.map((fund) => {
-                        const amount = Math.round(numericEditContractValue * fund.percentage) / 100;
-                        return (
-                          <label key={fund.id}>
-                            {fund.fundName} — {fund.percentage}% —{" "}
-                            {fund.contributionType === "artist_withholding" ? "Artist withholding" : "Employer-paid"} —{" "}
-                            {amount.toLocaleString("en-US", { style: "currency", currency: "USD" })}
-                            <input
-                              name={`unionDueDate_${fund.id}`}
-                              type="date"
-                              value={editUnionDueDates[fund.id] ?? editDueDates[1] ?? ""}
-                              onChange={(event) =>
-                                setEditUnionDueDates((current) => ({ ...current, [fund.id]: event.target.value }))
-                              }
-                            />
-                          </label>
-                        );
-                      })}
+                  <label>
+                    Name
+                    <input
+                      name="contractorName"
+                      value={editContractorName}
+                      onChange={(event) => setEditContractorName(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Vendor / Employee ID
+                    <input
+                      name="contractorEmployeeId"
+                      value={editContractorEmployeeId}
+                      onChange={(event) => setEditContractorEmployeeId(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Email
+                    <input
+                      name="contractorEmail"
+                      type="email"
+                      value={editContractorEmail}
+                      onChange={(event) => setEditContractorEmail(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Phone
+                    <input
+                      name="contractorPhone"
+                      value={editContractorPhone}
+                      onChange={(event) => setEditContractorPhone(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Contract Value
+                    <input
+                      name="contractValue"
+                      type="number"
+                      step="0.01"
+                      value={editContractValue}
+                      onChange={(event) => setEditContractValue(event.target.value)}
+                      required
+                    />
+                  </label>
+                  <label>
+                    Payment Installments
+                    <select
+                      name="installmentCount"
+                      value={editInstallmentCount}
+                      onChange={(event) => setEditInstallmentCount(event.target.value)}
+                    >
+                      <option value="1">1</option>
+                      <option value="2">2</option>
+                      <option value="3">3</option>
+                      <option value="4">4</option>
+                    </select>
+                  </label>
+                  <label>
+                    Contract Number
+                    <input
+                      name="contractNumber"
+                      value={editContractNumber}
+                      onChange={(event) => setEditContractNumber(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Role
+                    <input
+                      name="contractRole"
+                      value={editContractRole}
+                      onChange={(event) => setEditContractRole(event.target.value)}
+                    />
+                  </label>
+                  <fieldset className="drawerChoiceGroup drawerFieldWide">
+                    <legend>Sessions</legend>
+                    <div className="drawerChoiceGrid">
+                      {[
+                        ["summer", "Summer"],
+                        ["fall", "Fall"],
+                        ["winter", "Winter"],
+                        ["spring", "Spring"]
+                      ].map(([value, label]) => (
+                        <label className="checkboxLabel" key={value}>
+                          <input
+                            name="contractSessions"
+                            value={value}
+                            type="checkbox"
+                            checked={editContractSessions.includes(value)}
+                            onChange={(event) =>
+                              setEditContractSessions((current) =>
+                                event.target.checked
+                                  ? [...new Set([...current, value])]
+                                  : current.filter((session) => session !== value)
+                              )
+                            }
+                          />
+                          {label}
+                        </label>
+                      ))}
                     </div>
-                  ) : null}
+                  </fieldset>
+                  <input type="hidden" name="isUnion" value="false" />
+                  <label className="checkboxLabel drawerFieldWide unionToggle">
+                    <input
+                      name="isUnion"
+                      value="true"
+                      type="checkbox"
+                      checked={editIsUnion}
+                      onChange={(event) => setEditIsUnion(event.target.checked)}
+                    />
+                    This is a union contract
+                  </label>
                 </div>
-              ) : null}
-              <label>
-                Sessions
-                <select
-                  name="contractSessions"
-                  multiple
-                  size={4}
-                  value={editContractSessions}
-                  onChange={(event) =>
-                    setEditContractSessions(Array.from(event.currentTarget.selectedOptions, (option) => option.value))
-                  }
-                >
-                  <option value="summer">Summer</option>
-                  <option value="fall">Fall</option>
-                  <option value="winter">Winter</option>
-                  <option value="spring">Spring</option>
-                </select>
-                <span className="helperText">
-                  Choose every session covered by this contract. Hold Command (Mac) or Ctrl (Windows) to select
-                  multiple.
-                </span>
-              </label>
-              <label>
-                Check Request FOAPAL
-                <select name="checkRequestFoapalId" value={editFoapalId} onChange={(event) => setEditFoapalId(event.target.value)}>
-                  <option value="">Use contract organization only</option>
-                  {foapalOptions.map((foapal) => (
-                    <option key={foapal.id} value={foapal.id}>
-                      {foapal.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Check Delivery
-                <select
-                  name="checkRequestHandling"
-                  value={editHandling}
-                  onChange={(event) => setEditHandling(event.target.value as "mail" | "business_affairs_pickup" | "other")}
-                >
-                  <option value="mail">Mail check</option>
-                  <option value="business_affairs_pickup">Pick up in Business Affairs</option>
-                  <option value="other">Other location</option>
-                </select>
-              </label>
-              <label>
-                Other Pickup Location
-                <input
-                  name="checkRequestOtherLocation"
-                  value={editOtherLocation}
-                  onChange={(event) => setEditOtherLocation(event.target.value)}
-                />
-              </label>
-              <label>
-                Vendor Address Line 1
-                <input
-                  name="vendorAddress1"
-                  value={editVendorAddress1}
-                  onChange={(event) => setEditVendorAddress1(event.target.value)}
-                />
-              </label>
-              <label>
-                Vendor Address Line 2
-                <input
-                  name="vendorAddress2"
-                  value={editVendorAddress2}
-                  onChange={(event) => setEditVendorAddress2(event.target.value)}
-                />
-              </label>
-              <label>
-                Vendor Address Line 3
-                <input
-                  name="vendorAddress3"
-                  value={editVendorAddress3}
-                  onChange={(event) => setEditVendorAddress3(event.target.value)}
-                />
-              </label>
-              <label>
-                Tax ID / SSN
-                <SensitiveTextInput name="taxIdOrSsn" placeholder="Leave blank to keep saved value" />
-                <span className="helperText">
-                  {contract.taxIdLast4 ? `Saved encrypted value ending in ${contract.taxIdLast4}. ` : ""}
-                  Saving this contract overwrites all installment check-request snapshots.
-                </span>
-              </label>
-              <label className="checkboxLabel">
-                <input name="clearTaxId" type="checkbox" /> Clear saved Tax ID / SSN
-              </label>
-              <div className="contractInstallmentDates">
-                {Array.from({ length: Number(editInstallmentCount) || 1 }, (_, index) => {
-                  const installmentNumber = index + 1;
-                  const dueDate = editDueDates[installmentNumber] ?? "";
-                  const schedule = calculateCheckRequestSchedule(dueDate);
-                  return (
-                    <label key={installmentNumber}>
-                      Installment {installmentNumber} Due Date
-                      <input
-                        name={`installmentDueDate${installmentNumber}`}
-                        type="date"
-                        value={dueDate}
-                        onChange={(event) =>
-                          setEditDueDates((previous) => ({ ...previous, [installmentNumber]: event.target.value }))
-                        }
-                      />
-                      {schedule ? (
-                        <span className="helperText">
-                          Mail by {schedule.mailBy}; AP needs it by {schedule.apReceiveBy}; check run {schedule.checkRunDate}.
-                        </span>
-                      ) : null}
+              </details>
+
+              {editIsUnion ? (
+                <details className="drawerSection" open>
+                  <summary>
+                    <span>Union Agreement</span>
+                    <small>Agreement and separate fund-check dates</small>
+                  </summary>
+                  <div className="drawerFieldGrid">
+                    <label className="drawerFieldWide">
+                      Union Agreement
+                      <select
+                        name="unionAgreementId"
+                        value={editUnionAgreementId}
+                        onChange={(event) => {
+                          setEditUnionAgreementId(event.target.value);
+                          setEditUnionDueDates({});
+                        }}
+                        required
+                      >
+                        <option value="">Select agreement</option>
+                        {unionAgreementOptions
+                          .filter((agreement) => agreement.active || agreement.id === contract.unionAgreementId)
+                          .map((agreement) => (
+                            <option key={agreement.id} value={agreement.id}>
+                              {agreement.name} — {agreement.versionLabel}
+                            </option>
+                          ))}
+                      </select>
                     </label>
-                  );
-                })}
-              </div>
-              <label>
-                FY
-                <select
-                  name="fiscalYearId"
-                  value={editFiscalYearId}
-                  onChange={(event) => setEditFiscalYearId(event.target.value)}
-                >
-                  <option value="">From project default</option>
-                  {fiscalYearOptions.map((fiscalYear) => (
-                    <option key={fiscalYear.id} value={fiscalYear.id}>
-                      {fiscalYear.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Org
-                <select
-                  name="organizationId"
-                  value={editOrganizationId}
-                  onChange={(event) => setEditOrganizationId(event.target.value)}
-                >
-                  <option value="">From project default</option>
-                  {organizationOptions.map((organization) => (
-                    <option key={organization.id} value={organization.id}>
-                      {organization.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Accounting Project
-                <select
-                  name="projectId"
-                  value={editProjectId}
-                  onChange={(event) => setEditProjectId(event.target.value)}
-                  required
-                >
-                  {projectOptions.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Associated Production / Show
-                <select
-                  name="productionProjectIds"
-                  multiple
-                  size={6}
-                  value={editProductionProjectIds}
-                  onChange={(event) =>
-                    setEditProductionProjectIds(Array.from(event.currentTarget.selectedOptions, (option) => option.value))
-                  }
-                  disabled={!editContractFiscalYearId}
-                >
-                  {editAssociatedProjectOptions.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.label}
-                    </option>
-                  ))}
-                </select>
-                <span className="helperText">
-                  {editContractFiscalYearId
-                    ? "Only shows from the contract fiscal year are listed. Hold Command (Mac) or Ctrl (Windows) to select multiple."
-                    : "Choose a fiscal year or accounting project to see available shows."}
-                </span>
-              </label>
-              <label>
-                Banner Account
-                <select
-                  name="bannerAccountCodeId"
-                  value={editBannerAccountCodeId}
-                  onChange={(event) => setEditBannerAccountCodeId(event.target.value)}
-                  required
-                >
-                  {accountCodeOptions.map((accountCode) => (
-                    <option key={accountCode.id} value={accountCode.id}>
-                      {accountCode.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Notes
-                <input name="notes" value={editNotes} onChange={(event) => setEditNotes(event.target.value)} />
-              </label>
-              <div className="modalActions">
-                <button type="button" className="tinyButton" onClick={closeEdit}>
-                  Close
-                </button>
-                <button type="submit" className="tinyButton">
-                  Save Edit
-                </button>
-              </div>
+                    {editUnionAgreement ? (
+                      <div className="drawerContributionList drawerFieldWide">
+                        {editUnionAgreement.funds.map((fund) => {
+                          const amount = Math.round(numericEditContractValue * fund.percentage) / 100;
+                          return (
+                            <label key={fund.id} className="drawerContribution">
+                              <span>
+                                <strong>{fund.fundName}</strong>
+                                <small>
+                                  {fund.percentage}% ·{" "}
+                                  {fund.contributionType === "artist_withholding"
+                                    ? "Artist withholding"
+                                    : "Employer-paid"}{" "}
+                                  · {amount.toLocaleString("en-US", { style: "currency", currency: "USD" })}
+                                </small>
+                              </span>
+                              <input
+                                name={`unionDueDate_${fund.id}`}
+                                type="date"
+                                aria-label={`${fund.fundName} payment date`}
+                                value={editUnionDueDates[fund.id] ?? editDueDates[1] ?? ""}
+                                onChange={(event) =>
+                                  setEditUnionDueDates((current) => ({ ...current, [fund.id]: event.target.value }))
+                                }
+                              />
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
+                </details>
+              ) : null}
+
+              <details className="drawerSection" open>
+                <summary>
+                  <span>Payment &amp; Check Request</span>
+                  <small>Dates, delivery, address, and tax information</small>
+                </summary>
+                <div className="drawerFieldGrid">
+                  <label>
+                    Check Request FOAPAL
+                    <select
+                      name="checkRequestFoapalId"
+                      value={editFoapalId}
+                      onChange={(event) => setEditFoapalId(event.target.value)}
+                    >
+                      <option value="">Use contract organization only</option>
+                      {foapalOptions.map((foapal) => (
+                        <option key={foapal.id} value={foapal.id}>
+                          {foapal.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Check Delivery
+                    <select
+                      name="checkRequestHandling"
+                      value={editHandling}
+                      onChange={(event) =>
+                        setEditHandling(event.target.value as "mail" | "business_affairs_pickup" | "other")
+                      }
+                    >
+                      <option value="mail">Mail check</option>
+                      <option value="business_affairs_pickup">Pick up in Business Affairs</option>
+                      <option value="other">Other location</option>
+                    </select>
+                  </label>
+                  <label>
+                    Other Pickup Location
+                    <input
+                      name="checkRequestOtherLocation"
+                      value={editOtherLocation}
+                      onChange={(event) => setEditOtherLocation(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Vendor Address Line 1
+                    <input
+                      name="vendorAddress1"
+                      value={editVendorAddress1}
+                      onChange={(event) => setEditVendorAddress1(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Vendor Address Line 2
+                    <input
+                      name="vendorAddress2"
+                      value={editVendorAddress2}
+                      onChange={(event) => setEditVendorAddress2(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Vendor Address Line 3
+                    <input
+                      name="vendorAddress3"
+                      value={editVendorAddress3}
+                      onChange={(event) => setEditVendorAddress3(event.target.value)}
+                    />
+                  </label>
+                  <label className="drawerFieldWide">
+                    Tax ID / SSN
+                    <SensitiveTextInput name="taxIdOrSsn" placeholder="Leave blank to keep saved value" />
+                    <span className="helperText">
+                      {contract.taxIdLast4 ? `Saved encrypted value ending in ${contract.taxIdLast4}. ` : ""}
+                      Saving overwrites all installment check-request snapshots.
+                    </span>
+                  </label>
+                  <label className="checkboxLabel drawerFieldWide">
+                    <input name="clearTaxId" type="checkbox" /> Clear saved Tax ID / SSN
+                  </label>
+                  <div className="contractInstallmentDates drawerFieldWide">
+                    {Array.from({ length: Number(editInstallmentCount) || 1 }, (_, index) => {
+                      const installmentNumber = index + 1;
+                      const dueDate = editDueDates[installmentNumber] ?? "";
+                      const schedule = calculateCheckRequestSchedule(dueDate);
+                      return (
+                        <label key={installmentNumber}>
+                          Installment {installmentNumber} Due Date
+                          <input
+                            name={`installmentDueDate${installmentNumber}`}
+                            type="date"
+                            value={dueDate}
+                            onChange={(event) =>
+                              setEditDueDates((previous) => ({ ...previous, [installmentNumber]: event.target.value }))
+                            }
+                          />
+                          {schedule ? (
+                            <span className="helperText">
+                              Mail by {schedule.mailBy}; AP by {schedule.apReceiveBy}; check run {schedule.checkRunDate}.
+                            </span>
+                          ) : null}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              </details>
+
+              <details className="drawerSection">
+                <summary>
+                  <span>Accounting &amp; Productions</span>
+                  <small>Fiscal year, organization, projects, and Banner account</small>
+                </summary>
+                <div className="drawerFieldGrid">
+                  <label>
+                    Fiscal Year
+                    <select
+                      name="fiscalYearId"
+                      value={editFiscalYearId}
+                      onChange={(event) => setEditFiscalYearId(event.target.value)}
+                    >
+                      <option value="">From project default</option>
+                      {fiscalYearOptions.map((fiscalYear) => (
+                        <option key={fiscalYear.id} value={fiscalYear.id}>
+                          {fiscalYear.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Organization
+                    <select
+                      name="organizationId"
+                      value={editOrganizationId}
+                      onChange={(event) => setEditOrganizationId(event.target.value)}
+                    >
+                      <option value="">From project default</option>
+                      {organizationOptions.map((organization) => (
+                        <option key={organization.id} value={organization.id}>
+                          {organization.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="drawerFieldWide">
+                    Accounting Project
+                    <select
+                      name="projectId"
+                      value={editProjectId}
+                      onChange={(event) => setEditProjectId(event.target.value)}
+                      required
+                    >
+                      {projectOptions.map((project) => (
+                        <option key={project.id} value={project.id}>
+                          {project.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <fieldset className="drawerChoiceGroup drawerFieldWide">
+                    <legend>Associated Productions / Shows</legend>
+                    <div className="drawerProductionChoices">
+                      {editAssociatedProjectOptions.map((project) => (
+                        <label className="checkboxLabel" key={project.id}>
+                          <input
+                            name="productionProjectIds"
+                            value={project.id}
+                            type="checkbox"
+                            checked={editProductionProjectIds.includes(project.id)}
+                            onChange={(event) =>
+                              setEditProductionProjectIds((current) =>
+                                event.target.checked
+                                  ? [...new Set([...current, project.id])]
+                                  : current.filter((id) => id !== project.id)
+                              )
+                            }
+                          />
+                          {project.label}
+                        </label>
+                      ))}
+                    </div>
+                    <span className="helperText">
+                      {editContractFiscalYearId
+                        ? "Only productions from the selected fiscal year are shown."
+                        : "Choose a fiscal year or accounting project first."}
+                    </span>
+                  </fieldset>
+                  <label className="drawerFieldWide">
+                    Banner Account
+                    <select
+                      name="bannerAccountCodeId"
+                      value={editBannerAccountCodeId}
+                      onChange={(event) => setEditBannerAccountCodeId(event.target.value)}
+                      required
+                    >
+                      {accountCodeOptions.map((accountCode) => (
+                        <option key={accountCode.id} value={accountCode.id}>
+                          {accountCode.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              </details>
+
+              <details className="drawerSection">
+                <summary>
+                  <span>Notes</span>
+                  <small>Internal contract notes</small>
+                </summary>
+                <div className="drawerFieldGrid">
+                  <label className="drawerFieldWide">
+                    Notes
+                    <textarea
+                      name="notes"
+                      rows={4}
+                      value={editNotes}
+                      onChange={(event) => setEditNotes(event.target.value)}
+                    />
+                  </label>
+                </div>
+              </details>
             </form>
+            <footer className="contractDrawerFooter">
+              <form
+                action={deleteAction}
+                onSubmit={(event) => {
+                  if (!window.confirm("Delete this contract and all linked installment rows? This cannot be undone.")) {
+                    event.preventDefault();
+                  }
+                }}
+              >
+                <input type="hidden" name="contractId" value={contract.id} />
+                <button type="submit" className="tinyButton dangerButton">
+                  Delete Contract
+                </button>
+              </form>
+              <div>
+                <button type="button" className="tinyButton" onClick={closeEdit}>
+                  Cancel
+                </button>
+                <button type="submit" className="tinyButton primaryButton" form={`edit-contract-${contract.id}`}>
+                  Save Contract
+                </button>
+              </div>
+            </footer>
           </div>
         </div>
       ) : null}
