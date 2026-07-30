@@ -1,6 +1,7 @@
 import { CreateContractBatchForm } from "@/app/contracts/create-contract-batch-form";
 import { CreateContractForm } from "@/app/contracts/create-contract-form";
 import { ContractRowActions } from "@/app/contracts/contract-row-actions";
+import { ContractCalendarSubscription } from "@/app/contracts/contract-calendar-subscription";
 import { ContractInstallmentControl, ContractWorkflowControl } from "@/app/contracts/contract-inline-actions";
 import { InstallmentCheckRequestActions } from "@/app/contracts/installment-check-request-actions";
 import { UnionContributionStatusControl, UnionSignatureControl } from "@/app/contracts/union-controls";
@@ -8,6 +9,8 @@ import { formatCurrency } from "@/lib/format";
 import { getContractsData } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
 import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
+import { contractCalendarFeedToken } from "@/lib/contract-calendar";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 function workflowLabel(value: string): string {
@@ -53,27 +56,6 @@ function shortDate(value: string | null): string {
   return `${month}/${day}/${year.slice(2)}`;
 }
 
-function addDaysYmd(value: string, days: number): string {
-  const [year, month, day] = value.split("-").map((part) => Number(part));
-  const date = new Date(Date.UTC(year, month - 1, day));
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-}
-
-function googleCalendarHref(contractorName: string, projectName: string, mailBy: string | null): string | null {
-  if (!mailBy) return null;
-  const start = mailBy.replaceAll("-", "");
-  const end = addDaysYmd(mailBy, 1).replaceAll("-", "");
-  const params = new URLSearchParams({
-    action: "TEMPLATE",
-    text: `Mail check request: ${contractorName}`,
-    dates: `${start}/${end}`,
-    details: `Put the check request in inter-office mail for ${contractorName} (${projectName}).`,
-    trp: "false"
-  });
-  return `https://calendar.google.com/calendar/render?${params.toString()}`;
-}
-
 export default async function ContractsPage({
   searchParams
 }: {
@@ -82,6 +64,14 @@ export default async function ContractsPage({
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
+  const requestHeaders = await headers();
+  const forwardedProto = requestHeaders.get("x-forwarded-proto");
+  const host = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host");
+  const origin = host ? `${forwardedProto ?? (host.includes("localhost") ? "http" : "https")}://${host}` : "";
+  const calendarFeedUrl = `${origin}/api/calendar/contracts/${contractCalendarFeedToken()}`;
+  const googleCalendarSubscriptionUrl = `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(
+    calendarFeedUrl
+  )}`;
 
   const {
     contracts,
@@ -125,6 +115,13 @@ export default async function ContractsPage({
         <h1>Contract Payments</h1>
         <p className="heroSubtitle">Track contract paperwork workflow and installment check payments outside procurement.</p>
       </header>
+
+      {canManageContracts ? (
+        <ContractCalendarSubscription
+          feedUrl={calendarFeedUrl}
+          googleCalendarUrl={googleCalendarSubscriptionUrl}
+        />
+      ) : null}
 
       {canManageContracts ? (
         <article className="panel requestFormPanel">
@@ -258,7 +255,6 @@ export default async function ContractsPage({
                             Paid: <strong>{formatCurrency(paidTotal)}</strong>
                           </p>
                           {rows.map((row) => {
-                            const calendarHref = googleCalendarHref(contract.contractorName, contract.projectName, row.mailBy);
                             return (
                               <div key={row.id} className="inlineEditForm" style={{ marginBottom: "0.4rem" }}>
                                 <span>
@@ -278,11 +274,6 @@ export default async function ContractsPage({
                                     <a className="tinyButton" href={`/contracts/${contract.id}/installments/${row.id}/check-request`}>
                                       Check Request PDF
                                     </a>
-                                    {calendarHref ? (
-                                      <a className="tinyButton" href={calendarHref} target="_blank" rel="noreferrer">
-                                        Google Calendar
-                                      </a>
-                                    ) : null}
                                   </>
                                 ) : (
                                   <span className={`statusChip ${installmentClass(row.status)}`}>
