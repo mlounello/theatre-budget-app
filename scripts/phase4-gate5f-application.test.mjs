@@ -52,6 +52,8 @@ test("attention transactions edit in a drawer and can release an unused card hol
   assert.match(client, /searchParams\.get\("cc_purchase"\)/);
   assert.match(client, /title=\{activeAttentionPurchase\?\.requestTitle/);
   assert.match(client, /Review &amp; Edit/);
+  assert.match(client, /Review &amp; Reconcile/);
+  assert.match(client, /purchaseId: receipt\.purchaseId/);
   assert.match(client, /Reconcile at actual/);
   assert.match(client, /addProcurementReceiptAction/);
   assert.match(actions, /reconcileCcPurchaseToReceiptsAction/);

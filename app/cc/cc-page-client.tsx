@@ -208,6 +208,7 @@ export function CcPageClient({
         amount: receipt.amount,
         canRemove: true,
         receiptId: receipt.id,
+        purchaseId: receipt.purchaseId,
         sourceLabel: "Receipt"
       }))
     : selectedStatementLines.map((line) => ({
@@ -219,6 +220,7 @@ export function CcPageClient({
         amount: line.amount,
         canRemove: false,
         receiptId: null,
+        purchaseId: null,
         sourceLabel: "Statement line"
       }));
   const unassignedCandidates = pendingReceipts.filter(
@@ -477,17 +479,19 @@ export function CcPageClient({
                         <td>{row.sourceLabel}</td>
                         <td>{formatCurrency(row.amount)}</td>
                         <td>
-                          {!selectedStatement.postedAt && row.canRemove && row.receiptId ? (
-                            <form action={unassignAction} className="inlineEditForm">
-                              <input type="hidden" name="statementMonthId" value={selectedStatement.id} />
-                              <input type="hidden" name="receiptId" value={row.receiptId} />
-                              <button type="submit" className="tinyButton dangerButton">
-                                Remove
-                              </button>
-                            </form>
-                          ) : (
-                            "-"
-                          )}
+                          <div className="actionCell">
+                            {row.purchaseId ? <button type="button" className="tinyButton" onClick={() => setActiveAttentionPurchase(row.purchaseId)}>Review &amp; Reconcile</button> : null}
+                            {!selectedStatement.postedAt && row.canRemove && row.receiptId ? (
+                              <form action={unassignAction} className="inlineEditForm">
+                                <input type="hidden" name="statementMonthId" value={selectedStatement.id} />
+                                <input type="hidden" name="receiptId" value={row.receiptId} />
+                                <button type="submit" className="tinyButton dangerButton">
+                                  Remove
+                                </button>
+                              </form>
+                            ) : null}
+                            {!row.purchaseId && (!row.canRemove || !row.receiptId) ? "-" : null}
+                          </div>
                         </td>
                       </tr>
                     ))}
