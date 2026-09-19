@@ -87,6 +87,8 @@ export default async function CreditCardPage({
     cc_pending_project?: string;
     cc_pending_card?: string;
     cc_pending_q?: string;
+    cc_view?: string;
+    cc_statement?: string;
     fiscalYearId?: string;
   }>;
 }) {
@@ -100,6 +102,10 @@ export default async function CreditCardPage({
     fiscalYearOptions,
     (resolvedSearchParams?.fiscalYearId ?? "").trim()
   );
+  const selectedView = ["current", "exceptions", "history", "setup"].includes(resolvedSearchParams?.cc_view ?? "")
+    ? resolvedSearchParams?.cc_view as "current" | "exceptions" | "history" | "setup"
+    : "current";
+  const requestedStatementId = (resolvedSearchParams?.cc_statement ?? "").trim();
 
   const supabase = await getSupabaseServerClient();
   const [
@@ -399,6 +405,8 @@ export default async function CreditCardPage({
         hasGlobalAdmin={hasGlobalAdmin}
         fiscalYearOptions={fiscalYearOptions}
         selectedFiscalYearId={selectedFiscalYearId}
+        selectedView={selectedView}
+        requestedStatementId={requestedStatementId}
         organizationOptions={organizationOptions.filter((organization) => !organization.projectTrackingRequired)}
         accountCodeOptions={accountCodeOptions.filter((account) => !account.isRevenue)}
         productionCategoryOptions={productionCategoryOptions}

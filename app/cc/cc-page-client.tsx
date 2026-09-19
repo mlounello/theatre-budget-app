@@ -1,6 +1,8 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import Link from "next/link";
+import { useActionState, useMemo, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   assignReceiptsToStatementAction,
   createCreditCardAction,
@@ -14,6 +16,8 @@ import {
 } from "@/app/cc/actions";
 import { CcAdminTables } from "@/app/cc/cc-admin-tables";
 import { CreateStatementMonthForm } from "@/app/cc/create-statement-month-form";
+import { SideDrawer } from "@/components/ui/side-drawer";
+import { StatusPill } from "@/components/ui/status-controls";
 import { formatCurrency } from "@/lib/format";
 
 type StatementMonthRow = {
@@ -109,6 +113,8 @@ type Props = {
   fiscalYearOptions: FiscalYearOption[];
   selectedFiscalYearId: string;
   organizationOptions: OrganizationOption[];
+  selectedView: "current" | "exceptions" | "history" | "setup";
+  requestedStatementId: string;
 };
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
@@ -133,8 +139,12 @@ export function CcPageClient({
   productionCategoryOptions,
   fiscalYearOptions,
   selectedFiscalYearId,
-  organizationOptions
+  organizationOptions,
+  selectedView,
+  requestedStatementId
 }: Props) {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [createCardState, createCardAction] = useActionState(createCreditCardAction, initialState);
   const [reimbursementState, reimbursementAction] = useActionState(createReimbursementRequestAction, initialState);
   const [assignState, assignAction] = useActionState(assignReceiptsToStatementAction, initialState);
@@ -145,145 +155,189 @@ export function CcPageClient({
   const [unpostState, unpostAction] = useActionState(unpostStatementMonthFromBannerAction, initialState);
   const [reimbursementProjectId, setReimbursementProjectId] = useState("");
   const [reimbursementOrganizationId, setReimbursementOrganizationId] = useState("");
+  const [openDrawer, setOpenDrawer] = useState<"reimbursement" | "statement" | "card" | null>(null);
+  const selectedStatement = useMemo(
+    () =>
+      statementMonths.find((month) => month.id === requestedStatementId) ??
+      statementMonths.find((month) => !month.postedAt) ??
+      statementMonths.find((month) => !month.postedToBannerAt) ??
+      statementMonths[0] ??
+      null,
+    [requestedStatementId, statementMonths]
+  );
+  const assignedReceipts = selectedStatement
+    ? pendingReceipts.filter((receipt) => receipt.statementMonthId === selectedStatement.id)
+    : [];
+  const selectedStatementLines = selectedStatement
+    ? statementLineDetails.filter((line) => line.statementMonthId === selectedStatement.id)
+    : [];
+  const currentStatementRows = assignedReceipts.length > 0
+    ? assignedReceipts.map((receipt) => ({
+        id: `receipt:${receipt.id}`,
+        projectLabel: receipt.projectLabel,
+        budgetLineLabel: receipt.budgetLineLabel,
+        requestNumber: receipt.requestNumber,
+        requestTitle: receipt.requestTitle,
+        amount: receipt.amount,
+        canRemove: true,
+        receiptId: receipt.id,
+        sourceLabel: "Receipt"
+      }))
+    : selectedStatementLines.map((line) => ({
+        id: `statement-line:${line.id}`,
+        projectLabel: line.projectLabel,
+        budgetLineLabel: line.budgetLineLabel,
+        requestNumber: null,
+        requestTitle: line.note?.trim() || "Statement line",
+        amount: line.amount,
+        canRemove: false,
+        receiptId: null,
+        sourceLabel: "Statement line"
+      }));
+  const unassignedCandidates = pendingReceipts.filter(
+    (receipt) =>
+      !receipt.statementMonthId &&
+      receipt.purchaseStatus === "pending_cc" &&
+      receipt.purchaseRequestType === "expense" &&
+      receipt.purchaseIsCreditCard &&
+      (!selectedStatement || !receipt.purchaseCreditCardId || receipt.purchaseCreditCardId === selectedStatement.creditCardId)
+  );
+  const assignedTotal = assignedReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
+  const exceptionRows = pendingPurchaseDetails.filter(
+    (purchase) => !["Ready to assign", "Already linked to statement month"].includes(purchase.assignmentState)
+  );
+  const missingReceiptCount = exceptionRows.filter((purchase) => purchase.assignmentState === "Missing receipts").length;
+  const unassignedCardCount = exceptionRows.filter((purchase) => purchase.assignmentState === "Unassigned card").length;
+  const workspaceHref = (view: Props["selectedView"], statementId?: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("cc_view", view);
+    if (statementId) params.set("cc_statement", statementId);
+    else if (view !== "current") params.delete("cc_statement");
+    return `${pathname}?${params.toString()}`;
+  };
 
   return (
     <>
-      <div className="panelGrid">
-        <article className="panel">
-          <h2>Credit Cards</h2>
-          <form action={createCardAction} className="requestForm">
-            {createCardState.message ? (
-              <p className={createCardState.ok ? "successNote" : "errorNote"} key={createCardState.timestamp}>
-                {createCardState.message}
-              </p>
-            ) : null}
-            <label>
-              Card Nickname
-              <input name="nickname" required placeholder="Theatre Card A" />
-            </label>
-            <label>
-              Masked Number
-              <input name="maskedNumber" placeholder="****1234" />
-            </label>
-            <label className="checkboxLabel">
-              <input name="active" type="checkbox" defaultChecked />
-              Active
-            </label>
-            <button type="submit" className="buttonLink buttonPrimary">
-              Save Card
-            </button>
-          </form>
+      <nav className="ccWorkspaceNav" aria-label="Credit Card workspace">
+        {[
+          { value: "current", label: "Current Statement", meta: selectedStatement ? `${selectedStatement.statementMonth.slice(0, 7)} · ${selectedStatement.creditCardName}` : "No statement" },
+          { value: "exceptions", label: "Exceptions", meta: `${exceptionRows.length} need attention` },
+          { value: "history", label: "Statement History", meta: `${statementMonths.length} statements` },
+          { value: "setup", label: "Cards & Setup", meta: `${cards.filter((card) => card.active).length} active cards` }
+        ].map((view) => (
+          <Link
+            key={view.value}
+            href={workspaceHref(view.value as Props["selectedView"])}
+            className={selectedView === view.value ? "ccWorkspaceTab active" : "ccWorkspaceTab"}
+            aria-current={selectedView === view.value ? "page" : undefined}
+          >
+            <strong>{view.label}</strong>
+            <span>{view.meta}</span>
+          </Link>
+        ))}
+      </nav>
 
-          <CcAdminTables cards={cards} statementMonths={statementMonths} />
-        </article>
-
-        <article className="panel">
-          <h2>Open Statement Month</h2>
-          <CreateStatementMonthForm
-            cards={cards}
-            fiscalYearOptions={fiscalYearOptions}
-            defaultFiscalYearId={selectedFiscalYearId}
-          />
-          {scopedProjects.length === 0 && organizationOptions.length === 0 && !hasGlobalAdmin ? (
-            <p className="errorNote">You need Admin or Project Manager access to manage statements.</p>
+      <SideDrawer
+        open={openDrawer === "reimbursement"}
+        onClose={() => setOpenDrawer(null)}
+        eyebrow="Credit Cards"
+        title="Add Reimbursement"
+        description="Charge a theatre project or a projectless organization budget in the selected fiscal year."
+      >
+        <form action={reimbursementAction} className="requestForm">
+          {reimbursementState.message ? (
+            <p className={reimbursementState.ok ? "successNote" : "errorNote"} key={reimbursementState.timestamp}>{reimbursementState.message}</p>
           ) : null}
-        </article>
+          <input type="hidden" name="fiscalYearId" value={selectedFiscalYearId} />
+          <label>
+            Project (theatre budget)
+            <select name="projectId" value={reimbursementProjectId} onChange={(event) => {
+              setReimbursementProjectId(event.target.value);
+              if (event.target.value) setReimbursementOrganizationId("");
+            }}>
+              <option value="">No project</option>
+              {scopedProjects.map((project) => <option key={project.id} value={project.id}>{project.name}{project.season ? ` (${project.season})` : ""}</option>)}
+            </select>
+          </label>
+          <label>
+            Organization budget (no project)
+            <select name="organizationId" value={reimbursementOrganizationId} onChange={(event) => {
+              setReimbursementOrganizationId(event.target.value);
+              if (event.target.value) setReimbursementProjectId("");
+            }}>
+              <option value="">No organization budget</option>
+              {organizationOptions.map((organization) => <option key={organization.id} value={organization.id}>{organization.orgCode} | {organization.name}</option>)}
+            </select>
+          </label>
+          <label>
+            Department
+            <select name="productionCategoryId" required={Boolean(reimbursementProjectId)}>
+              <option value="">{reimbursementProjectId ? "Select department" : "Not required"}</option>
+              {productionCategoryOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+            </select>
+          </label>
+          <label>
+            Banner Code
+            <select name="bannerAccountCodeId" defaultValue="">
+              <option value="">Unassigned</option>
+              {accountCodeOptions.map((accountCode) => <option key={accountCode.id} value={accountCode.id}>{accountCode.label}</option>)}
+            </select>
+          </label>
+          <label>Title<input name="title" required placeholder="Reimbursement request title" /></label>
+          <label>Reference (optional)<input name="referenceNumber" placeholder="Receipt / claim reference" /></label>
+          <label>Amount<input name="amount" type="number" step="0.01" required /></label>
+          <button type="submit" className="buttonLink buttonPrimary">Save Reimbursement</button>
+        </form>
+      </SideDrawer>
 
-        {scopedProjects.length > 0 || organizationOptions.length > 0 || hasGlobalAdmin ? (
-          <article className="panel">
-            <h2>Add Reimbursement</h2>
-            <form action={reimbursementAction} className="requestForm">
-              {reimbursementState.message ? (
-                <p className={reimbursementState.ok ? "successNote" : "errorNote"} key={reimbursementState.timestamp}>
-                  {reimbursementState.message}
-                </p>
-              ) : null}
-              <input type="hidden" name="fiscalYearId" value={selectedFiscalYearId} />
-              <label>
-                Project (theatre budget)
-                <select
-                  name="projectId"
-                  value={reimbursementProjectId}
-                  onChange={(event) => {
-                    setReimbursementProjectId(event.target.value);
-                    if (event.target.value) setReimbursementOrganizationId("");
-                  }}
-                >
-                  <option value="">No project</option>
-                  {scopedProjects.map((project) => (
-                    <option key={project.id} value={project.id}>
-                      {project.name}
-                      {project.season ? ` (${project.season})` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Organization budget (no project)
-                <select
-                  name="organizationId"
-                  value={reimbursementOrganizationId}
-                  onChange={(event) => {
-                    setReimbursementOrganizationId(event.target.value);
-                    if (event.target.value) setReimbursementProjectId("");
-                  }}
-                >
-                  <option value="">No organization budget</option>
-                  {organizationOptions.map((organization) => (
-                    <option key={organization.id} value={organization.id}>
-                      {organization.orgCode} | {organization.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Department
-                <select name="productionCategoryId" required={Boolean(reimbursementProjectId)}>
-                  <option value="">{reimbursementProjectId ? "Select department" : "Not required"}</option>
-                  {productionCategoryOptions.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Banner Code
-                <select name="bannerAccountCodeId" defaultValue="">
-                  <option value="">Unassigned</option>
-                  {accountCodeOptions.map((accountCode) => (
-                    <option key={accountCode.id} value={accountCode.id}>
-                      {accountCode.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                Title
-                <input name="title" required placeholder="Reimbursement request title" />
-              </label>
-              <label>
-                Reference (optional)
-                <input name="referenceNumber" placeholder="Receipt / claim reference" />
-              </label>
-              <label>
-                Amount
-                <input name="amount" type="number" step="0.01" required />
-              </label>
-              <button type="submit" className="buttonLink buttonPrimary">
-                Save Reimbursement
-              </button>
-            </form>
-          </article>
-        ) : null}
-      </div>
+      <SideDrawer open={openDrawer === "statement"} onClose={() => setOpenDrawer(null)} eyebrow="Credit Cards" title="Open Statement Month">
+        <CreateStatementMonthForm cards={cards} fiscalYearOptions={fiscalYearOptions} defaultFiscalYearId={selectedFiscalYearId} />
+      </SideDrawer>
 
-      <article className="panel panelFull">
-        <h2>Statement Months</h2>
-        <p className="heroSubtitle">
-          Use the bulk table above to edit/delete statement months. Expand a month below to assign receipts, mark statement paid, then
-          post to Banner.
-        </p>
+      <SideDrawer open={openDrawer === "card"} onClose={() => setOpenDrawer(null)} eyebrow="Credit Cards" title="Add Credit Card">
+        <form action={createCardAction} className="requestForm">
+          {createCardState.message ? (
+            <p className={createCardState.ok ? "successNote" : "errorNote"} key={createCardState.timestamp}>{createCardState.message}</p>
+          ) : null}
+          <label>Card Nickname<input name="nickname" required placeholder="Theatre Card A" /></label>
+          <label>Masked Number<input name="maskedNumber" placeholder="****1234" /></label>
+          <label className="checkboxLabel"><input name="active" type="checkbox" defaultChecked />Active</label>
+          <button type="submit" className="buttonLink buttonPrimary">Save Card</button>
+        </form>
+      </SideDrawer>
+
+      {selectedView === "current" ? (
+      <article className="panel panelFull ccCurrentStatement">
+        <div className="ccWorkspaceHeader">
+          <div>
+            <p className="eyebrow">Current Statement</p>
+            <h2>{selectedStatement ? `${selectedStatement.statementMonth.slice(0, 7)} · ${selectedStatement.creditCardName}` : "No statement month"}</h2>
+            <p className="heroSubtitle">Assign receipts, mark the statement paid, then post it to Banner.</p>
+          </div>
+          <div className="buttonCluster">
+            {(scopedProjects.length > 0 || organizationOptions.length > 0 || hasGlobalAdmin) ? (
+              <button type="button" className="buttonLink" onClick={() => setOpenDrawer("reimbursement")}>Add Reimbursement</button>
+            ) : null}
+            <button type="button" className="buttonLink" onClick={() => setOpenDrawer("statement")}>Open Statement Month</button>
+          </div>
+        </div>
+        {statementMonths.length > 0 ? (
+          <div className="ccStatementPicker" aria-label="Select statement month">
+            {statementMonths.map((month) => (
+              <Link key={month.id} href={workspaceHref("current", month.id)} className={selectedStatement?.id === month.id ? "active" : ""}>
+                <span>{month.statementMonth.slice(0, 7)} · {month.creditCardName}</span>
+                <StatusPill tone={month.postedToBannerAt ? "success" : month.postedAt ? "info" : "warning"}>
+                  {month.postedToBannerAt ? "Posted" : month.postedAt ? "Statement Paid" : "Open"}
+                </StatusPill>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <div className="emptyState">
+            <p>No statement month exists for this fiscal year.</p>
+            <button type="button" className="buttonLink buttonPrimary" onClick={() => setOpenDrawer("statement")}>Open the first statement</button>
+          </div>
+        )}
         {assignState.message ? (
           <p className={assignState.ok ? "successNote" : "errorNote"} key={assignState.timestamp}>
             {assignState.message}
@@ -315,79 +369,8 @@ export function CcPageClient({
           </p>
         ) : null}
 
-        <form method="get" className="requestForm inlineFilterForm" style={{ marginBottom: "0.6rem" }}>
-          <label>
-            Card
-            <select name="cc_month_card" defaultValue={selectedMonthCard}>
-              <option value="">All cards</option>
-              {cards.map((card) => (
-                <option key={card.id} value={card.id}>
-                  {card.nickname}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            State
-            <select name="cc_month_state" defaultValue={selectedMonthState}>
-              <option value="">All states</option>
-              <option value="open">Open</option>
-              <option value="statement_paid">Statement Paid</option>
-              <option value="posted_to_banner">Posted To Banner</option>
-            </select>
-          </label>
-          <label>
-            Search
-            <input name="cc_month_q" defaultValue={selectedMonthQuery} placeholder="Card or month" />
-          </label>
-          <button type="submit" className="tinyButton">
-            Filter
-          </button>
-        </form>
-        {filteredStatementMonths.length === 0 ? <p>No statement months match the current filter.</p> : null}
-
-        {filteredStatementMonths.map((month) => {
-          const assignedReceipts = pendingReceipts.filter((receipt) => receipt.statementMonthId === month.id);
-          const statementLineRows = statementLineDetails.filter((line) => line.statementMonthId === month.id);
-          const visibleRows =
-            assignedReceipts.length > 0
-              ? assignedReceipts.map((receipt) => ({
-                  id: `receipt:${receipt.id}`,
-                  projectLabel: receipt.projectLabel,
-                  budgetLineLabel: receipt.budgetLineLabel,
-                  requestNumber: receipt.requestNumber,
-                  requestTitle: receipt.requestTitle,
-                  amount: receipt.amount,
-                  canRemove: true,
-                  receiptId: receipt.id,
-                  sourceLabel: "Receipt"
-                }))
-              : statementLineRows.map((line) => ({
-                  id: `statement-line:${line.id}`,
-                  projectLabel: line.projectLabel,
-                  budgetLineLabel: line.budgetLineLabel,
-                  requestNumber: null,
-                  requestTitle: line.note?.trim() || "Statement line",
-                  amount: line.amount,
-                  canRemove: false,
-                  receiptId: null,
-                  sourceLabel: "Statement line"
-                }));
-          const unassignedCandidates = pendingReceipts.filter(
-            (receipt) =>
-              !receipt.statementMonthId &&
-              receipt.purchaseStatus === "pending_cc" &&
-              receipt.purchaseRequestType === "expense" &&
-              receipt.purchaseIsCreditCard
-          );
-          const assignedTotal = assignedReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
-          return (
-            <details key={month.id} className="treeNode" open>
-              <summary>
-                <strong>{month.statementMonth.slice(0, 7)}</strong> | {month.creditCardName} |{" "}
-                {month.postedToBannerAt ? "Posted To Banner" : month.postedAt ? "Statement Paid" : "Open"}
-              </summary>
-
+        {selectedStatement ? (
+          <div className="ccStatementBody">
               <div className="tableWrap">
                 <table>
                   <thead>
@@ -402,12 +385,12 @@ export function CcPageClient({
                     </tr>
                   </thead>
                   <tbody>
-                    {visibleRows.length === 0 ? (
+                    {currentStatementRows.length === 0 ? (
                       <tr>
                         <td colSpan={7}>No receipts or statement lines assigned to this statement month.</td>
                       </tr>
                     ) : null}
-                    {visibleRows.map((row) => (
+                    {currentStatementRows.map((row) => (
                       <tr key={row.id}>
                         <td>{row.projectLabel}</td>
                         <td>{row.budgetLineLabel}</td>
@@ -416,9 +399,9 @@ export function CcPageClient({
                         <td>{row.sourceLabel}</td>
                         <td>{formatCurrency(row.amount)}</td>
                         <td>
-                          {!month.postedAt && row.canRemove && row.receiptId ? (
+                          {!selectedStatement.postedAt && row.canRemove && row.receiptId ? (
                             <form action={unassignAction} className="inlineEditForm">
-                              <input type="hidden" name="statementMonthId" value={month.id} />
+                              <input type="hidden" name="statementMonthId" value={selectedStatement.id} />
                               <input type="hidden" name="receiptId" value={row.receiptId} />
                               <button type="submit" className="tinyButton dangerButton">
                                 Remove
@@ -436,10 +419,10 @@ export function CcPageClient({
 
               <p className="heroSubtitle">Assigned Total: {formatCurrency(assignedTotal)}</p>
 
-              {!month.postedAt ? (
+              {!selectedStatement.postedAt ? (
                 <>
                   <form action={assignAction} className="requestForm">
-                    <input type="hidden" name="statementMonthId" value={month.id} />
+                    <input type="hidden" name="statementMonthId" value={selectedStatement.id} />
                     <div className="checkboxStack">
                       {unassignedCandidates.map((receipt) => (
                         <label key={receipt.id} className="checkboxLabel">
@@ -458,7 +441,7 @@ export function CcPageClient({
                   </form>
 
                   <form action={submitAction} className="inlineEditForm" style={{ marginTop: "0.6rem" }}>
-                    <input type="hidden" name="statementMonthId" value={month.id} />
+                    <input type="hidden" name="statementMonthId" value={selectedStatement.id} />
                     <button type="submit" className="buttonLink buttonPrimary">
                       Submit Statement (Mark Statement Paid)
                     </button>
@@ -467,26 +450,26 @@ export function CcPageClient({
               ) : (
                 <>
                   <p className="successNote">Statement submitted and linked receipts marked as Statement Paid.</p>
-                  {!month.postedToBannerAt ? (
+                  {!selectedStatement.postedToBannerAt ? (
                     <form action={postAction} className="inlineEditForm" style={{ marginTop: "0.5rem" }}>
-                      <input type="hidden" name="statementMonthId" value={month.id} />
+                      <input type="hidden" name="statementMonthId" value={selectedStatement.id} />
                       <button type="submit" className="buttonLink buttonPrimary">
                         Post To Banner (Move Pending CC To YTD)
                       </button>
                     </form>
                   ) : (
-                    <p className="successNote">Posted to Banner: {month.postedToBannerAt.slice(0, 10)}</p>
+                    <p className="successNote">Posted to Banner: {selectedStatement.postedToBannerAt.slice(0, 10)}</p>
                   )}
-                  {!month.postedToBannerAt ? (
+                  {!selectedStatement.postedToBannerAt ? (
                     <form action={reopenAction} className="inlineEditForm" style={{ marginTop: "0.4rem" }}>
-                      <input type="hidden" name="statementMonthId" value={month.id} />
+                      <input type="hidden" name="statementMonthId" value={selectedStatement.id} />
                       <button type="submit" className="tinyButton">
                         Reopen Statement Month
                       </button>
                     </form>
                   ) : (
                     <form action={unpostAction} className="inlineEditForm" style={{ marginTop: "0.4rem" }}>
-                      <input type="hidden" name="statementMonthId" value={month.id} />
+                      <input type="hidden" name="statementMonthId" value={selectedStatement.id} />
                       <button type="submit" className="tinyButton dangerButton">
                         Unpost From Banner
                       </button>
@@ -494,15 +477,25 @@ export function CcPageClient({
                   )}
                 </>
               )}
-            </details>
-          );
-        })}
+          </div>
+        ) : null}
       </article>
+      ) : null}
 
+      {selectedView === "exceptions" ? (
+      <>
+      <div className="ccExceptionSummary" aria-label="Credit card exception summary">
+        <article><span>Missing Receipts</span><strong>{missingReceiptCount}</strong></article>
+        <article><span>Unassigned Card</span><strong>{unassignedCardCount}</strong></article>
+        <article><span>Other Exceptions</span><strong>{Math.max(exceptionRows.length - missingReceiptCount - unassignedCardCount, 0)}</strong></article>
+        <article><span>Pending Total Lines</span><strong>{filteredPendingRows.length}</strong></article>
+      </div>
       <article className="panel panelFull">
         <h2>Current Pending CC by Budget Code</h2>
         <p className="heroSubtitle">Live pending balances still waiting to be posted.</p>
         <form method="get" className="requestForm inlineFilterForm" style={{ marginTop: "0.6rem" }}>
+          <input type="hidden" name="fiscalYearId" value={selectedFiscalYearId} />
+          <input type="hidden" name="cc_view" value="exceptions" />
           <label>
             Project or Organization
             <select name="cc_pending_project" defaultValue={selectedPendingProject}>
@@ -568,9 +561,9 @@ export function CcPageClient({
       </div>
 
       <article className="panel panelFull" style={{ marginTop: "1rem" }}>
-        <h2>Pending CC Purchase Detail</h2>
+        <h2>Transactions Needing Attention</h2>
         <p className="heroSubtitle">
-          Raw pending purchase rows behind the budget-line rollups, including whether each row has receipts and a statement link.
+          Pending card transactions that are missing receipts, missing a card, or cannot enter the normal assignment flow.
         </p>
         <div className="tableWrap">
           <table>
@@ -590,12 +583,12 @@ export function CcPageClient({
               </tr>
             </thead>
             <tbody>
-              {pendingPurchaseDetails.length === 0 ? (
+              {exceptionRows.length === 0 ? (
                 <tr>
-                  <td colSpan={11}>No pending CC purchases found.</td>
+                  <td colSpan={11}>No credit card exceptions found.</td>
                 </tr>
               ) : null}
-              {pendingPurchaseDetails.map((purchase) => (
+              {exceptionRows.map((purchase) => (
                 <tr key={purchase.id}>
                   <td>{purchase.projectLabel}</td>
                   <td>{purchase.budgetLineLabel}</td>
@@ -616,6 +609,64 @@ export function CcPageClient({
           </table>
         </div>
       </article>
+      </>
+      ) : null}
+
+      {selectedView === "history" ? (
+        <article className="panel panelFull">
+          <div className="ccWorkspaceHeader">
+            <div>
+              <p className="eyebrow">Statement History</p>
+              <h2>All Statement Months</h2>
+              <p className="heroSubtitle">Filter, edit, reopen, or remove statement months without expanding their transaction detail.</p>
+            </div>
+            <button type="button" className="buttonLink" onClick={() => setOpenDrawer("statement")}>Open Statement Month</button>
+          </div>
+          <form method="get" className="requestForm inlineFilterForm" style={{ marginBottom: "0.6rem" }}>
+            <input type="hidden" name="fiscalYearId" value={selectedFiscalYearId} />
+            <input type="hidden" name="cc_view" value="history" />
+            <label>
+              Card
+              <select name="cc_month_card" defaultValue={selectedMonthCard}>
+                <option value="">All cards</option>
+                {cards.map((card) => <option key={card.id} value={card.id}>{card.nickname}</option>)}
+              </select>
+            </label>
+            <label>
+              State
+              <select name="cc_month_state" defaultValue={selectedMonthState}>
+                <option value="">All states</option>
+                <option value="open">Open</option>
+                <option value="statement_paid">Statement Paid</option>
+                <option value="posted_to_banner">Posted To Banner</option>
+              </select>
+            </label>
+            <label>Search<input name="cc_month_q" defaultValue={selectedMonthQuery} placeholder="Card or month" /></label>
+            <button type="submit" className="tinyButton">Filter</button>
+          </form>
+          <CcAdminTables cards={cards} statementMonths={filteredStatementMonths} section="months" />
+        </article>
+      ) : null}
+
+      {selectedView === "setup" ? (
+        <article className="panel panelFull">
+          <div className="ccWorkspaceHeader">
+            <div>
+              <p className="eyebrow">Cards & Setup</p>
+              <h2>Credit Card Setup</h2>
+              <p className="heroSubtitle">Maintain card labels and availability. Statement-month creation is kept separate from card maintenance.</p>
+            </div>
+            <div className="buttonCluster">
+              <button type="button" className="buttonLink buttonPrimary" onClick={() => setOpenDrawer("card")}>Add Credit Card</button>
+              <button type="button" className="buttonLink" onClick={() => setOpenDrawer("statement")}>Open Statement Month</button>
+            </div>
+          </div>
+          {scopedProjects.length === 0 && organizationOptions.length === 0 && !hasGlobalAdmin ? (
+            <p className="errorNote">You need Admin or Project Manager access to manage statements.</p>
+          ) : null}
+          <CcAdminTables cards={cards} statementMonths={statementMonths} section="cards" />
+        </article>
+      ) : null}
     </>
   );
 }
