@@ -65,10 +65,7 @@ function navigationForRole(role: string): Navigation {
         },
         {
           label: "Administration",
-          links: [
-            { href: "/settings", label: "Settings" },
-            ...(role === "admin" ? [{ href: "/debug", label: "Debug" }] : [])
-          ]
+          links: [{ href: "/settings", label: "Settings" }]
         }
       ]
     };
