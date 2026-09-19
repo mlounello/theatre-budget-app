@@ -198,6 +198,7 @@ export type ProcurementRow = {
   budgetTracked: boolean;
   title: string;
   referenceNumber: string | null;
+  expenseNumber: string | null;
   requisitionNumber: string | null;
   poNumber: string | null;
   invoiceNumber: string | null;
@@ -1457,7 +1458,7 @@ export async function getProcurementData(
   let purchasesQuery = supabase
     .from("purchases")
     .select(
-      "id, fiscal_year_id, project_id, organization_id, budget_line_id, production_category_id, banner_account_code_id, budget_tracked, title, reference_number, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, procurement_status, ordered_on, received_on, paid_on, vendor_id, notes, created_at, organizations(name, org_code), projects(name, season, organization_id, organizations(name, org_code)), production_categories(name), account_codes(code), project_budget_lines(budget_code, category, line_name), vendors(id, name)",
+      "id, fiscal_year_id, project_id, organization_id, budget_line_id, production_category_id, banner_account_code_id, budget_tracked, title, reference_number, expense_number, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, procurement_status, ordered_on, received_on, paid_on, vendor_id, notes, created_at, organizations(name, org_code), projects(name, season, organization_id, organizations(name, org_code)), production_categories(name), account_codes(code), project_budget_lines(budget_code, category, line_name), vendors(id, name)",
       { count: "exact" }
     )
     .is("expense_claim_id", null)
@@ -1475,7 +1476,7 @@ export async function getProcurementData(
   if (normalizedQuery) {
     const pattern = `%${normalizedQuery}%`;
     purchasesQuery = purchasesQuery.or(
-      `title.ilike.${pattern},reference_number.ilike.${pattern},requisition_number.ilike.${pattern},po_number.ilike.${pattern},invoice_number.ilike.${pattern}`
+      `title.ilike.${pattern},reference_number.ilike.${pattern},expense_number.ilike.${pattern},requisition_number.ilike.${pattern},po_number.ilike.${pattern},invoice_number.ilike.${pattern}`
     );
   }
   purchasesQuery = purchasesQuery.range(rangeFrom, rangeTo);
@@ -1614,6 +1615,7 @@ export async function getProcurementData(
       budgetTracked: Boolean(row.budget_tracked as boolean | null),
       title: row.title as string,
       referenceNumber: (row.reference_number as string | null) ?? null,
+      expenseNumber: (row.expense_number as string | null) ?? null,
       requisitionNumber: (row.requisition_number as string | null) ?? null,
       poNumber: (row.po_number as string | null) ?? null,
       invoiceNumber: (row.invoice_number as string | null) ?? null,

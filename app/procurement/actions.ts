@@ -743,6 +743,7 @@ export async function updateProcurementAction(
     const requestedBudgetTracked = formData.get("budgetTracked") === "on";
     const budgetLineId = String(formData.get("budgetLineId") ?? "").trim();
     const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
+    const expenseNumber = String(formData.get("expenseNumber") ?? "").trim().toUpperCase();
     const requisitionNumber = String(formData.get("requisitionNumber") ?? "").trim();
     const poNumber = String(formData.get("poNumber") ?? "").trim();
     const invoiceNumber = String(formData.get("invoiceNumber") ?? "").trim();
@@ -760,7 +761,7 @@ export async function updateProcurementAction(
     const { data: existing, error: existingError } = await supabase
       .from("purchases")
       .select(
-        "id, fiscal_year_id, project_id, organization_id, status, procurement_status, request_type, is_credit_card, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, budget_tracked, budget_line_id, ordered_on, received_on, paid_on"
+        "id, fiscal_year_id, project_id, organization_id, status, procurement_status, request_type, is_credit_card, expense_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, budget_tracked, budget_line_id, ordered_on, received_on, paid_on"
       )
       .eq("id", id)
       .single();
@@ -793,6 +794,10 @@ export async function updateProcurementAction(
 
     const isCreditCardPurchase =
       (existing.request_type as string | null) === "expense" && Boolean(existing.is_credit_card as boolean | null);
+    const isExpensePurchase = (existing.request_type as string | null) === "expense";
+    if (isExpensePurchase && expenseNumber && !/^EX\d{6}$/.test(expenseNumber)) {
+      return err("Expense number must use the EX###### format.");
+    }
     const procurementStatus = parseStatus(formData.get("procurementStatus"), isCreditCardPurchase);
     const existingProcurementStatus = parseStatus((existing.procurement_status as string | null) ?? "requested", isCreditCardPurchase);
     const procurementStatusChanged = existingProcurementStatus !== procurementStatus;
@@ -879,6 +884,9 @@ export async function updateProcurementAction(
         procurement_status: procurementStatus,
         status: nextBudgetStatus,
         reference_number: referenceNumber || null,
+        expense_number: isExpensePurchase
+          ? expenseNumber || null
+          : ((existing.expense_number as string | null) ?? null),
         requisition_number: requisitionNumber || null,
         po_number: poNumber || null,
         invoice_number: invoiceNumber || null,

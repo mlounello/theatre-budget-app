@@ -43,6 +43,20 @@ test("contract and union payments stay out of procurement queues", async () => {
   assert.match(page, /tracked in Hiring &amp; Payments/);
 });
 
+test("card expenses show and edit EX identifiers instead of empty requisition and PO labels", async () => {
+  const table = await read("app/procurement/procurement-table.tsx");
+  const db = await read("lib/db.ts");
+  const actions = await read("app/procurement/actions.ts");
+  assert.match(db, /reference_number, expense_number, requisition_number/);
+  assert.match(db, /expenseNumber: \(row\.expense_number/);
+  assert.match(table, /Order \/ Expense #/);
+  assert.match(table, /<b>Expense<\/b>/);
+  assert.match(table, /name="expenseNumber"/);
+  assert.match(table, /placeholder="EX######"/);
+  assert.match(actions, /Expense number must use the EX###### format/);
+  assert.match(actions, /expense_number: isExpensePurchase/);
+});
+
 test("supporting records are restricted to purchases on the current page", async () => {
   const db = await read("lib/db.ts");
   assert.match(db, /currentPagePurchaseIds/);

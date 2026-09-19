@@ -114,6 +114,12 @@ function asString(value: string | null | undefined): string {
   return (value ?? "").toLowerCase();
 }
 
+function expenseIdentifier(purchase: ProcurementRow): string | null {
+  if (purchase.expenseNumber) return purchase.expenseNumber;
+  const reference = purchase.referenceNumber?.trim().toUpperCase() ?? "";
+  return /^EX\d{6}$/.test(reference) ? reference : null;
+}
+
 function extractSortablePoNumber(value: string | null | undefined): number | null {
   if (!value) return null;
   const match = value.match(/\d+/g);
@@ -290,6 +296,7 @@ export function ProcurementTable({
   const [editBudgetTracked, setEditBudgetTracked] = useState(false);
   const [editProcurementStatus, setEditProcurementStatus] = useState("requested");
   const [editReferenceNumber, setEditReferenceNumber] = useState("");
+  const [editExpenseNumber, setEditExpenseNumber] = useState("");
   const [editRequisitionNumber, setEditRequisitionNumber] = useState("");
   const [editPoNumber, setEditPoNumber] = useState("");
   const [editInvoiceNumber, setEditInvoiceNumber] = useState("");
@@ -392,6 +399,7 @@ export function ProcurementTable({
     setEditBudgetTracked(Boolean(editingPurchase.budgetTracked));
     setEditProcurementStatus(editingPurchase.procurementStatus);
     setEditReferenceNumber(editingPurchase.referenceNumber ?? "");
+    setEditExpenseNumber(expenseIdentifier(editingPurchase) ?? "");
     setEditRequisitionNumber(editingPurchase.requisitionNumber ?? "");
     setEditPoNumber(editingPurchase.poNumber ?? "");
     setEditInvoiceNumber(editingPurchase.invoiceNumber ?? "");
@@ -519,7 +527,7 @@ export function ProcurementTable({
               </th>
               <SortTh label="Order" sortKey="title" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <SortTh label="Vendor" sortKey="vendorName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-              <th>Requisition / PO</th>
+              <th>Order / Expense #</th>
               <SortTh label="Order Value" sortKey="orderValue" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <SortTh
                 label="Procurement"
@@ -555,6 +563,7 @@ export function ProcurementTable({
                       : purchase.pendingCcAmount !== 0
                         ? purchase.pendingCcAmount
                         : purchase.postedAmount;
+              const displayedExpenseNumber = expenseIdentifier(purchase);
               return (
                 <tr key={purchase.id}>
                   <td className="rowSelectCell">
@@ -567,8 +576,19 @@ export function ProcurementTable({
                   </td>
                   <td>{purchase.vendorName ?? "-"}</td>
                   <td className="procurementIdentifiers">
-                    <span><b>Req</b> {purchase.requisitionNumber ?? "—"}</span>
-                    <span><b>PO</b> {purchase.poNumber ?? "—"}</span>
+                    {purchase.requestType === "expense" ? (
+                      <>
+                        <span><b>Expense</b> {displayedExpenseNumber ?? "—"}</span>
+                        {purchase.referenceNumber && purchase.referenceNumber.toUpperCase() !== displayedExpenseNumber
+                          ? <span><b>Ref</b> {purchase.referenceNumber}</span>
+                          : null}
+                      </>
+                    ) : (
+                      <>
+                        <span><b>Req</b> {purchase.requisitionNumber ?? "—"}</span>
+                        <span><b>PO</b> {purchase.poNumber ?? "—"}</span>
+                      </>
+                    )}
                   </td>
                   <td>{formatCurrency(orderValueDisplay)}</td>
                   <td>
@@ -747,6 +767,20 @@ export function ProcurementTable({
                   onChange={(event) => setEditReferenceNumber(event.target.value)}
                 />
               </label>
+              {editingPurchase.requestType === "expense" ? (
+                <label>
+                  Expense #
+                  <input
+                    name="expenseNumber"
+                    value={editExpenseNumber}
+                    onChange={(event) => setEditExpenseNumber(event.target.value.toUpperCase())}
+                    placeholder="EX######"
+                    pattern="EX[0-9]{6}"
+                    title="Use the format EX followed by six digits"
+                  />
+                  <span className="helperText">Use the Expense number issued for this card purchase or reimbursement.</span>
+                </label>
+              ) : null}
               <label>
                 Requisition #
                 <input
