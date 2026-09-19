@@ -33,6 +33,18 @@ test("attention data uses existing workflow records without creating mutation pa
   assert.doesNotMatch(attention, /\.insert\(|\.update\(|\.delete\(|\.upsert\(/);
 });
 
+test("dashboard attention links open the exact actionable record", async () => {
+  const page = await read("app/page.tsx");
+  const attention = await read("lib/dashboard-attention.ts");
+  assert.match(page, /item\.href/);
+  assert.match(page, /pr_edit=\$\{encodeURIComponent\(row\.id\)\}/);
+  assert.match(attention, /cc_purchase=\$\{encodeURIComponent/);
+  assert.match(attention, /ct_edit=\$\{encodeURIComponent/);
+  assert.match(attention, /receiptCount === 0/);
+  assert.match(attention, /no receipt attached/);
+  assert.doesNotMatch(attention, /receipt gap/);
+});
+
 test("revenue pace uses the selected fiscal year's actual date range", async () => {
   const attention = await read("lib/dashboard-attention.ts");
   assert.match(attention, /fiscalYear\.startDate/);

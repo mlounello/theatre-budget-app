@@ -52,6 +52,7 @@ type PendingPurchaseDetailRow = {
   pendingCcAmount: number;
   receiptTotal: number;
   receiptCount: number;
+  creditCardId: string | null;
   creditCardName: string | null;
   ccWorkflowStatus: string | null;
   statementMonthLabel: string | null;
@@ -446,6 +447,7 @@ export default async function CreditCardPage({
       pendingCcAmount: Number(row.pending_cc_amount ?? 0),
       receiptTotal: receiptSummary.total,
       receiptCount: receiptSummary.count,
+      creditCardId: (row.credit_card_id as string | null) ?? null,
       creditCardName: card?.nickname ?? null,
       ccWorkflowStatus: (row.cc_workflow_status as string | null) ?? null,
       statementMonthLabel: statementMonthId ? statementMonthLabelById.get(statementMonthId) ?? statementMonthId : null,

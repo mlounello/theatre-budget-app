@@ -101,6 +101,34 @@ async function requireOrganizationMembership(
   }
 }
 
+async function rescalePurchaseAllocations(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  purchaseId: string,
+  nextTotal: number
+): Promise<void> {
+  const { data: allocations, error } = await supabase
+    .from("purchase_allocations")
+    .select("id, amount")
+    .eq("purchase_id", purchaseId)
+    .order("id", { ascending: true });
+  if (error) throw new Error(error.message);
+  if (!allocations?.length) return;
+
+  const currentTotal = allocations.reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
+  let applied = 0;
+  for (const [index, allocation] of allocations.entries()) {
+    const nextAmount = index === allocations.length - 1
+      ? Number((nextTotal - applied).toFixed(2))
+      : Number((currentTotal > 0 ? nextTotal * (Number(allocation.amount ?? 0) / currentTotal) : nextTotal / allocations.length).toFixed(2));
+    applied += nextAmount;
+    const { error: updateError } = await supabase
+      .from("purchase_allocations")
+      .update({ amount: nextAmount })
+      .eq("id", allocation.id as string);
+    if (updateError) throw new Error(updateError.message);
+  }
+}
+
 async function getStatementMonthLinkedPurchaseTotals(
   supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
   statementMonthId: string
@@ -691,6 +719,162 @@ export async function assignReceiptsToStatementAction(
     return ok("Receipts added to statement month.");
   } catch (error) {
     return err(getErrorMessage(error, "Could not add receipts to statement month."));
+  }
+}
+
+export async function updateCcAttentionPurchaseAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) return err("You must be signed in.");
+    await requireCcManagerRole();
+
+    const purchaseId = String(formData.get("purchaseId") ?? "").trim();
+    const creditCardId = String(formData.get("creditCardId") ?? "").trim();
+    const pendingCcAmount = parseMoney(formData.get("pendingCcAmount"));
+    if (!purchaseId) return err("Transaction is required.");
+    if (!creditCardId) return err("Choose a credit card.");
+    if (pendingCcAmount <= 0) return err("Authorized cap must be greater than zero.");
+
+    const { data: purchase, error: purchaseError } = await supabase
+      .from("purchases")
+      .select("id, status, request_type, is_credit_card, estimated_amount, requested_amount, pending_cc_amount")
+      .eq("id", purchaseId)
+      .maybeSingle();
+    if (purchaseError) return err(purchaseError.message);
+    if (!purchase?.id) return err("Transaction not found or outside your access scope.");
+    if (purchase.status !== "pending_cc" || purchase.request_type !== "expense" || !purchase.is_credit_card) {
+      return err("Only pending credit-card expenses can be edited here.");
+    }
+
+    const { data: receiptRows, error: receiptsError } = await supabase
+      .from("purchase_receipts")
+      .select("amount_received")
+      .eq("purchase_id", purchaseId);
+    if (receiptsError) return err(receiptsError.message);
+    const receiptTotal = (receiptRows ?? []).reduce((sum, row) => sum + Number(row.amount_received ?? 0), 0);
+    if (pendingCcAmount + 0.005 < receiptTotal) {
+      return err("Authorized cap cannot be lower than the receipts already recorded.");
+    }
+
+    const previousCap = Number(purchase.pending_cc_amount ?? 0);
+    const { data: updated, error: updateError } = await supabase
+      .from("purchases")
+      .update({ credit_card_id: creditCardId, pending_cc_amount: pendingCcAmount })
+      .eq("id", purchaseId)
+      .select("id")
+      .maybeSingle();
+    if (updateError) return err(updateError.message);
+    if (!updated?.id) return err("Transaction update was not applied.");
+    await rescalePurchaseAllocations(supabase, purchaseId, pendingCcAmount);
+
+    if (Math.abs(previousCap - pendingCcAmount) > 0.005) {
+      const { error: eventError } = await supabase.from("purchase_events").insert({
+        purchase_id: purchaseId,
+        from_status: "pending_cc",
+        to_status: "pending_cc",
+        estimated_amount_snapshot: Number(purchase.estimated_amount ?? 0),
+        requested_amount_snapshot: Number(purchase.requested_amount ?? 0),
+        encumbered_amount_snapshot: 0,
+        pending_cc_amount_snapshot: pendingCcAmount,
+        posted_amount_snapshot: 0,
+        changed_by_user_id: user.id,
+        note: `Authorized card cap updated from ${previousCap.toFixed(2)} to ${pendingCcAmount.toFixed(2)}.`
+      });
+      if (eventError) return err(eventError.message);
+    }
+
+    await createInstitutionalCommitmentForPurchase(supabase, purchaseId, user.id);
+    revalidatePath("/cc");
+    revalidatePath("/procurement");
+    revalidatePath("/");
+    return ok("Transaction updated.");
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not update the transaction."));
+  }
+}
+
+export async function reconcileCcPurchaseToReceiptsAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) return err("You must be signed in.");
+    await requireCcManagerRole();
+
+    const purchaseId = String(formData.get("purchaseId") ?? "").trim();
+    if (!purchaseId) return err("Transaction is required.");
+    const { data: purchase, error: purchaseError } = await supabase
+      .from("purchases")
+      .select("id, status, request_type, is_credit_card, estimated_amount, requested_amount, pending_cc_amount")
+      .eq("id", purchaseId)
+      .maybeSingle();
+    if (purchaseError) return err(purchaseError.message);
+    if (!purchase?.id) return err("Transaction not found or outside your access scope.");
+    if (purchase.status !== "pending_cc" || purchase.request_type !== "expense" || !purchase.is_credit_card) {
+      return err("Only pending credit-card expenses can be reconciled here.");
+    }
+
+    const { data: receiptRows, error: receiptsError } = await supabase
+      .from("purchase_receipts")
+      .select("amount_received")
+      .eq("purchase_id", purchaseId);
+    if (receiptsError) return err(receiptsError.message);
+    if (!receiptRows?.length) return err("Add at least one receipt before reconciling this expense.");
+    const receiptTotal = receiptRows.reduce((sum, row) => sum + Number(row.amount_received ?? 0), 0);
+    const previousCap = Number(purchase.pending_cc_amount ?? 0);
+    if (receiptTotal <= 0) return err("Receipt total must be greater than zero.");
+    if (receiptTotal > previousCap + 0.005) {
+      return err("Receipt total is above the authorized cap. Increase the cap or document the overage first.");
+    }
+
+    const { data: updated, error: updateError } = await supabase
+      .from("purchases")
+      .update({
+        pending_cc_amount: receiptTotal,
+        cc_workflow_status: "receipts_uploaded",
+        procurement_status: "receipts_uploaded"
+      })
+      .eq("id", purchaseId)
+      .select("id")
+      .maybeSingle();
+    if (updateError) return err(updateError.message);
+    if (!updated?.id) return err("Reconciliation update was not applied.");
+    await rescalePurchaseAllocations(supabase, purchaseId, receiptTotal);
+
+    const releasedAmount = Math.max(previousCap - receiptTotal, 0);
+    const { error: eventError } = await supabase.from("purchase_events").insert({
+      purchase_id: purchaseId,
+      from_status: "pending_cc",
+      to_status: "pending_cc",
+      estimated_amount_snapshot: Number(purchase.estimated_amount ?? 0),
+      requested_amount_snapshot: Number(purchase.requested_amount ?? 0),
+      encumbered_amount_snapshot: 0,
+      pending_cc_amount_snapshot: receiptTotal,
+      posted_amount_snapshot: 0,
+      changed_by_user_id: user.id,
+      note: `Reconciled to receipt total ${receiptTotal.toFixed(2)}; released ${releasedAmount.toFixed(2)} of unused authorization.`
+    });
+    if (eventError) return err(eventError.message);
+
+    await createInstitutionalCommitmentForPurchase(supabase, purchaseId, user.id);
+    revalidatePath("/cc");
+    revalidatePath("/procurement");
+    revalidatePath("/");
+    return ok(`Reconciled at the ${receiptTotal.toFixed(2)} actual. The unused ${releasedAmount.toFixed(2)} hold was released.`);
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not reconcile the transaction."));
   }
 }
 
