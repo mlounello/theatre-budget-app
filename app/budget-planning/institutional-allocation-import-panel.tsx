@@ -7,6 +7,7 @@ import {
   type InstitutionalAllocationImportActionState
 } from "@/app/budget-planning/actions";
 import { formatCurrency } from "@/lib/format";
+import { AccordionSection } from "@/components/ui/accordion-section";
 
 type ActionState = {
   ok: boolean;
@@ -49,10 +50,8 @@ export function InstitutionalAllocationImportPanel({
 
   return (
     <article className="panel">
-      <h2>Institutional Allocation Import</h2>
-      <p className="heroSubtitle">
-        Importing into <strong>{organizationLabel}</strong>. Use the filters below to choose a different fiscal year or organization first.
-      </p>
+      <AccordionSection title="Institutional Allocation Import" description={`Upload a monthly workbook for ${organizationLabel}`}>
+      <p className="heroSubtitle">Importing into <strong>{organizationLabel}</strong>. Use the filters below to choose a different fiscal year or organization first.</p>
       <form action={previewAction} className="requestForm">
         <input name="targetOrganizationId" type="hidden" value={organizationId} />
         <label>
@@ -191,6 +190,7 @@ export function InstitutionalAllocationImportPanel({
           </form>
         </div>
       ) : null}
+      </AccordionSection>
     </article>
   );
 }
