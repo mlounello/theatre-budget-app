@@ -3,7 +3,7 @@
 **Date:** 2026-09-19  
 **Branch:** `codex/phase-4-gate-2`  
 **Database:** production Postgres, `app_theatre_budget` schema  
-**Status:** Implementation complete; awaiting Gate 2 review and approval
+**Status:** Approved 2026-09-19; ready for merge and production deployment
 
 ## Outcome
 
@@ -128,6 +128,5 @@ No conflict below has been resolved or written into the source record. The propo
 - [x] FY26/FY27 financial baselines unchanged.
 - [x] Administrator, scoped-user, and impersonation paths verified.
 - [x] Conflict report prepared for owner review.
-- [ ] Owner confirms the proposed fiscal years for the 26 unresolved legacy records.
-- [ ] Gate 2 approved for merge and production deployment.
-
+- [x] Owner confirmed the proposed fiscal years for the 26 unresolved legacy records on 2026-09-19.
+- [x] Gate 2 approved for merge and production deployment on 2026-09-19.
