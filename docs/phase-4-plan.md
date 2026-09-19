@@ -1,6 +1,6 @@
 # Phase 4 — Fiscal-Year Integrity and Application Cleanup
 
-**Status:** Phase 4 complete — Gates 1 through 4 and Gates 5A–5J approved; Gate 5J verified and cleared for merge and production deployment
+**Status:** Phase 4 complete — Gates 1 through 4 and Gates 5A–5J approved; Gate 5J merged, deployed, and verified in production on September 19, 2026
 **Scope:** All 23 items and all five gates described below  
 **Delivery model:** Incremental, review-gated work in short-lived gate/stage branches that merge to main after approval  
 **Database target:** Production Postgres, `app_theatre_budget` schema
