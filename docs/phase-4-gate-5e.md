@@ -1,6 +1,6 @@
 # Phase 4 Gate 5E — Procurement
 
-Status: Implemented and awaiting approval.
+Status: Approved on 2026-09-19.
 
 ## Delivered
 
@@ -39,4 +39,4 @@ Queue counts intentionally describe the whole selected fiscal year; the filters 
 
 ## Approval
 
-Gate 5E must be reviewed and explicitly approved before merge, production deployment, or Gate 5F work begins.
+Gate 5E was approved for merge and production deployment on 2026-09-19. No database migration is required.
