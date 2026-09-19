@@ -710,7 +710,7 @@ export function ProcurementTable({
                 {updateState.message}
               </p>
             ) : null}
-            <form action={updateAction} className="requestForm">
+            <form action={updateAction} className="requestForm procurementEditorForm">
               <input type="hidden" name="id" value={editingPurchase.id} />
               <input type="hidden" name="allocationsJson" value={JSON.stringify(editAllocations)} />
               <label>
@@ -802,15 +802,15 @@ export function ProcurementTable({
                   <input type="hidden" name="productionCategoryId" value={editAllocations[0]?.productionCategoryId ?? ""} />
                   <input type="hidden" name="bannerAccountCodeId" value={editAllocations[0]?.accountCodeId ?? ""} />
                   <input type="hidden" name="budgetLineId" value="" />
-                  <div className="contractsPanelHeader">
+                  <div className="procurementAllocationsHeader">
                     <div>
                       <h3>Budget Allocations</h3>
-                      <p className="helperText">Most POs need one line. Add a split only when this PO crosses projects, production categories, or accounts.</p>
+                      <p className="helperText">Use one line normally. Split only when the PO crosses budgets, categories, or accounts.</p>
                     </div>
                     <button type="button" className="tinyButton" onClick={() => setEditAllocations((current) => [...current, blankAllocation()])}>Split Allocation</button>
                   </div>
                   {editAllocations.map((allocation, index) => (
-                    <fieldset className="expenseLineCard" key={allocation.id}>
+                    <fieldset className="expenseLineCard procurementAllocationCard" key={allocation.id}>
                       <legend>Allocation {index + 1}</legend>
                       <div className="drawerFieldGrid">
                         <label>

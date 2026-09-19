@@ -1928,6 +1928,54 @@ th {
   font-weight: 800;
 }
 
+.procurementAllocationsEditor {
+  grid-column: 1 / -1;
+  gap: 0.55rem;
+  margin-top: 0;
+  padding: 0.75rem;
+  border: 1px solid #d8e1d9;
+  border-radius: 12px;
+  background: #f8faf8;
+}
+
+.procurementAllocationsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.procurementAllocationsHeader h3,
+.procurementAllocationsHeader p {
+  margin: 0;
+}
+
+.procurementAllocationsHeader .helperText {
+  margin-top: 0.15rem;
+}
+
+.procurementAllocationCard {
+  padding: 0.45rem 0.55rem 0.55rem;
+  background: #ffffff;
+}
+
+.procurementAllocationCard .drawerFieldGrid {
+  gap: 0.5rem 0.65rem;
+  padding: 0.35rem 0 0;
+}
+
+.procurementAllocationCard .drawerFieldWide {
+  grid-column: auto;
+}
+
+.procurementAllocationCard .tinyButton {
+  margin-top: 0.5rem;
+}
+
+.procurementAllocationsEditor .expenseClaimTotal {
+  padding: 0.55rem 0.75rem;
+}
+
 .expenseClaimTotal {
   display: flex;
   align-items: center;
