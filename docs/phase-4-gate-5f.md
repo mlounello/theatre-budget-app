@@ -1,6 +1,6 @@
 # Phase 4 Gate 5F — Credit Cards
 
-Status: Implemented and awaiting approval.
+Status: Approved on 2026-09-19.
 
 ## Delivered
 
@@ -52,5 +52,4 @@ Status: Implemented and awaiting approval.
 
 ## Approval
 
-Gate 5F must be reviewed and explicitly approved before merge, production deployment, or Gate 5G work begins.
-
+Gate 5F was approved for merge and production deployment on 2026-09-19. No database migration is required.
