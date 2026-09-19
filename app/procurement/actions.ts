@@ -297,20 +297,11 @@ async function ensureProjectAdminAccess(
   });
 }
 
-async function ensureOrganizationPmOrAdminAccess(organizationId: string): Promise<void> {
+async function ensureOrganizationPmOrAdminAccess(organizationId: string, fiscalYearId: string): Promise<void> {
   const access = await getAccessContext();
   if (!access.userId) throw new Error("You must be signed in.");
   if (access.role === "admin") return;
 
-  const supabase = await getSupabaseServerClient();
-  const { data: organization, error } = await supabase
-    .from("organizations")
-    .select("id, fiscal_year_id")
-    .eq("id", organizationId)
-    .single();
-  if (error || !organization) throw new Error("Organization not found.");
-
-  const fiscalYearId = (organization.fiscal_year_id as string | null) ?? null;
   const allowed = access.scopes.some(
     (scope) =>
       (scope.scopeRole === "admin" || scope.scopeRole === "project_manager") &&
@@ -324,12 +315,17 @@ async function ensureOrganizationPmOrAdminAccess(organizationId: string): Promis
 async function getPurchaseScope(
   supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
   purchaseId: string
-): Promise<{ projectId: string | null; organizationId: string | null }> {
-  const { data, error } = await supabase.from("purchases").select("id, project_id, organization_id").eq("id", purchaseId).single();
+): Promise<{ projectId: string | null; organizationId: string | null; fiscalYearId: string }> {
+  const { data, error } = await supabase
+    .from("purchases")
+    .select("id, fiscal_year_id, project_id, organization_id")
+    .eq("id", purchaseId)
+    .single();
   if (error || !data) throw new Error("Purchase not found.");
   return {
     projectId: (data.project_id as string | null) ?? null,
-    organizationId: (data.organization_id as string | null) ?? null
+    organizationId: (data.organization_id as string | null) ?? null,
+    fiscalYearId: data.fiscal_year_id as string
   };
 }
 
@@ -340,7 +336,7 @@ async function ensurePurchasePmOrAdminAccess(
 ): Promise<void> {
   const scope = await getPurchaseScope(supabase, purchaseId);
   if (scope.projectId) return ensureProjectPmOrAdminAccess(supabase, userId, scope.projectId);
-  if (scope.organizationId) return ensureOrganizationPmOrAdminAccess(scope.organizationId);
+  if (scope.organizationId) return ensureOrganizationPmOrAdminAccess(scope.organizationId, scope.fiscalYearId);
   throw new Error("Purchase has no budget scope.");
 }
 
@@ -421,7 +417,7 @@ export async function createProcurementOrderAction(
       if (budgetTracked && !productionCategoryId) return err("Department is required.");
     } else {
       if (!organizationId) return err("Organization is required when no project is selected.");
-      await ensureOrganizationPmOrAdminAccess(organizationId);
+      await ensureOrganizationPmOrAdminAccess(organizationId, fiscalYearId);
       const membership = await validateOrganizationFiscalYear(supabase, organizationId, fiscalYearId);
       if (membership.projectTrackingRequired) {
         return err("This organization requires a project for purchases.");
@@ -609,7 +605,7 @@ export async function createProcurementBatchAction(
       if (budgetTracked && !productionCategoryId) return err("Department is required.");
     } else {
       if (!organizationId) return err("Organization is required when no project is selected.");
-      await ensureOrganizationPmOrAdminAccess(organizationId);
+      await ensureOrganizationPmOrAdminAccess(organizationId, fiscalYearId);
       const membership = await validateOrganizationFiscalYear(supabase, organizationId, fiscalYearId);
       if (membership.projectTrackingRequired) {
         return err("This organization requires a project for purchases.");
@@ -787,7 +783,7 @@ export async function updateProcurementAction(
       explicitOrganizationId = organizationId || ((existing.organization_id as string | null) ?? null);
       if (!explicitOrganizationId) return err("Organization is required when no project is selected.");
       if (!nextFiscalYearId) return err("Fiscal year is required for a projectless purchase.");
-      await ensureOrganizationPmOrAdminAccess(explicitOrganizationId);
+      await ensureOrganizationPmOrAdminAccess(explicitOrganizationId, nextFiscalYearId);
       const membership = await validateOrganizationFiscalYear(supabase, explicitOrganizationId, nextFiscalYearId);
       if (membership.projectTrackingRequired) {
         return err("This organization requires a project.");
