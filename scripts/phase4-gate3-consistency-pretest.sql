@@ -25,23 +25,27 @@ select 1 / case when not exists (
 
 select 1 / case when not exists (
   select 1 from purchases transaction
+  join organizations transaction_organization on transaction_organization.id = transaction.organization_id
   where transaction.organization_id is not null
     and not exists (
       select 1 from fiscal_year_organizations membership
+      join organizations member_organization on member_organization.id = membership.organization_id
       where membership.fiscal_year_id = transaction.fiscal_year_id
-        and membership.organization_id = transaction.organization_id
+        and member_organization.org_code = transaction_organization.org_code
         and membership.active = true
     )
   union all
   select 1 from income_lines transaction
+  join organizations transaction_organization on transaction_organization.id = transaction.organization_id
   where transaction.organization_id is not null
     and not exists (
       select 1 from fiscal_year_organizations membership
+      join organizations member_organization on member_organization.id = membership.organization_id
       where membership.fiscal_year_id = transaction.fiscal_year_id
-        and membership.organization_id = transaction.organization_id
+        and member_organization.org_code = transaction_organization.org_code
         and membership.active = true
     )
-) then 1 else 0 end as transaction_organizations_have_membership;
+) then 1 else 0 end as transaction_org_codes_have_membership;
 
 select 1 / case when not exists (
   select 1

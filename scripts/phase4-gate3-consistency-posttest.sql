@@ -43,4 +43,24 @@ select 1 / case when exists (
     and conname = 'cc_statement_lines_project_or_organization_scope'
 ) then 1 else 0 end as statement_line_scope_constraint_exists;
 
+select 1 / case when not exists (
+  select 1 from purchases transaction
+  where transaction.organization_id is not null
+    and not exists (
+      select 1 from fiscal_year_organizations membership
+      where membership.fiscal_year_id = transaction.fiscal_year_id
+        and membership.organization_id = transaction.organization_id
+        and membership.active = true
+    )
+  union all
+  select 1 from income_lines transaction
+  where transaction.organization_id is not null
+    and not exists (
+      select 1 from fiscal_year_organizations membership
+      where membership.fiscal_year_id = transaction.fiscal_year_id
+        and membership.organization_id = transaction.organization_id
+        and membership.active = true
+    )
+) then 1 else 0 end as referenced_legacy_organizations_have_exact_membership;
+
 rollback;

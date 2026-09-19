@@ -1,6 +1,42 @@
 -- Phase 4 Gate 3: require transaction fiscal years and enforce same-FY scope.
 -- Apply only after compatible application writers are deployed.
 
+-- Preserve every referenced legacy organization identity as an active FY member.
+-- Selectors still deduplicate by FY + org code; Gate 4 performs identity consolidation.
+with referenced_organizations as (
+  select fiscal_year_id, organization_id from app_theatre_budget.purchases where organization_id is not null
+  union
+  select fiscal_year_id, organization_id from app_theatre_budget.income_lines where organization_id is not null
+  union
+  select fiscal_year_id, organization_id from app_theatre_budget.cc_statement_months where organization_id is not null
+  union
+  select fiscal_year_id, organization_id from app_theatre_budget.cc_statement_lines where organization_id is not null
+), membership_defaults as (
+  select
+    reference.fiscal_year_id,
+    reference.organization_id,
+    coalesce(existing.sort_order, organization.sort_order, 0) as sort_order,
+    coalesce(existing.project_tracking_required, organization.project_tracking_required, true) as project_tracking_required
+  from referenced_organizations reference
+  join app_theatre_budget.organizations organization on organization.id = reference.organization_id
+  left join lateral (
+    select membership.sort_order, membership.project_tracking_required
+    from app_theatre_budget.fiscal_year_organizations membership
+    join app_theatre_budget.organizations member_organization on member_organization.id = membership.organization_id
+    where membership.fiscal_year_id = reference.fiscal_year_id
+      and member_organization.org_code = organization.org_code
+    order by membership.active desc, membership.created_at
+    limit 1
+  ) existing on true
+)
+insert into app_theatre_budget.fiscal_year_organizations (
+  fiscal_year_id, organization_id, active, sort_order, project_tracking_required
+)
+select fiscal_year_id, organization_id, true, sort_order, project_tracking_required
+from membership_defaults
+on conflict (fiscal_year_id, organization_id) do update
+set active = true, updated_at = now();
+
 alter table app_theatre_budget.cc_statement_lines
   alter column project_budget_line_id drop not null;
 
@@ -22,15 +58,18 @@ as $$
 declare
   v_project_fiscal_year_id uuid;
   v_project_organization_id uuid;
+  v_project_org_code text;
+  v_transaction_org_code text;
 begin
   if new.fiscal_year_id is null then
     raise exception 'Fiscal year is required for %.', tg_table_name;
   end if;
 
   if new.project_id is not null then
-    select project.fiscal_year_id, project.organization_id
-    into v_project_fiscal_year_id, v_project_organization_id
+    select project.fiscal_year_id, project.organization_id, organization.org_code
+    into v_project_fiscal_year_id, v_project_organization_id, v_project_org_code
     from app_theatre_budget.projects project
+    left join app_theatre_budget.organizations organization on organization.id = project.organization_id
     where project.id = new.project_id;
 
     if v_project_fiscal_year_id is null then
@@ -39,8 +78,12 @@ begin
     if new.fiscal_year_id <> v_project_fiscal_year_id then
       raise exception 'Transaction fiscal year must match project fiscal year.';
     end if;
-    if new.organization_id is not null and new.organization_id <> v_project_organization_id then
-      raise exception 'Transaction organization must match project organization.';
+    if new.organization_id is not null then
+      select organization.org_code into v_transaction_org_code
+      from app_theatre_budget.organizations organization where organization.id = new.organization_id;
+      if v_transaction_org_code is distinct from v_project_org_code then
+        raise exception 'Transaction organization code must match project organization code.';
+      end if;
     end if;
   end if;
 
