@@ -1,6 +1,6 @@
 # Phase 4 Gate 5C — Budget Planning Matrix
 
-**Status:** Implemented and verified in code; awaiting approval; not deployed
+**Status:** Approved 2026-09-19
 
 ## Outcome
 
@@ -44,3 +44,7 @@ Gate 5C replaces the per-account annual form and nested monthly-detail table wit
 - Verify a scoped project manager can edit only permitted planning data and the same scope through impersonation.
 - Confirm no production schema migration is required for Gate 5C.
 - Obtain explicit Gate 5C approval before merge or production deployment.
+
+## Approval
+
+Gate 5C was approved on 2026-09-19. It requires no database migration; the deployment changes only application interaction and presentation while retaining the existing budget-plan tables, RLS, and calculations.
