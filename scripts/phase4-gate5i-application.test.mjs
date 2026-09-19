@@ -57,6 +57,7 @@ test("Hiring keeps existing union, installment, filtering, drawer, and bulk expo
 
 test("Expense Claim actions preserve authorization and require explanations for overages", async () => {
   const actions = await read("app/cc/expense-claim-actions.ts");
+  const transaction = await read("supabase/migrations/20260919220000_phase4_gate5j_transactional_expense_claims.sql");
   assert.match(actions, /createExpenseClaimAction/);
   assert.match(actions, /claimNumber/);
   assert.match(actions, /expenseNumber/);
@@ -64,16 +65,18 @@ test("Expense Claim actions preserve authorization and require explanations for 
   assert.match(actions, /overageExplanation/);
   assert.match(actions, /exceeds the authorized amount/i);
   assert.match(actions, /pending_cc_amount/);
-  assert.match(actions, /purchase_receipts/);
+  assert.match(actions, /create_expense_claim_transaction/);
+  assert.match(transaction, /purchase_receipts/);
 });
 
 test("Credit Cards exposes focused funding, reconciliation, and reimbursement claim entry", async () => {
   const client = await read("app/cc/cc-page-client.tsx");
+  const panel = await read("app/cc/expense-claims-panel.tsx");
   const form = await read("app/cc/expense-claim-form.tsx");
   assert.match(client, /New Expense Claim/);
-  assert.match(client, /Card Funding Request/);
-  assert.match(client, /Monthly Card Reconciliation/);
-  assert.match(client, /Reimbursement/);
+  assert.match(panel, /Card Funding Request/);
+  assert.match(panel, /Monthly Card Reconciliation/);
+  assert.match(panel, /Reimbursement/);
   assert.match(client, /EC######/);
   assert.match(client, /EX######/);
   assert.match(form, /createExpenseClaimAction/);

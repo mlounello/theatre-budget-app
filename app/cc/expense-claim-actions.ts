@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getAccessContext, requireProjectRole } from "@/lib/access";
 import { createInstitutionalCommitmentForPurchase } from "@/lib/institutional-budget";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { expenseClaimInputSchema } from "@/lib/validation/financial";
 
 export type ExpenseClaimActionState = { ok: boolean; message: string; timestamp: number };
 
@@ -64,7 +65,7 @@ async function uploadReceipt(
   file: FormDataEntryValue | null,
   scopeId: string,
   purchaseId: string
-): Promise<string | null> {
+): Promise<{ url: string; path: string } | null> {
   if (!(file instanceof File) || file.size === 0) return null;
   if (file.size > MAX_RECEIPT_UPLOAD_BYTES) throw new Error("Each receipt must be under 10 MB.");
   if (file.type && !ALLOWED_RECEIPT_MIME_TYPES.has(file.type.toLowerCase())) {
@@ -74,7 +75,7 @@ async function uploadReceipt(
   const path = `${scopeId}/expense-claims/${purchaseId}/${Date.now()}-${safeName}`;
   const { error } = await supabase.storage.from(RECEIPT_STORAGE_BUCKET).upload(path, file, { upsert: false });
   if (error) throw new Error(`Receipt upload failed: ${error.message}`);
-  return `storage:${RECEIPT_STORAGE_BUCKET}/${path}`;
+  return { url: `storage:${RECEIPT_STORAGE_BUCKET}/${path}`, path };
 }
 
 export async function createExpenseClaimAction(
@@ -91,43 +92,44 @@ export async function createExpenseClaimAction(
       return err("Only an Admin or Project Manager can create Expense Claims.");
     }
 
-    const type = claimType(formData.get("claimType"));
-    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
-    const projectId = String(formData.get("projectId") ?? "").trim();
-    const selectedOrganizationId = String(formData.get("organizationId") ?? "").trim();
-    const creditCardId = String(formData.get("creditCardId") ?? "").trim();
-    const claimNumber = String(formData.get("claimNumber") ?? "").trim().toUpperCase();
-    const claimMonthRaw = String(formData.get("claimMonth") ?? "").trim();
-    const authorizationClaimId = String(formData.get("authorizationClaimId") ?? "").trim();
-    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
-    const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
-    const overageExplanation = String(formData.get("overageExplanation") ?? "").trim();
-    const notes = String(formData.get("notes") ?? "").trim();
-    const lines = parseExpenseLines(formData.get("linesJson"));
-
-    if (!fiscalYearId || !/^EC\d{6}$/.test(claimNumber)) {
-      return err("Fiscal year and an Expense Claim number in EC###### format are required.");
-    }
-    if ((!projectId && !selectedOrganizationId) || (projectId && selectedOrganizationId)) {
-      return err("Choose exactly one theatre project or organization budget.");
-    }
-    if (lines.length === 0 || lines.some((line) => !/^EX\d{6}$/.test(line.expenseNumber) || !line.title || line.amount <= 0)) {
-      return err("Every Expense needs an EX###### number, title, and positive amount.");
-    }
+    const parsedInput = expenseClaimInputSchema.safeParse({
+      claimType: claimType(formData.get("claimType")),
+      fiscalYearId: String(formData.get("fiscalYearId") ?? "").trim(),
+      projectId: String(formData.get("projectId") ?? "").trim(),
+      organizationId: String(formData.get("organizationId") ?? "").trim(),
+      creditCardId: String(formData.get("creditCardId") ?? "").trim(),
+      claimNumber: String(formData.get("claimNumber") ?? "").trim().toUpperCase(),
+      claimMonth: String(formData.get("claimMonth") ?? "").trim(),
+      authorizationClaimId: String(formData.get("authorizationClaimId") ?? "").trim(),
+      productionCategoryId: String(formData.get("productionCategoryId") ?? "").trim(),
+      bannerAccountCodeId: String(formData.get("bannerAccountCodeId") ?? "").trim(),
+      overageExplanation: String(formData.get("overageExplanation") ?? "").trim(),
+      notes: String(formData.get("notes") ?? "").trim(),
+      lines: parseExpenseLines(formData.get("linesJson"))
+    });
+    if (!parsedInput.success) return err(parsedInput.error.issues[0]?.message ?? "Review the Expense Claim fields.");
+    const {
+      claimType: type,
+      fiscalYearId,
+      projectId,
+      organizationId: selectedOrganizationId,
+      creditCardId,
+      claimNumber,
+      claimMonth: claimMonthRaw,
+      authorizationClaimId,
+      productionCategoryId,
+      bannerAccountCodeId,
+      overageExplanation,
+      notes,
+      lines
+    } = parsedInput.data;
     if (type !== "funding_request" && lines.some((_, index) => {
       const receipt = formData.get(`receiptFile_${index}`);
       return !(receipt instanceof File) || receipt.size === 0;
     })) {
       return err("Upload a receipt for every reconciled or reimbursed Expense.");
     }
-    if (type !== "reimbursement" && !creditCardId) return err("Choose the physical card for this card claim.");
-    if (type === "monthly_reconciliation" && !authorizationClaimId) {
-      return err("Link the monthly reconciliation to its original funding request.");
-    }
-    if (projectId && !productionCategoryId) return err("Choose a department for a theatre project claim.");
-    if (!bannerAccountCodeId) return err("Choose a Banner account code.");
-
-    let organizationId = selectedOrganizationId;
+    let organizationId = selectedOrganizationId ?? "";
     let budgetLineId: string | null = null;
     if (projectId) {
       await requireProjectRole(projectId, ["admin", "project_manager"], {
@@ -163,9 +165,10 @@ export async function createExpenseClaimAction(
     } | null = null;
     let authorizationPurchaseId: string | null = null;
     if (type === "monthly_reconciliation") {
+      const requiredAuthorizationClaimId = authorizationClaimId as string;
       const { data, error } = await supabase.from("expense_claims")
         .select("id, fiscal_year_id, project_id, organization_id, credit_card_id, authorized_amount")
-        .eq("id", authorizationClaimId).eq("claim_type", "funding_request").single();
+        .eq("id", requiredAuthorizationClaimId).eq("claim_type", "funding_request").single();
       if (error || !data) return err("The original funding request could not be found.");
       authorization = data;
       if (data.fiscal_year_id !== fiscalYearId || (data.project_id ?? "") !== (projectId || "") ||
@@ -173,7 +176,7 @@ export async function createExpenseClaimAction(
         return err("The reconciliation must use the same fiscal year, budget, and card as its funding request.");
       }
       const { data: authorizationPurchase } = await supabase.from("purchases").select("id")
-        .eq("expense_claim_id", authorizationClaimId).eq("expense_stage", "authorization").limit(1).maybeSingle();
+        .eq("expense_claim_id", requiredAuthorizationClaimId).eq("expense_stage", "authorization").limit(1).maybeSingle();
       authorizationPurchaseId = (authorizationPurchase?.id as string | undefined) ?? null;
     }
 
@@ -183,118 +186,96 @@ export async function createExpenseClaimAction(
       return err("This claim exceeds the authorized amount. Add an overage explanation before saving.");
     }
 
-    const { data: claim, error: claimError } = await supabase.from("expense_claims").insert({
-      fiscal_year_id: fiscalYearId,
-      project_id: projectId || null,
-      organization_id: organizationId,
-      credit_card_id: creditCardId || null,
-      claim_number: claimNumber,
-      claim_type: type,
-      claim_month: /^\d{4}-\d{2}$/.test(claimMonthRaw) ? `${claimMonthRaw}-01` : null,
-      status: type === "funding_request" ? "submitted" : "reconciled",
-      authorized_amount: authorizedAmount,
-      settled_amount: type === "funding_request" ? null : total,
-      authorization_claim_id: authorizationClaimId || null,
-      overage_explanation: overageExplanation || null,
-      notes: notes || null,
-      entered_by_user_id: user.id
-    }).select("id").single();
-    if (claimError || !claim) return err(claimError?.message ?? "Could not create the Expense Claim.");
-
-    for (let index = 0; index < lines.length; index += 1) {
-      const line = lines[index];
-      const stage = type === "funding_request" ? "authorization" : type === "reimbursement" ? "reimbursement" : "actual";
-      const status = type === "monthly_reconciliation" ? "pending_cc" : "requested";
-      const { data: purchase, error: purchaseError } = await supabase.from("purchases").insert({
-        fiscal_year_id: fiscalYearId,
-        project_id: projectId || null,
-        organization_id: organizationId,
-        budget_line_id: budgetLineId,
-        production_category_id: productionCategoryId || null,
-        banner_account_code_id: bannerAccountCodeId,
-        budget_tracked: true,
-        entered_by_user_id: user.id,
-        title: line.title,
-        reference_number: claimNumber,
-        estimated_amount: line.amount,
-        requested_amount: status === "requested" ? line.amount : 0,
-        encumbered_amount: 0,
-        pending_cc_amount: status === "pending_cc" ? line.amount : 0,
-        posted_amount: 0,
-        status,
-        request_type: "expense",
-        is_credit_card: type !== "reimbursement",
-        credit_card_id: creditCardId || null,
-        cc_workflow_status: type === "monthly_reconciliation" ? "receipts_uploaded" : type === "funding_request" ? "requested" : null,
-        procurement_status: type === "monthly_reconciliation" ? "receipts_uploaded" : "requested",
-        purchase_date: line.expenseDate,
-        ordered_on: line.expenseDate,
-        notes: line.note,
-        expense_claim_id: claim.id,
-        expense_number: line.expenseNumber,
-        expense_stage: stage,
-        authorization_purchase_id: authorizationPurchaseId,
-        authorized_amount: authorizedAmount,
-        overage_explanation: overageExplanation || null
-      }).select("id").single();
-      if (purchaseError || !purchase) throw new Error(purchaseError?.message ?? "Could not create an Expense line.");
-
-      if (budgetLineId) {
-        const { error: allocationError } = await supabase.from("purchase_allocations").insert({
-          purchase_id: purchase.id,
-          reporting_budget_line_id: budgetLineId,
-          account_code_id: bannerAccountCodeId,
-          production_category_id: productionCategoryId,
+    const uploadedPaths: string[] = [];
+    const expensePayload: Array<Record<string, unknown>> = [];
+    try {
+      for (let index = 0; index < lines.length; index += 1) {
+        const line = lines[index];
+        const purchaseId = crypto.randomUUID();
+        const upload = type === "funding_request"
+          ? null
+          : await uploadReceipt(supabase, formData.get(`receiptFile_${index}`), projectId || organizationId, purchaseId);
+        if (upload) uploadedPaths.push(upload.path);
+        const status = type === "monthly_reconciliation" ? "pending_cc" : "requested";
+        expensePayload.push({
+          id: purchaseId,
+          expense_number: line.expenseNumber,
+          title: line.title,
           amount: line.amount,
-          reporting_bucket: "direct",
-          note: `${claimNumber} / ${line.expenseNumber}`
-        });
-        if (allocationError) throw new Error(allocationError.message);
-      }
-
-      if (type !== "funding_request") {
-        const attachmentUrl = await uploadReceipt(
-          supabase, formData.get(`receiptFile_${index}`), projectId || organizationId, purchase.id as string
-        );
-        const { error: receiptError } = await supabase.from("purchase_receipts").insert({
-          purchase_id: purchase.id,
+          expense_date: line.expenseDate,
           note: line.note,
-          amount_received: line.amount,
-          attachment_url: attachmentUrl,
-          fully_received: false,
-          created_by_user_id: user.id
+          requested_amount: status === "requested" ? line.amount : 0,
+          pending_cc_amount: status === "pending_cc" ? line.amount : 0,
+          status,
+          cc_workflow_status: type === "monthly_reconciliation" ? "receipts_uploaded" : type === "funding_request" ? "requested" : null,
+          procurement_status: type === "monthly_reconciliation" ? "receipts_uploaded" : "requested",
+          expense_stage: type === "funding_request" ? "authorization" : type === "reimbursement" ? "reimbursement" : "actual",
+          attachment_url: upload?.url ?? null
         });
-        if (receiptError) throw new Error(receiptError.message);
       }
-      await createInstitutionalCommitmentForPurchase(supabase, purchase.id as string, user.id);
+
+      const { data: transactionResult, error: transactionError } = await supabase.rpc("create_expense_claim_transaction", {
+        p_claim: {
+          id: crypto.randomUUID(),
+          fiscal_year_id: fiscalYearId,
+          project_id: projectId,
+          organization_id: organizationId,
+          credit_card_id: creditCardId,
+          claim_number: claimNumber,
+          claim_type: type,
+          claim_month: claimMonthRaw ? `${claimMonthRaw}-01` : null,
+          status: type === "funding_request" ? "submitted" : "reconciled",
+          authorized_amount: authorizedAmount,
+          settled_amount: type === "funding_request" ? null : total,
+          authorization_claim_id: authorizationClaimId,
+          authorization_purchase_id: authorizationPurchaseId,
+          overage_explanation: overageExplanation,
+          notes,
+          entered_by_user_id: user.id,
+          budget_line_id: budgetLineId,
+          production_category_id: productionCategoryId,
+          banner_account_code_id: bannerAccountCodeId
+        },
+        p_expenses: expensePayload
+      });
+      if (transactionError) throw new Error(transactionError.message);
+
+      const result = transactionResult as { purchase_ids?: string[] } | null;
+      const purchaseIds = result?.purchase_ids ?? expensePayload.map((expense) => String(expense.id));
+      let commitmentWarning = false;
+      for (const purchaseId of purchaseIds) {
+        try {
+          await createInstitutionalCommitmentForPurchase(supabase, purchaseId, user.id);
+        } catch (syncError) {
+          commitmentWarning = true;
+          console.error("Expense Claim commitment sync failed", { claimNumber, purchaseId, syncError });
+        }
+      }
+      if (type === "monthly_reconciliation" && authorizationPurchaseId) {
+        try {
+          await createInstitutionalCommitmentForPurchase(supabase, authorizationPurchaseId, user.id);
+        } catch (syncError) {
+          commitmentWarning = true;
+          console.error("Expense Claim authorization commitment sync failed", { claimNumber, authorizationPurchaseId, syncError });
+        }
+      }
+
+      revalidatePath("/cc");
+      revalidatePath("/procurement");
+      revalidatePath("/");
+      if (projectId) revalidatePath(`/projects/${projectId}`);
+      return ok(
+        `${claimNumber} saved with ${lines.length} Expense${lines.length === 1 ? "" : "s"}.` +
+          (commitmentWarning ? " The claim is saved, but a budget-sync item needs administrator review." : "")
+      );
+    } catch (transactionError) {
+      if (uploadedPaths.length > 0) {
+        const { error: cleanupError } = await supabase.storage.from(RECEIPT_STORAGE_BUCKET).remove(uploadedPaths);
+        if (cleanupError) console.error("Could not remove staged Expense Claim receipts", cleanupError);
+      }
+      throw transactionError;
     }
 
-    if (type === "monthly_reconciliation" && authorization && authorizationPurchaseId) {
-      const { data: priorClaims, error: priorError } = await supabase.from("expense_claims")
-        .select("settled_amount").eq("authorization_claim_id", authorization.id).neq("status", "cancelled");
-      if (priorError) throw new Error(priorError.message);
-      const settled = Math.round((priorClaims ?? []).reduce((sum, row) => sum + money(row.settled_amount), 0) * 100) / 100;
-      const remainingHold = Math.max(money(authorization.authorized_amount) - settled, 0);
-      const { error: claimUpdateError } = await supabase.from("expense_claims").update({
-        settled_amount: settled,
-        status: remainingHold === 0 ? "reconciled" : "approved",
-        updated_at: new Date().toISOString()
-      }).eq("id", authorization.id);
-      if (claimUpdateError) throw new Error(claimUpdateError.message);
-      const { error: updateError } = await supabase.from("purchases").update({
-        requested_amount: remainingHold,
-        estimated_amount: money(authorization.authorized_amount),
-        notes: `Original authorization preserved; ${settled.toFixed(2)} reconciled, ${remainingHold.toFixed(2)} remaining hold.`
-      }).eq("id", authorizationPurchaseId);
-      if (updateError) throw new Error(updateError.message);
-      await createInstitutionalCommitmentForPurchase(supabase, authorizationPurchaseId, user.id);
-    }
-
-    revalidatePath("/cc");
-    revalidatePath("/procurement");
-    revalidatePath("/");
-    if (projectId) revalidatePath(`/projects/${projectId}`);
-    return ok(`${claimNumber} saved with ${lines.length} Expense${lines.length === 1 ? "" : "s"}.`);
   } catch (error) {
     return err(errorMessage(error));
   }

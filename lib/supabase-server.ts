@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
+import type { Database } from "@/lib/database.types";
 import { getServerAppSchema } from "@/lib/supabase-schema";
 
 export async function createSupabaseServerClient() {
@@ -14,9 +15,9 @@ export async function createSupabaseServerClient() {
   if (!url) throw new Error("Missing env var: NEXT_PUBLIC_SUPABASE_URL");
   if (!anon) throw new Error("Missing env var: NEXT_PUBLIC_SUPABASE_ANON_KEY");
 
-  return createServerClient(url, anon, {
+  return createServerClient<Database, "app_theatre_budget">(url, anon, {
     db: {
-      schema: getServerAppSchema()
+      schema: getServerAppSchema() as "app_theatre_budget"
     },
     cookies: {
       getAll() {
@@ -35,7 +36,7 @@ export async function createSupabaseServerClient() {
 
 export async function createTbServerDb() {
   const supabase = await createSupabaseServerClient();
-  return supabase.schema(getServerAppSchema());
+  return supabase.schema(getServerAppSchema() as "app_theatre_budget");
 }
 
 // Backwards-compatible export used across the app today.

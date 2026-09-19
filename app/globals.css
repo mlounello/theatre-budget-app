@@ -1824,7 +1824,7 @@ th {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.6rem;
-  align-items: end;
+  align-items: flex-end;
 }
 
 .inlineFilters label {
@@ -1878,7 +1878,7 @@ th {
   display: flex;
   flex: 1 1 760px;
   flex-wrap: wrap;
-  align-items: end;
+  align-items: flex-end;
   gap: 0.65rem;
 }
 
@@ -2680,7 +2680,7 @@ th {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.7rem;
-  align-items: end;
+  align-items: flex-end;
 }
 
 .contractBulkShared label {
@@ -2722,7 +2722,7 @@ th {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(120px, 1fr) minmax(120px, 0.8fr) auto;
   gap: 0.6rem;
-  align-items: end;
+  align-items: flex-end;
 }
 
 .contractBulkRow label {
@@ -3762,5 +3762,69 @@ th {
 @media (max-width: 860px) {
   table {
     min-width: 640px;
+  }
+
+  .responsiveDataTableWrap {
+    overflow: visible;
+  }
+
+  .responsiveDataTable {
+    min-width: 0;
+  }
+
+  .responsiveDataTable thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .responsiveDataTable tbody,
+  .responsiveDataTable tr,
+  .responsiveDataTable td {
+    display: block;
+    width: 100%;
+  }
+
+  .responsiveDataTable tr {
+    min-width: 0;
+    margin-bottom: 0.75rem;
+    padding: 0.35rem 0.7rem;
+    border: 1px solid var(--surface-border);
+    border-radius: 12px;
+    background: var(--surface);
+  }
+
+  .responsiveDataTable td {
+    display: grid;
+    grid-template-columns: minmax(7rem, 38%) 1fr;
+    gap: 0.75rem;
+    min-width: 0;
+    padding: 0.5rem 0;
+    border: 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--surface-border) 65%, transparent);
+  }
+
+  .responsiveDataTable td:last-child {
+    border-bottom: 0;
+  }
+
+  .responsiveDataTable td::before {
+    content: attr(data-label);
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .responsiveDataTable .responsiveDataEmpty td {
+    display: block;
+  }
+
+  .responsiveDataTable .responsiveDataEmpty td::before {
+    content: none;
   }
 }

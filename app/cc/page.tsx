@@ -102,6 +102,8 @@ type ExpenseClaimRow = {
   expenses: Array<{ id: string; expenseNumber: string | null; title: string; amount: number; stage: string | null }>;
 };
 
+const EXPENSE_CLAIM_PAGE_SIZE = 25;
+
 export default async function CreditCardPage({
   searchParams
 }: {
@@ -114,6 +116,7 @@ export default async function CreditCardPage({
     cc_pending_q?: string;
     cc_view?: string;
     cc_statement?: string;
+    cc_claim_page?: string;
     fiscalYearId?: string;
   }>;
 }) {
@@ -131,6 +134,9 @@ export default async function CreditCardPage({
     ? resolvedSearchParams?.cc_view as "current" | "claims" | "exceptions" | "history" | "setup"
     : "current";
   const requestedStatementId = (resolvedSearchParams?.cc_statement ?? "").trim();
+  const expenseClaimPage = Math.max(Number.parseInt(resolvedSearchParams?.cc_claim_page ?? "1", 10) || 1, 1);
+  const expenseClaimRangeFrom = (expenseClaimPage - 1) * EXPENSE_CLAIM_PAGE_SIZE;
+  const expenseClaimRangeTo = expenseClaimRangeFrom + EXPENSE_CLAIM_PAGE_SIZE - 1;
 
   const supabase = await getSupabaseServerClient();
   const [
@@ -142,6 +148,7 @@ export default async function CreditCardPage({
     pendingPurchasesResponse,
     statementLinesResponse,
     expenseClaimsResponse,
+    authorizationClaimsResponse,
     accountCodeOptions,
     productionCategoryOptions,
     organizationOptions
@@ -177,9 +184,16 @@ export default async function CreditCardPage({
       .eq("fiscal_year_id", selectedFiscalYearId),
     supabase
       .from("expense_claims")
-      .select("id, claim_number, claim_type, claim_month, status, authorized_amount, settled_amount, authorization_claim_id, overage_explanation, project_id, organization_id, credit_card_id, projects(name, season), organizations(name, org_code), credit_cards(nickname), purchases!purchases_expense_claim_id_fkey(id, expense_number, title, estimated_amount, expense_stage)")
+      .select("id, claim_number, claim_type, claim_month, status, authorized_amount, settled_amount, authorization_claim_id, overage_explanation, project_id, organization_id, credit_card_id, projects(name, season), organizations(name, org_code), credit_cards(nickname), purchases!purchases_expense_claim_id_fkey(id, expense_number, title, estimated_amount, expense_stage)", { count: "exact" })
       .eq("fiscal_year_id", selectedFiscalYearId)
-      .order("created_at", { ascending: false }),
+      .order("created_at", { ascending: false })
+      .range(expenseClaimRangeFrom, expenseClaimRangeTo),
+    supabase
+      .from("expense_claims")
+      .select("id, claim_number, claim_type, status, authorized_amount, settled_amount, authorization_claim_id, project_id, organization_id, credit_card_id")
+      .eq("fiscal_year_id", selectedFiscalYearId)
+      .or("claim_type.eq.funding_request,authorization_claim_id.not.is.null")
+      .limit(500),
     getAccountCodeOptions(),
     getProductionCategoryOptions(),
     getFiscalYearOrganizationOptions(selectedFiscalYearId)
@@ -191,6 +205,7 @@ export default async function CreditCardPage({
   if (pendingPurchasesResponse.error) throw pendingPurchasesResponse.error;
   if (statementLinesResponse.error) throw statementLinesResponse.error;
   if (expenseClaimsResponse.error) throw expenseClaimsResponse.error;
+  if (authorizationClaimsResponse.error) throw authorizationClaimsResponse.error;
   const hasGlobalAdmin = access.role === "admin";
   const manageableProjectIds = access.manageableProjectIds;
 
@@ -232,14 +247,14 @@ export default async function CreditCardPage({
     };
   });
   const reconciledByAuthorization = new Map<string, number>();
-  for (const claim of expenseClaims) {
-    if (!claim.authorizationClaimId || claim.status === "cancelled") continue;
+  for (const claim of authorizationClaimsResponse.data ?? []) {
+    if (!claim.authorization_claim_id || claim.status === "cancelled") continue;
     reconciledByAuthorization.set(
-      claim.authorizationClaimId,
-      (reconciledByAuthorization.get(claim.authorizationClaimId) ?? 0) + claim.settledAmount
+      claim.authorization_claim_id as string,
+      (reconciledByAuthorization.get(claim.authorization_claim_id as string) ?? 0) + Number(claim.settled_amount ?? 0)
     );
   }
-  const fundingClaims: FundingClaimRow[] = (expenseClaimsResponse.data ?? [])
+  const fundingClaims: FundingClaimRow[] = (authorizationClaimsResponse.data ?? [])
     .filter((row) => row.claim_type === "funding_request" && row.status !== "cancelled")
     .map((row) => ({
       id: row.id as string,
@@ -498,6 +513,9 @@ export default async function CreditCardPage({
         productionCategoryOptions={productionCategoryOptions}
         fundingClaims={fundingClaims}
         expenseClaims={expenseClaims}
+        expenseClaimPage={expenseClaimPage}
+        expenseClaimTotal={expenseClaimsResponse.count ?? expenseClaims.length}
+        expenseClaimPageSize={EXPENSE_CLAIM_PAGE_SIZE}
       />
     </section>
   );

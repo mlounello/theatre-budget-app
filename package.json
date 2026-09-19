@@ -22,10 +22,11 @@
     "test:phase4-gate5g": "node --test scripts/phase4-gate5g-application.test.mjs",
     "test:phase4-gate5h": "node --test scripts/phase4-gate5h-application.test.mjs",
     "test:phase4-gate5i": "node --test scripts/phase4-gate5i-application.test.mjs",
+    "test:phase4-gate5j": "node --test scripts/phase4-gate5j-application.test.mjs",
     "test:phase5a-integrations": "node --test scripts/phase5a-integration-boundaries.test.mjs"
   },
   "dependencies": {
-    "@supabase/ssr": "^0.5.2",
+    "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.53.0",
     "clsx": "^2.1.1",
     "exceljs": "^4.4.0",
