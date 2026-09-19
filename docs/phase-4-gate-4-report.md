@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-19  
 **Branch:** `codex/phase-4-gate-4`  
-**Status:** Complete and awaiting approval
+**Status:** Approved 2026-09-19
 
 ## Outcome
 
@@ -90,6 +90,6 @@ The baseline script was corrected during verification to read transaction-owned 
 - Final FY26/FY27 financial comparison: passed.
 - Migration-history reconciliation: passed.
 
-## Approval boundary
+## Approval
 
-Gate 4 is complete. Gate 5 must not begin until this report and the live result are reviewed and Gate 4 is explicitly approved.
+Gate 4 and its live result were explicitly approved on 2026-09-19. Gate 5A may begin.
