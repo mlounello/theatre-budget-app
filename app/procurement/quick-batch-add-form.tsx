@@ -294,7 +294,6 @@ export function QuickBatchAddForm({
               <option value="contract">Contract</option>
               <option value="request">Budget Hold</option>
               <option value="budget_transfer">Budget Transfer</option>
-              <option value="contract_payment">Contract Payment</option>
             </select>
             <button type="button" className="tinyButton dangerButton" onClick={() => removeLine(line.id)}>
               Remove

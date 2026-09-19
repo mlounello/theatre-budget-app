@@ -28,6 +28,21 @@ test("procurement filtering and pagination happen on the server", async () => {
   assert.match(page, /params\.set\("pr_page", String\(nextPage\)\)/);
 });
 
+test("contract and union payments stay out of procurement queues", async () => {
+  const page = await read("app/procurement/page.tsx");
+  const create = await read("app/procurement/create-order-form.tsx");
+  const batch = await read("app/procurement/quick-batch-add-form.tsx");
+  const db = await read("lib/db.ts");
+  const procurementData = db.slice(db.indexOf("export async function getProcurementData"), db.indexOf("export async function getContractsData"));
+  const trackerData = db.slice(db.indexOf("export async function getProcurementTrackerData"), db.indexOf("export async function getContractsData"));
+  assert.match(procurementData, /\.neq\("request_type", "contract_payment"\)/);
+  assert.match(trackerData, /\.neq\("request_type", "contract_payment"\)/);
+  assert.doesNotMatch(page, /<option value="contract_payment">/);
+  assert.doesNotMatch(create, /<option value="contract_payment">/);
+  assert.doesNotMatch(batch, /<option value="contract_payment">/);
+  assert.match(page, /tracked in Hiring &amp; Payments/);
+});
+
 test("supporting records are restricted to purchases on the current page", async () => {
   const db = await read("lib/db.ts");
   assert.match(db, /currentPagePurchaseIds/);

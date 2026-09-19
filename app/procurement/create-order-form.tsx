@@ -44,7 +44,7 @@ export function CreateOrderForm({
   const [bannerAccountCodeId, setBannerAccountCodeId] = useState("");
   const [newVendorName, setNewVendorName] = useState("");
   const [requestType, setRequestType] = useState<
-    "requisition" | "expense" | "contract" | "request" | "budget_transfer" | "contract_payment"
+    "requisition" | "expense" | "contract" | "request" | "budget_transfer"
   >("requisition");
   const [isCreditCard, setIsCreditCard] = useState(true);
 
@@ -73,8 +73,7 @@ export function CreateOrderForm({
       type === "expense" ||
       type === "contract" ||
       type === "request" ||
-      type === "budget_transfer" ||
-      type === "contract_payment"
+      type === "budget_transfer"
     ) {
       setRequestType(type);
     }
@@ -257,7 +256,6 @@ export function CreateOrderForm({
           <option value="contract">Contract</option>
           <option value="request">Budget Hold</option>
           <option value="budget_transfer">Budget Transfer</option>
-          <option value="contract_payment">Contract Payment</option>
         </select>
       </label>
       {requestType === "expense" ? (

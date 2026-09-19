@@ -1461,6 +1461,7 @@ export async function getProcurementData(
       { count: "exact" }
     )
     .is("expense_claim_id", null)
+    .neq("request_type", "contract_payment")
     .order("created_at", { ascending: false });
   if (params.fiscalYearId) purchasesQuery = purchasesQuery.eq("fiscal_year_id", params.fiscalYearId);
   if (params.projectId === "__organization_budget__") purchasesQuery = purchasesQuery.is("project_id", null);
@@ -1480,7 +1481,10 @@ export async function getProcurementData(
   purchasesQuery = purchasesQuery.range(rangeFrom, rangeTo);
 
   const scopedCountQuery = () => {
-    let query = supabase.from("purchases").select("id", { count: "exact", head: true });
+    let query = supabase
+      .from("purchases")
+      .select("id", { count: "exact", head: true })
+      .neq("request_type", "contract_payment");
     if (params.fiscalYearId) query = query.eq("fiscal_year_id", params.fiscalYearId);
     return query;
   };
@@ -1815,6 +1819,7 @@ export async function getProcurementTrackerData(): Promise<{
         "id, organization_id, title, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, procurement_status, ordered_on, received_on, paid_on, notes, organizations(name, org_code), vendors(name)"
       )
       .in("organization_id", scopedOrgIds)
+      .neq("request_type", "contract_payment")
       .order("created_at", { ascending: false }),
     supabase.from("organizations").select("id, name, org_code").in("id", scopedOrgIds).order("org_code", { ascending: true }),
     supabase

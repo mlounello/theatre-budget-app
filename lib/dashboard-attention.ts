@@ -11,7 +11,8 @@ export type DashboardAttentionItem = {
 export type DashboardOperationalAttention = {
   missingReceipts: DashboardAttentionItem[];
   statementsAwaitingReconciliation: DashboardAttentionItem[];
-  upcomingContractChecks: DashboardAttentionItem[];
+  overdueHiringPayments: DashboardAttentionItem[];
+  unsubmittedHiringChecks: DashboardAttentionItem[];
   revenueBehindSchedule: DashboardAttentionItem[];
 };
 
@@ -65,14 +66,14 @@ export async function getDashboardOperationalAttention(params: {
     supabase
       .from("contract_installments")
       .select(
-        "id, installment_number, installment_amount, status, due_date, mail_by, contracts!inner(id, fiscal_year_id, contractor_name, contract_role)"
+        "id, installment_number, installment_amount, status, due_date, ap_receive_by, mail_by, contracts!inner(id, fiscal_year_id, contractor_name, contract_role)"
       )
       .eq("contracts.fiscal_year_id", params.fiscalYearId)
       .neq("status", "check_paid"),
     supabase
       .from("contract_union_contributions")
       .select(
-        "id, fund_name_snapshot, amount, status, due_date, mail_by, contracts!inner(id, fiscal_year_id, contractor_name, contract_role)"
+        "id, fund_name_snapshot, amount, status, due_date, ap_receive_by, mail_by, contracts!inner(id, fiscal_year_id, contractor_name, contract_role)"
       )
       .eq("contracts.fiscal_year_id", params.fiscalYearId)
       .neq("status", "check_paid"),
@@ -122,9 +123,11 @@ export async function getDashboardOperationalAttention(params: {
         id: `installment:${String(row.id ?? "")}`,
         label: `${contract?.contractor_name ?? "Contractor"} · Installment ${Number(row.installment_number ?? 1)}`,
         amount: asNumber(row.installment_amount as string | number | null),
-        date: String(row.mail_by ?? row.due_date ?? ""),
+        paymentDate: String(row.due_date ?? ""),
+        submissionDate: String(row.ap_receive_by ?? row.mail_by ?? row.due_date ?? ""),
         role: contract?.contract_role ?? null,
-        contractId: contract?.id ?? null
+        contractId: contract?.id ?? null,
+        status: String(row.status ?? "planned")
       };
     }),
     ...((unionContributionsResponse.data ?? []) as Array<Record<string, unknown>>).map((row) => {
@@ -133,21 +136,36 @@ export async function getDashboardOperationalAttention(params: {
         id: `union:${String(row.id ?? "")}`,
         label: `${contract?.contractor_name ?? "Contractor"} · ${String(row.fund_name_snapshot ?? "Union fund")}`,
         amount: asNumber(row.amount as string | number | null),
-        date: String(row.mail_by ?? row.due_date ?? ""),
+        paymentDate: String(row.due_date ?? ""),
+        submissionDate: String(row.ap_receive_by ?? row.mail_by ?? row.due_date ?? ""),
         role: contract?.contract_role ?? null,
-        contractId: contract?.id ?? null
+        contractId: contract?.id ?? null,
+        status: String(row.status ?? "planned")
       };
     })
-  ]
-    .filter((row) => row.date && row.date <= cutoffKey)
-    .sort((a, b) => a.date.localeCompare(b.date));
+  ].sort((a, b) => a.paymentDate.localeCompare(b.paymentDate));
 
-  const upcomingContractChecks = contractChecks.map((row) => ({
+  const asAttentionItem = (row: (typeof contractChecks)[number], detailPrefix: string): DashboardAttentionItem => ({
     id: row.id,
     label: row.label,
-    detail: `${row.date < todayKey ? "Overdue" : `Due ${row.date}`} · ${money(row.amount)}${row.role ? ` · ${row.role}` : ""}`,
-    href: row.contractId ? `/contracts?fiscalYearId=${encodeURIComponent(params.fiscalYearId)}&ct_edit=${encodeURIComponent(row.contractId)}` : undefined
-  }));
+    detail: `${detailPrefix} · ${money(row.amount)}${row.role ? ` · ${row.role}` : ""}`,
+    href: row.contractId
+      ? `/contracts?fiscalYearId=${encodeURIComponent(params.fiscalYearId)}&hiring_view=payments&ct_edit=${encodeURIComponent(row.contractId)}`
+      : undefined
+  });
+
+  const overdueHiringPayments = contractChecks
+    .filter((row) => row.paymentDate && row.paymentDate < todayKey)
+    .map((row) => asAttentionItem(row, `Payment overdue since ${row.paymentDate}`));
+
+  const unsubmittedHiringChecks = contractChecks
+    .filter((row) => row.status === "planned" && row.submissionDate && row.submissionDate <= cutoffKey)
+    .map((row) => asAttentionItem(
+      row,
+      row.submissionDate < todayKey
+        ? `Check request not submitted · AP date passed ${row.submissionDate}`
+        : `Check request not submitted · AP needs by ${row.submissionDate}`
+    ));
 
   const progress = fiscalYearProgress(params.fiscalYear);
   const revenueBehindSchedule = revenueRows
@@ -168,7 +186,8 @@ export async function getDashboardOperationalAttention(params: {
   return {
     missingReceipts,
     statementsAwaitingReconciliation,
-    upcomingContractChecks,
+    overdueHiringPayments,
+    unsubmittedHiringChecks,
     revenueBehindSchedule
   };
 }

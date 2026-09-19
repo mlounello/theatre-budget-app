@@ -55,6 +55,21 @@ test("Hiring keeps existing union, installment, filtering, drawer, and bulk expo
   assert.match(actions, /else \{\s*requestedAmount = amount;/);
 });
 
+test("Hiring provides separate artist and union payment schedules without removing budget commitments", async () => {
+  const page = await read("app/contracts/page.tsx");
+  const actions = await read("app/contracts/actions.ts");
+  const dashboard = await read("lib/dashboard-attention.ts");
+  assert.match(page, /Payment Schedule/);
+  assert.match(page, /Artist Contract Payments/);
+  assert.match(page, /Union Pension &amp; Benefit Funds/);
+  assert.match(page, /ContractInstallmentControl/);
+  assert.match(page, /UnionContributionStatusControl/);
+  assert.match(actions, /request_type: "contract_payment"/);
+  assert.match(dashboard, /overdueHiringPayments/);
+  assert.match(dashboard, /unsubmittedHiringChecks/);
+  assert.match(dashboard, /Check request not submitted/);
+});
+
 test("Expense Claim actions preserve authorization and require explanations for overages", async () => {
   const actions = await read("app/cc/expense-claim-actions.ts");
   const transaction = await read("supabase/migrations/20260919220000_phase4_gate5j_transactional_expense_claims.sql");

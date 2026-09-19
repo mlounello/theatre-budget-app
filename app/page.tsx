@@ -305,7 +305,8 @@ export default async function DashboardPage({
   let operationalAttention: DashboardOperationalAttention = {
     missingReceipts: [],
     statementsAwaitingReconciliation: [],
-    upcomingContractChecks: [],
+    overdueHiringPayments: [],
+    unsubmittedHiringChecks: [],
     revenueBehindSchedule: []
   };
   let loadError: string | null = null;
@@ -415,12 +416,20 @@ export default async function DashboardPage({
             items={operationalAttention.statementsAwaitingReconciliation}
           />
           <AttentionCard
-            title="Upcoming Contract Checks"
-            count={operationalAttention.upcomingContractChecks.length}
-            description="Artist and union checks due within 45 days, including overdue checks."
-            href={`/contracts?fiscalYearId=${encodeURIComponent(fiscalYearId)}`}
-            actionLabel="Open Contracts"
-            items={operationalAttention.upcomingContractChecks}
+            title="Overdue Hiring Payments"
+            count={operationalAttention.overdueHiringPayments.length}
+            description="Artist payments and union-fund checks past their payment date."
+            href={`/contracts?fiscalYearId=${encodeURIComponent(fiscalYearId)}&hiring_view=payments`}
+            actionLabel="Open Payment Schedule"
+            items={operationalAttention.overdueHiringPayments}
+          />
+          <AttentionCard
+            title="Unsubmitted Hiring Checks"
+            count={operationalAttention.unsubmittedHiringChecks.length}
+            description="Artist and union checks due within 45 days whose check request has not been submitted."
+            href={`/contracts?fiscalYearId=${encodeURIComponent(fiscalYearId)}&hiring_view=payments`}
+            actionLabel="Open Payment Schedule"
+            items={operationalAttention.unsubmittedHiringChecks}
           />
           <AttentionCard
             title="Budget Shortages"

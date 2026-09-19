@@ -180,7 +180,6 @@ export default async function ProcurementPage({
                 <option value="expense">Expense / Credit Card</option>
                 <option value="request">Budget Hold</option>
                 <option value="budget_transfer">Budget Transfer</option>
-                <option value="contract_payment">Contract Payment</option>
               </select>
             </label>
             <label>
@@ -194,6 +193,10 @@ export default async function ProcurementPage({
           </form>
         </FilterToolbar>
       </article>
+
+      <p className="helperText">
+        Artist contract payments and union pension or benefit-fund checks are tracked in Hiring &amp; Payments. They still count against their assigned budgets, projects, and departments.
+      </p>
 
       <ProcurementTable
         purchases={purchases}

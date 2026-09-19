@@ -4,13 +4,14 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("dashboard leads with all seven reviewed attention categories", async () => {
+test("dashboard leads with all eight reviewed attention categories", async () => {
   const page = await read("app/page.tsx");
   for (const label of [
     "Open Requisitions",
     "Missing Receipts",
     "Statements Awaiting Reconciliation",
-    "Upcoming Contract Checks",
+    "Overdue Hiring Payments",
+    "Unsubmitted Hiring Checks",
     "Budget Shortages",
     "Incomplete Variances",
     "Revenue Behind Schedule"
