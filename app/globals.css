@@ -19,6 +19,18 @@
   box-sizing: border-box;
 }
 
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 html,
 body {
   margin: 0;
@@ -1462,7 +1474,8 @@ th {
 }
 
 .contractQuickStatusControl .successNote,
-.contractQuickStatusControl .errorNote {
+.contractQuickStatusControl .errorNote,
+.contractQuickStatusControl .uiNotice {
   margin: 0;
   font-size: 0.7rem;
 }
@@ -2170,6 +2183,280 @@ th {
   background: #fff0f0;
 }
 
+/* Shared interaction foundation */
+.uiOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(10, 20, 14, 0.45);
+}
+
+.uiDrawerOverlay {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.uiDrawer {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(720px, 100vw);
+  height: 100vh;
+  background: var(--surface);
+  border-left: 1px solid var(--surface-border);
+  box-shadow: -18px 0 45px rgba(8, 36, 27, 0.22);
+  animation: contractDrawerIn 160ms ease-out;
+  outline: none;
+}
+
+.uiDrawer-medium {
+  width: min(560px, 100vw);
+}
+
+.uiDrawerHeader,
+.uiDrawerFooter,
+.uiModalHeader,
+.uiModalFooter {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 1rem 1.1rem;
+  background: #ffffff;
+}
+
+.uiDrawerHeader,
+.uiModalHeader {
+  border-bottom: 1px solid #dce5df;
+}
+
+.uiDrawerFooter,
+.uiModalFooter {
+  align-items: center;
+  border-top: 1px solid #dce5df;
+}
+
+.uiDrawerHeader h2,
+.uiDrawerHeader p,
+.uiModalHeader h2,
+.uiModalHeader p {
+  margin: 0;
+}
+
+.uiDrawerHeader .helperText,
+.uiModalHeader p {
+  margin-top: 0.35rem;
+}
+
+.uiDrawerBody,
+.uiModalBody {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.uiDrawerForm {
+  display: grid;
+  align-content: start;
+  gap: 0.7rem;
+  padding: 0.8rem 1rem 1.2rem;
+}
+
+.uiAccordion {
+  border: 1px solid #d8e2db;
+  border-radius: 11px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.uiAccordion > summary {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: baseline;
+  padding: 0.75rem 0.85rem;
+  cursor: pointer;
+  background: #f5f8f6;
+  color: var(--siena-dark-green);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-weight: 800;
+}
+
+.uiAccordion > summary:focus-visible,
+.drawerCloseButton:focus-visible,
+.uiModal:focus-visible,
+.uiDrawer:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--siena-blue) 70%, white);
+  outline-offset: -3px;
+}
+
+.uiAccordion > summary small {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  text-align: right;
+}
+
+.uiModalOverlay {
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.uiModal {
+  width: min(720px, 100%);
+  max-height: calc(100vh - 2rem);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  border-radius: 14px;
+  box-shadow: 0 20px 55px rgba(8, 36, 27, 0.24);
+  overflow: hidden;
+  outline: none;
+}
+
+.uiModal-small {
+  width: min(460px, 100%);
+}
+
+.uiModal-large {
+  width: min(960px, 100%);
+}
+
+.uiModalBody {
+  padding: 1rem 1.1rem;
+}
+
+.uiDialogActions,
+.uiDrawerFooter > div,
+.uiModalFooter > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.uiNotice {
+  margin: 0.7rem 1rem 0;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font-family: "Gudea", "Arial", sans-serif;
+}
+
+.uiNotice-success {
+  background: #e7f6e7;
+  border-color: #a8d5aa;
+  color: #235b2a;
+}
+
+.uiNotice-error {
+  background: #fff0f1;
+  border-color: #e1a8ae;
+  color: #7f1d2a;
+}
+
+.uiNotice-info {
+  background: #eaf6fa;
+  border-color: #add5e1;
+  color: #005a73;
+}
+
+.uiNotice-warning {
+  background: #fff8df;
+  border-color: #e6cc72;
+  color: #6b5300;
+}
+
+.uiFilterToolbar,
+.uiBulkToolbar,
+.uiPagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid #dce5df;
+  border-radius: 10px;
+  background: #f4f8f5;
+}
+
+.uiFilterToolbar {
+  flex-wrap: wrap;
+}
+
+.uiBulkToolbar.isSticky {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+.uiPagination p {
+  margin: 0;
+  color: var(--text-muted);
+  font-family: "Gudea", "Arial", sans-serif;
+}
+
+.uiPagination > div {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.buttonLink.isDisabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.uiStatusPill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.uiStatusPill-neutral { background: #e7ece9; color: #35483f; }
+.uiStatusPill-info { background: #dff4fb; color: #005a73; }
+.uiStatusPill-warning { background: #fff0b5; color: #6b5300; }
+.uiStatusPill-success { background: #dbf3d8; color: #1f5f1e; }
+.uiStatusPill-danger { background: #f8dde0; color: #7f1d2a; }
+
+.uiStatusSelector {
+  display: grid;
+  gap: 0.25rem;
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.78rem;
+}
+
+.uiStatusSelector > span {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.uiStatusSelector.isCompact > span {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uiDrawer {
+    animation: none;
+  }
+}
+
 /* Keep scrollbars visible and easy to grab for mouse users */
 *::-webkit-scrollbar {
   width: 12px;
@@ -2192,6 +2479,21 @@ th {
 }
 
 @media (max-width: 720px) {
+  .uiDrawerFooter,
+  .uiModalFooter,
+  .uiFilterToolbar,
+  .uiBulkToolbar,
+  .uiPagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .uiDrawerFooter > div,
+  .uiModalFooter > div,
+  .uiPagination > div {
+    flex-wrap: wrap;
+  }
+
   .contractBulkBar,
   .contractDrawerFooter {
     align-items: stretch;

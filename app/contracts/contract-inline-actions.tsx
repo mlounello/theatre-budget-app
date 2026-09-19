@@ -6,6 +6,9 @@ import {
   updateContractWorkflowAction,
   type ActionState
 } from "@/app/contracts/actions";
+import { ActionNotice } from "@/components/ui/action-notice";
+import { PendingButton } from "@/components/ui/pending-button";
+import { StatusSelector } from "@/components/ui/status-controls";
 import type { ContractInstallmentRow, ContractRow } from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
@@ -23,25 +26,27 @@ export function ContractWorkflowControl({
     <div className={compact ? "contractQuickStatusControl" : undefined}>
       {compact ? <span className="contractQuickStatusLabel">Change status</span> : null}
       {state.message ? (
-        <p className={state.ok ? "successNote" : "errorNote"} key={state.timestamp} role="status">
+        <ActionNotice tone={state.ok ? "success" : "error"} key={state.timestamp}>
           {state.message}
-        </p>
+        </ActionNotice>
       ) : null}
       <form action={formAction} className={compact ? "contractQuickStatusForm" : "inlineEditForm"}>
         <input type="hidden" name="contractId" value={contract.id} />
-        <select
-          name="workflowStatus"
-          defaultValue={contract.workflowStatus}
-          aria-label={`Contract status for ${contract.contractorName}`}
-        >
-          <option value="w9_requested">W9 Requested</option>
-          <option value="contract_sent">Contract Sent</option>
-          <option value="contract_signed_returned">Contract Signed + Returned</option>
-          <option value="siena_signed">Siena Signed</option>
-        </select>
-        <button className="tinyButton" type="submit">
+        <StatusSelector label="Contract status" className={compact ? "isCompact" : ""}>
+          <select
+            name="workflowStatus"
+            defaultValue={contract.workflowStatus}
+            aria-label={`Contract status for ${contract.contractorName}`}
+          >
+            <option value="w9_requested">W9 Requested</option>
+            <option value="contract_sent">Contract Sent</option>
+            <option value="contract_signed_returned">Contract Signed + Returned</option>
+            <option value="siena_signed">Siena Signed</option>
+          </select>
+        </StatusSelector>
+        <PendingButton className="tinyButton" type="submit" pendingLabel="Saving…">
           Save
-        </button>
+        </PendingButton>
       </form>
     </div>
   );
@@ -53,20 +58,26 @@ export function ContractInstallmentControl({ installment }: { installment: Contr
   return (
     <>
       {state.message ? (
-        <p className={state.ok ? "successNote" : "errorNote"} key={state.timestamp}>
+        <ActionNotice tone={state.ok ? "success" : "error"} key={state.timestamp}>
           {state.message}
-        </p>
+        </ActionNotice>
       ) : null}
       <form action={formAction} className="inlineEditForm">
         <input type="hidden" name="installmentId" value={installment.id} />
-        <select name="status" defaultValue={installment.status}>
-          <option value="planned">Not Submitted</option>
-          <option value="check_request_submitted">Check Request Submitted</option>
-          <option value="check_paid">Check Paid</option>
-        </select>
-        <button type="submit" className="tinyButton">
+        <StatusSelector label="Payment status">
+          <select
+            name="status"
+            defaultValue={installment.status}
+            aria-label={`Payment status for installment ${installment.installmentNumber}`}
+          >
+            <option value="planned">Not Submitted</option>
+            <option value="check_request_submitted">Check Request Submitted</option>
+            <option value="check_paid">Check Paid</option>
+          </select>
+        </StatusSelector>
+        <PendingButton type="submit" className="tinyButton" pendingLabel="Saving…">
           Save
-        </button>
+        </PendingButton>
       </form>
     </>
   );

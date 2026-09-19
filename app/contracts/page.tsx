@@ -4,6 +4,7 @@ import { BulkCheckRequestExport } from "@/app/contracts/bulk-check-request-expor
 import { ContractRowActions } from "@/app/contracts/contract-row-actions";
 import { ContractCalendarSubscription } from "@/app/contracts/contract-calendar-subscription";
 import { ContractInstallmentControl, ContractWorkflowControl } from "@/app/contracts/contract-inline-actions";
+import { StatusPill, type StatusTone } from "@/components/ui/status-controls";
 import { InstallmentCheckRequestActions } from "@/app/contracts/installment-check-request-actions";
 import { UnionContributionStatusControl, UnionSignatureControl } from "@/app/contracts/union-controls";
 import { formatCurrency } from "@/lib/format";
@@ -27,17 +28,16 @@ function installmentLabel(value: string): string {
   return "Not Submitted";
 }
 
-function workflowClass(value: string): string {
-  if (value === "contract_sent") return "status-ordered";
-  if (value === "contract_signed_returned") return "status-invoice_received";
-  if (value === "siena_signed") return "status-encumbered";
-  return "status-requested";
+function workflowTone(value: string): StatusTone {
+  if (value === "contract_signed_returned") return "info";
+  if (value === "siena_signed") return "success";
+  return "warning";
 }
 
-function installmentClass(value: string): string {
-  if (value === "check_paid") return "status-paid";
-  if (value === "check_request_submitted") return "status-ordered";
-  return "status-requested";
+function installmentTone(value: string): StatusTone {
+  if (value === "check_paid") return "success";
+  if (value === "check_request_submitted") return "info";
+  return "warning";
 }
 
 function contractSessionLabels(values: string[]): string[] {
@@ -245,15 +245,15 @@ export default async function ContractsPage({
                     <div className="contractStatusSummary">
                       {canManageContracts ? (
                         <>
-                          <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>
+                          <StatusPill tone={workflowTone(contract.workflowStatus)}>
                             {workflowLabel(contract.workflowStatus)}
-                          </span>
+                          </StatusPill>
                           <ContractWorkflowControl contract={contract} compact />
                         </>
                       ) : (
-                        <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>
+                        <StatusPill tone={workflowTone(contract.workflowStatus)}>
                           {workflowLabel(contract.workflowStatus)}
-                        </span>
+                        </StatusPill>
                       )}
                       {contract.isUnion ? <span className="contractUnionBadge">Union</span> : null}
                     </div>
@@ -283,9 +283,9 @@ export default async function ContractsPage({
                     <div className="contractDetailGrid">
                       <section className="contractWorkflowPanel">
                         <h4>Contract workflow</h4>
-                        <span className={`statusChip ${workflowClass(contract.workflowStatus)}`}>
+                        <StatusPill tone={workflowTone(contract.workflowStatus)}>
                           {workflowLabel(contract.workflowStatus)}
-                        </span>
+                        </StatusPill>
                         {contract.isUnion ? (
                           <div className="contractUnionWorkflow">
                             <strong>{contract.unionAgreementName ?? "Union Agreement"}</strong>
@@ -307,9 +307,9 @@ export default async function ContractsPage({
                                   Due {shortDate(row.dueDate)} · Mail by {shortDate(row.mailBy)}
                                 </small>
                               </div>
-                              <span className={`statusChip ${installmentClass(row.status)}`}>
+                              <StatusPill tone={installmentTone(row.status)}>
                                 {installmentLabel(row.status)}
-                              </span>
+                              </StatusPill>
                               {canManageContracts ? (
                                 <div className="contractCheckActions">
                                   <ContractInstallmentControl installment={row} />
@@ -344,9 +344,9 @@ export default async function ContractsPage({
                                       · Due {shortDate(contribution.dueDate)}
                                     </small>
                                   </div>
-                                  <span className={`statusChip ${installmentClass(contribution.status)}`}>
+                                  <StatusPill tone={installmentTone(contribution.status)}>
                                     {installmentLabel(contribution.status)}
-                                  </span>
+                                  </StatusPill>
                                   {canManageContracts ? (
                                     <div className="contractCheckActions">
                                       <UnionContributionStatusControl contribution={contribution} />
