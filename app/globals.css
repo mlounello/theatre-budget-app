@@ -3161,6 +3161,160 @@ th {
   order: -1;
 }
 
+.dashboardAttentionGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin: 1rem 0 1.25rem;
+}
+
+.dashboardAttentionCard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  min-height: 220px;
+  padding: 1rem;
+  border: 1px solid #cfdbd4;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 5px 16px rgb(15 61 46 / 7%);
+}
+
+.dashboardAttentionCard.needsAttention {
+  border-color: #d8b861;
+  background: #fffdf7;
+}
+
+.dashboardAttentionCard.clear {
+  border-color: #b9d7c4;
+  background: #f7fcf8;
+}
+
+.dashboardAttentionCardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+}
+
+.dashboardAttentionCardHeader h3,
+.dashboardAttentionCardHeader p {
+  margin: 0;
+}
+
+.dashboardAttentionCardHeader p {
+  margin-top: 0.3rem;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.dashboardAttentionCardHeader > strong {
+  display: grid;
+  flex: 0 0 auto;
+  min-width: 2.4rem;
+  min-height: 2.4rem;
+  place-items: center;
+  padding: 0.3rem;
+  border-radius: 999px;
+  color: var(--green-900);
+  background: #e4efe8;
+  font-size: 1.15rem;
+}
+
+.dashboardAttentionCard.needsAttention .dashboardAttentionCardHeader > strong {
+  color: #6b5300;
+  background: #fff0b5;
+}
+
+.dashboardAttentionList {
+  display: grid;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboardAttentionList li {
+  display: grid;
+  gap: 0.12rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #e4ebe6;
+}
+
+.dashboardAttentionList span {
+  font-weight: 700;
+}
+
+.dashboardAttentionList small,
+.dashboardClearMessage {
+  color: var(--text-muted);
+}
+
+.dashboardAttentionCard .buttonLink {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+.dashboardReportLinks {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.dashboardDetailDisclosure {
+  margin: 1rem 0;
+  border: 1px solid #d7e0da;
+  border-radius: 14px;
+  background: #f9fbfa;
+}
+
+.dashboardDetailDisclosure > summary {
+  padding: 0.9rem 1rem;
+  cursor: pointer;
+  color: var(--green-900);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-weight: 700;
+}
+
+.dashboardDetailDisclosure > .panel,
+.dashboardDetailDisclosure > .gridCards {
+  margin: 0 0.75rem 0.75rem;
+}
+
+.dashboardReportHubGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 0.8rem;
+  margin: 0.8rem 0 1.25rem;
+}
+
+.dashboardReportHubCard {
+  display: grid;
+  gap: 0.35rem;
+  padding: 1rem;
+  border: 1px solid #cbd9d1;
+  border-radius: 12px;
+  color: var(--text);
+  background: #fff;
+  text-decoration: none;
+  box-shadow: 0 4px 14px rgb(15 61 46 / 6%);
+}
+
+.dashboardReportHubCard strong {
+  color: var(--green-900);
+}
+
+.dashboardReportHubCard span {
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
+.dashboardReportHubCard:hover {
+  border-color: var(--green-700);
+  background: #f1f8f3;
+}
+
 .ccWorkspaceTab {
   display: grid;
   gap: 0.25rem;
@@ -3293,13 +3447,23 @@ th {
   .varianceQueueGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .dashboardAttentionGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 720px) {
   .ccWorkspaceNav,
   .settingsWorkspaceNav,
+  .dashboardAttentionGrid,
   .ccExceptionSummary {
     grid-template-columns: 1fr;
+  }
+
+  .dashboardReportLinks {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .ccWorkspaceHeader {

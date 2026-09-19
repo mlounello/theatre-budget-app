@@ -59,8 +59,9 @@ function navigationForRole(role: string): Navigation {
         {
           label: "Reports",
           links: [
+            { href: "/reports", label: "Reports Hub" },
             { href: "/overview", label: "Overview" },
-            { href: "/my-budget", label: "Viewer Totals" }
+            { href: "/my-budget", label: "Department Totals" }
           ]
         },
         {
