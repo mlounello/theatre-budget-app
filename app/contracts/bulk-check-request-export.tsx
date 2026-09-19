@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { SideDrawer } from "@/components/ui/side-drawer";
+import { BulkSelectionToolbar } from "@/components/ui/toolbars";
 
 const FORM_ID = "bulk-check-request-export";
 
@@ -33,12 +35,7 @@ export function BulkCheckRequestExport({ items }: { items: BulkCheckRequestItem[
 
   return (
     <>
-      <div className="contractBulkBar">
-        <div>
-          <strong>Bulk check requests</strong>
-          <span>{selectedCount === 0 ? "No checks selected" : `${selectedCount} of ${items.length} selected`}</span>
-        </div>
-        <div className="bulkActions">
+      <BulkSelectionToolbar selectedCount={selectedCount} totalCount={items.length} label="checks" sticky>
           <button type="button" className="tinyButton" onClick={() => setPickerOpen(true)}>
             Choose checks
           </button>
@@ -56,28 +53,34 @@ export function BulkCheckRequestExport({ items }: { items: BulkCheckRequestItem[
               Export combined PDF
             </button>
           </form>
-        </div>
-      </div>
+      </BulkSelectionToolbar>
 
-      {pickerOpen ? (
-        <div className="bulkCheckPickerOverlay" role="dialog" aria-modal="true" aria-label="Choose check requests">
-          <section className="bulkCheckPicker">
-            <header className="bulkCheckPickerHeader">
-              <div>
-                <p className="eyebrow">Bulk Export</p>
-                <h2>Choose check requests</h2>
-                <p className="helperText">Select or deselect every line that should appear in the combined PDF.</p>
-              </div>
-              <button
-                type="button"
-                className="drawerCloseButton"
-                onClick={() => setPickerOpen(false)}
-                aria-label="Close check request selector"
-              >
-                ×
+      <SideDrawer
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        eyebrow="Bulk Export"
+        title="Choose check requests"
+        description="Select or deselect every line that should appear in the combined PDF."
+        closeLabel="Close check request selector"
+        footer={
+          <>
+            <span>{selectedCount === 0 ? "Choose at least one check request." : `${selectedCount} checks ready to export.`}</span>
+            <div>
+              <button type="button" className="tinyButton" onClick={() => setPickerOpen(false)}>
+                Done
               </button>
-            </header>
-
+              <button
+                type="submit"
+                className="tinyButton primaryButton"
+                form={FORM_ID}
+                disabled={selectedCount === 0}
+              >
+                Export selected
+              </button>
+            </div>
+          </>
+        }
+      >
             <div className="bulkCheckPickerControls">
               <strong>{selectedCount} selected</strong>
               <div>
@@ -115,26 +118,7 @@ export function BulkCheckRequestExport({ items }: { items: BulkCheckRequestItem[
                 </label>
               ))}
             </div>
-
-            <footer className="bulkCheckPickerFooter">
-              <span>{selectedCount === 0 ? "Choose at least one check request." : `${selectedCount} checks ready to export.`}</span>
-              <div>
-                <button type="button" className="tinyButton" onClick={() => setPickerOpen(false)}>
-                  Done
-                </button>
-                <button
-                  type="submit"
-                  className="tinyButton primaryButton"
-                  form={FORM_ID}
-                  disabled={selectedCount === 0}
-                >
-                  Export selected
-                </button>
-              </div>
-            </footer>
-          </section>
-        </div>
-      ) : null}
+      </SideDrawer>
     </>
   );
 }

@@ -4,6 +4,10 @@ import { useActionState, useCallback, useEffect, useMemo, useRef, useState } fro
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { deleteContractAction, updateContractDetailsAction, type ActionState } from "@/app/contracts/actions";
 import { SensitiveTextInput } from "@/components/sensitive-text-input";
+import { AccordionSection } from "@/components/ui/accordion-section";
+import { ActionNotice } from "@/components/ui/action-notice";
+import { ConfirmationDialog } from "@/components/ui/modal-dialog";
+import { SideDrawer } from "@/components/ui/side-drawer";
 import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
 import type {
   AccountCodeOption,
@@ -89,7 +93,9 @@ export function ContractRowActions({
   const [editDueDates, setEditDueDates] = useState<Record<number, string>>({});
   const [editNotes, setEditNotes] = useState(contract.notes ?? "");
   const [openDrawerSection, setOpenDrawerSection] = useState<DrawerSection | null>("artist");
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const lastEditIdRef = useRef<string | null>(null);
+  const deleteFormRef = useRef<HTMLFormElement>(null);
   const editAccountingProject = projectOptions.find((project) => project.id === editProjectId);
   const editContractFiscalYearId = editFiscalYearId || editAccountingProject?.fiscalYearId || "";
   const editAssociatedProjectOptions = useMemo(
@@ -199,44 +205,52 @@ export function ContractRowActions({
         </button>
       </div>
 
-      {open ? (
-        <div className="contractDrawerOverlay" role="dialog" aria-modal="true" aria-label="Edit contract">
-          <div className="contractDrawer">
-            <header className="contractDrawerHeader">
-              <div>
-                <p className="eyebrow">Edit Contract</p>
-                <h2>{contract.contractorName}</h2>
-                <p className="helperText">
-                  {contract.projectName}
-                  {contract.season ? ` (${contract.season})` : ""}
-                </p>
-              </div>
-              <button type="button" className="drawerCloseButton" onClick={closeEdit} aria-label="Close edit drawer">
-                ×
+      <SideDrawer
+        open={open}
+        onClose={closeEdit}
+        eyebrow="Edit Contract"
+        title={contract.contractorName}
+        description={`${contract.projectName}${contract.season ? ` (${contract.season})` : ""}`}
+        closeLabel="Close edit contract drawer"
+        footer={
+          <>
+            <form ref={deleteFormRef} action={deleteAction}>
+              <input type="hidden" name="contractId" value={contract.id} />
+              <button type="button" className="tinyButton dangerButton" onClick={() => setDeleteConfirmOpen(true)}>
+                Delete Contract
               </button>
-            </header>
+            </form>
+            <div>
+              <button type="button" className="tinyButton" onClick={closeEdit}>
+                Cancel
+              </button>
+              <button type="submit" className="tinyButton primaryButton" form={`edit-contract-${contract.id}`}>
+                Save Contract
+              </button>
+            </div>
+          </>
+        }
+      >
             {updateState.message ? (
-              <p className={updateState.ok ? "successNote" : "errorNote"} key={updateState.timestamp}>
+              <ActionNotice tone={updateState.ok ? "success" : "error"} key={updateState.timestamp}>
                 {updateState.message}
-              </p>
+              </ActionNotice>
             ) : null}
             {deleteState.message ? (
-              <p className={deleteState.ok ? "successNote" : "errorNote"} key={deleteState.timestamp}>
+              <ActionNotice tone={deleteState.ok ? "success" : "error"} key={deleteState.timestamp}>
                 {deleteState.message}
-              </p>
+              </ActionNotice>
             ) : null}
-            <form action={updateAction} className="contractDrawerBody" id={`edit-contract-${contract.id}`}>
+            <form action={updateAction} className="uiDrawerForm" id={`edit-contract-${contract.id}`}>
               <input type="hidden" name="contractId" value={contract.id} />
 
-              <details
+              <AccordionSection
                 className="drawerSection"
                 open={openDrawerSection === "artist"}
-                onToggle={(event) => handleDrawerSectionToggle("artist", event.currentTarget.open)}
+                onToggle={(isOpen) => handleDrawerSectionToggle("artist", isOpen)}
+                title="Artist & Contract"
+                description="Identity, role, value, and sessions"
               >
-                <summary>
-                  <span>Artist &amp; Contract</span>
-                  <small>Identity, role, value, and sessions</small>
-                </summary>
                 <div className="drawerFieldGrid">
                   <label className="drawerFieldWide">
                     Guest Artist Profile
@@ -370,18 +384,16 @@ export function ContractRowActions({
                     This is a union contract
                   </label>
                 </div>
-              </details>
+              </AccordionSection>
 
               {editIsUnion ? (
-                <details
+                <AccordionSection
                   className="drawerSection"
                   open={openDrawerSection === "union"}
-                  onToggle={(event) => handleDrawerSectionToggle("union", event.currentTarget.open)}
+                  onToggle={(isOpen) => handleDrawerSectionToggle("union", isOpen)}
+                  title="Union Agreement"
+                  description="Agreement and separate fund-check dates"
                 >
-                  <summary>
-                    <span>Union Agreement</span>
-                    <small>Agreement and separate fund-check dates</small>
-                  </summary>
                   <div className="drawerFieldGrid">
                     <label className="drawerFieldWide">
                       Union Agreement
@@ -435,18 +447,16 @@ export function ContractRowActions({
                       </div>
                     ) : null}
                   </div>
-                </details>
+                </AccordionSection>
               ) : null}
 
-              <details
+              <AccordionSection
                 className="drawerSection"
                 open={openDrawerSection === "payment"}
-                onToggle={(event) => handleDrawerSectionToggle("payment", event.currentTarget.open)}
+                onToggle={(isOpen) => handleDrawerSectionToggle("payment", isOpen)}
+                title="Payment & Check Request"
+                description="Dates, delivery, address, and tax information"
               >
-                <summary>
-                  <span>Payment &amp; Check Request</span>
-                  <small>Dates, delivery, address, and tax information</small>
-                </summary>
                 <div className="drawerFieldGrid">
                   <label>
                     Check Request FOAPAL
@@ -546,17 +556,15 @@ export function ContractRowActions({
                     })}
                   </div>
                 </div>
-              </details>
+              </AccordionSection>
 
-              <details
+              <AccordionSection
                 className="drawerSection"
                 open={openDrawerSection === "accounting"}
-                onToggle={(event) => handleDrawerSectionToggle("accounting", event.currentTarget.open)}
+                onToggle={(isOpen) => handleDrawerSectionToggle("accounting", isOpen)}
+                title="Accounting & Productions"
+                description="Fiscal year, organization, projects, and Banner account"
               >
-                <summary>
-                  <span>Accounting &amp; Productions</span>
-                  <small>Fiscal year, organization, projects, and Banner account</small>
-                </summary>
                 <div className="drawerFieldGrid">
                   <label>
                     Fiscal Year
@@ -647,17 +655,15 @@ export function ContractRowActions({
                     </select>
                   </label>
                 </div>
-              </details>
+              </AccordionSection>
 
-              <details
+              <AccordionSection
                 className="drawerSection"
                 open={openDrawerSection === "notes"}
-                onToggle={(event) => handleDrawerSectionToggle("notes", event.currentTarget.open)}
+                onToggle={(isOpen) => handleDrawerSectionToggle("notes", isOpen)}
+                title="Notes"
+                description="Internal contract notes"
               >
-                <summary>
-                  <span>Notes</span>
-                  <small>Internal contract notes</small>
-                </summary>
                 <div className="drawerFieldGrid">
                   <label className="drawerFieldWide">
                     Notes
@@ -669,34 +675,21 @@ export function ContractRowActions({
                     />
                   </label>
                 </div>
-              </details>
+              </AccordionSection>
             </form>
-            <footer className="contractDrawerFooter">
-              <form
-                action={deleteAction}
-                onSubmit={(event) => {
-                  if (!window.confirm("Delete this contract and all linked installment rows? This cannot be undone.")) {
-                    event.preventDefault();
-                  }
-                }}
-              >
-                <input type="hidden" name="contractId" value={contract.id} />
-                <button type="submit" className="tinyButton dangerButton">
-                  Delete Contract
-                </button>
-              </form>
-              <div>
-                <button type="button" className="tinyButton" onClick={closeEdit}>
-                  Cancel
-                </button>
-                <button type="submit" className="tinyButton primaryButton" form={`edit-contract-${contract.id}`}>
-                  Save Contract
-                </button>
-              </div>
-            </footer>
-          </div>
-        </div>
-      ) : null}
+      </SideDrawer>
+      <ConfirmationDialog
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={() => {
+          setDeleteConfirmOpen(false);
+          deleteFormRef.current?.requestSubmit();
+        }}
+        title="Delete contract?"
+        description="This permanently deletes the contract and every linked installment row. This action cannot be undone."
+        confirmLabel="Delete Contract"
+        dangerous
+      />
     </>
   );
 }

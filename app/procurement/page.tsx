@@ -1,10 +1,11 @@
 import { CreateOrderForm } from "@/app/procurement/create-order-form";
 import { QuickBatchAddForm } from "@/app/procurement/quick-batch-add-form";
 import { ProcurementTable } from "@/app/procurement/procurement-table";
+import { PaginationControls } from "@/components/ui/pagination-controls";
+import { FilterToolbar } from "@/components/ui/toolbars";
 import { getFiscalYearOptions, getProcurementData } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
 import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 
 export default async function ProcurementPage({
@@ -56,17 +57,19 @@ export default async function ProcurementPage({
       </header>
 
       <article className="panel">
-        <form method="get" className="inlineFilters">
-          <label>
-            Fiscal Year
-            <select name="fiscalYearId" defaultValue={selectedFiscalYearId}>
-              {fiscalYearOptions.map((fiscalYear) => (
-                <option key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</option>
-              ))}
-            </select>
-          </label>
-          <button className="buttonLink" type="submit">Apply</button>
-        </form>
+        <FilterToolbar label="Procurement filters">
+          <form method="get" className="inlineFilters">
+            <label>
+              Fiscal Year
+              <select name="fiscalYearId" defaultValue={selectedFiscalYearId}>
+                {fiscalYearOptions.map((fiscalYear) => (
+                  <option key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</option>
+                ))}
+              </select>
+            </label>
+            <button className="buttonLink" type="submit">Apply</button>
+          </form>
+        </FilterToolbar>
       </article>
 
       {canManageProcurement ? (
@@ -110,13 +113,13 @@ export default async function ProcurementPage({
         productionCategoryOptions={productionCategoryOptions}
         canManageProcurement={canManageProcurement}
       />
-      <nav className="bulkToolbar" aria-label="Procurement pages">
-        <p className="bulkMeta">Page {page} of {totalPages} · {totalCount} orders</p>
-        <div className="bulkActions">
-          {page > 1 ? <Link className="buttonLink" href={pageHref(page - 1)}>Previous</Link> : null}
-          {page < totalPages ? <Link className="buttonLink" href={pageHref(page + 1)}>Next</Link> : null}
-        </div>
-      </nav>
+      <PaginationControls
+        page={page}
+        totalPages={totalPages}
+        totalCount={totalCount}
+        itemLabel="orders"
+        hrefForPage={pageHref}
+      />
     </section>
   );
 }

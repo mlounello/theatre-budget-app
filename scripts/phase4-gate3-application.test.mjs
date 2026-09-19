@@ -11,6 +11,7 @@ const ccPage = source("../app/cc/page.tsx");
 const ccClient = source("../app/cc/cc-page-client.tsx");
 const statementForm = source("../app/cc/create-statement-month-form.tsx");
 const procurementPage = source("../app/procurement/page.tsx");
+const paginationControls = source("../components/ui/pagination-controls.tsx");
 const institutionalPage = source("../app/institutional-budget/page.tsx");
 const institutionalLib = source("../lib/institutional-budget.ts");
 const dbSource = source("../lib/db.ts");
@@ -34,7 +35,8 @@ test("Procurement is scoped and paginated on the server", () => {
   assert.match(dbSource, /\.range\(rangeFrom, rangeTo\)/);
   assert.match(dbSource, /purchasesQuery = purchasesQuery\.eq\("fiscal_year_id", params\.fiscalYearId\)/);
   assert.match(procurementPage, /pr_page/);
-  assert.match(procurementPage, /Page \{page\} of \{totalPages\}/);
+  assert.match(procurementPage, /PaginationControls/);
+  assert.match(paginationControls, /Page \{page\} of \{totalPages\}/);
 });
 
 test("institutional commitments use the transaction fiscal year", () => {
