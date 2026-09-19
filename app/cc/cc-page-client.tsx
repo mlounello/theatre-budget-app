@@ -6,7 +6,6 @@ import { usePathname, useSearchParams } from "next/navigation";
 import {
   assignReceiptsToStatementAction,
   createCreditCardAction,
-  createReimbursementRequestAction,
   postStatementMonthToBannerAction,
   reopenStatementMonthAction,
   submitStatementMonthAction,
@@ -16,6 +15,7 @@ import {
 } from "@/app/cc/actions";
 import { CcAdminTables } from "@/app/cc/cc-admin-tables";
 import { CreateStatementMonthForm } from "@/app/cc/create-statement-month-form";
+import { ExpenseClaimForm } from "@/app/cc/expense-claim-form";
 import { SideDrawer } from "@/components/ui/side-drawer";
 import { StatusPill } from "@/components/ui/status-controls";
 import { formatCurrency } from "@/lib/format";
@@ -92,6 +92,31 @@ type PendingCcRow = {
   pendingCcTotal: number;
 };
 
+type FundingClaim = {
+  id: string;
+  claimNumber: string;
+  authorizedAmount: number;
+  settledAmount: number;
+  projectId: string | null;
+  organizationId: string;
+  creditCardId: string | null;
+};
+
+type ExpenseClaim = {
+  id: string;
+  claimNumber: string;
+  claimType: string;
+  claimMonth: string | null;
+  status: string;
+  authorizedAmount: number;
+  settledAmount: number;
+  authorizationClaimId: string | null;
+  overageExplanation: string | null;
+  projectLabel: string;
+  cardLabel: string | null;
+  expenses: Array<{ id: string; expenseNumber: string | null; title: string; amount: number; stage: string | null }>;
+};
+
 type Props = {
   cards: CardRow[];
   statementMonths: StatementMonthRow[];
@@ -113,8 +138,10 @@ type Props = {
   fiscalYearOptions: FiscalYearOption[];
   selectedFiscalYearId: string;
   organizationOptions: OrganizationOption[];
-  selectedView: "current" | "exceptions" | "history" | "setup";
+  selectedView: "current" | "claims" | "exceptions" | "history" | "setup";
   requestedStatementId: string;
+  fundingClaims: FundingClaim[];
+  expenseClaims: ExpenseClaim[];
 };
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
@@ -141,21 +168,20 @@ export function CcPageClient({
   selectedFiscalYearId,
   organizationOptions,
   selectedView,
-  requestedStatementId
+  requestedStatementId,
+  fundingClaims,
+  expenseClaims
 }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [createCardState, createCardAction] = useActionState(createCreditCardAction, initialState);
-  const [reimbursementState, reimbursementAction] = useActionState(createReimbursementRequestAction, initialState);
   const [assignState, assignAction] = useActionState(assignReceiptsToStatementAction, initialState);
   const [unassignState, unassignAction] = useActionState(unassignReceiptFromStatementAction, initialState);
   const [submitState, submitAction] = useActionState(submitStatementMonthAction, initialState);
   const [postState, postAction] = useActionState(postStatementMonthToBannerAction, initialState);
   const [reopenState, reopenAction] = useActionState(reopenStatementMonthAction, initialState);
   const [unpostState, unpostAction] = useActionState(unpostStatementMonthFromBannerAction, initialState);
-  const [reimbursementProjectId, setReimbursementProjectId] = useState("");
-  const [reimbursementOrganizationId, setReimbursementOrganizationId] = useState("");
-  const [openDrawer, setOpenDrawer] = useState<"reimbursement" | "statement" | "card" | null>(null);
+  const [openDrawer, setOpenDrawer] = useState<"claim" | "statement" | "card" | null>(null);
   const selectedStatement = useMemo(
     () =>
       statementMonths.find((month) => month.id === requestedStatementId) ??
@@ -221,6 +247,7 @@ export function CcPageClient({
       <nav className="ccWorkspaceNav" aria-label="Credit Card workspace">
         {[
           { value: "current", label: "Current Statement", meta: selectedStatement ? `${selectedStatement.statementMonth.slice(0, 7)} · ${selectedStatement.creditCardName}` : "No statement" },
+          { value: "claims", label: "Expense Claims", meta: `${expenseClaims.length} EC records` },
           { value: "exceptions", label: "Exceptions", meta: `${exceptionRows.length} need attention` },
           { value: "history", label: "Statement History", meta: `${statementMonths.length} statements` },
           { value: "setup", label: "Cards & Setup", meta: `${cards.filter((card) => card.active).length} active cards` }
@@ -238,56 +265,22 @@ export function CcPageClient({
       </nav>
 
       <SideDrawer
-        open={openDrawer === "reimbursement"}
+        open={openDrawer === "claim"}
         onClose={() => setOpenDrawer(null)}
         eyebrow="Credit Cards"
-        title="Add Reimbursement"
-        description="Charge a theatre project or a projectless organization budget in the selected fiscal year."
+        title="New Expense Claim"
+        description="Create a Card Funding Request, Monthly Card Reconciliation, or Reimbursement with EC###### and EX###### identifiers."
       >
-        <form action={reimbursementAction} className="requestForm">
-          {reimbursementState.message ? (
-            <p className={reimbursementState.ok ? "successNote" : "errorNote"} key={reimbursementState.timestamp}>{reimbursementState.message}</p>
-          ) : null}
-          <input type="hidden" name="fiscalYearId" value={selectedFiscalYearId} />
-          <label>
-            Project (theatre budget)
-            <select name="projectId" value={reimbursementProjectId} onChange={(event) => {
-              setReimbursementProjectId(event.target.value);
-              if (event.target.value) setReimbursementOrganizationId("");
-            }}>
-              <option value="">No project</option>
-              {scopedProjects.map((project) => <option key={project.id} value={project.id}>{project.name}{project.season ? ` (${project.season})` : ""}</option>)}
-            </select>
-          </label>
-          <label>
-            Organization budget (no project)
-            <select name="organizationId" value={reimbursementOrganizationId} onChange={(event) => {
-              setReimbursementOrganizationId(event.target.value);
-              if (event.target.value) setReimbursementProjectId("");
-            }}>
-              <option value="">No organization budget</option>
-              {organizationOptions.map((organization) => <option key={organization.id} value={organization.id}>{organization.orgCode} | {organization.name}</option>)}
-            </select>
-          </label>
-          <label>
-            Department
-            <select name="productionCategoryId" required={Boolean(reimbursementProjectId)}>
-              <option value="">{reimbursementProjectId ? "Select department" : "Not required"}</option>
-              {productionCategoryOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-            </select>
-          </label>
-          <label>
-            Banner Code
-            <select name="bannerAccountCodeId" defaultValue="">
-              <option value="">Unassigned</option>
-              {accountCodeOptions.map((accountCode) => <option key={accountCode.id} value={accountCode.id}>{accountCode.label}</option>)}
-            </select>
-          </label>
-          <label>Title<input name="title" required placeholder="Reimbursement request title" /></label>
-          <label>Reference (optional)<input name="referenceNumber" placeholder="Receipt / claim reference" /></label>
-          <label>Amount<input name="amount" type="number" step="0.01" required /></label>
-          <button type="submit" className="buttonLink buttonPrimary">Save Reimbursement</button>
-        </form>
+        <ExpenseClaimForm
+          fiscalYearId={selectedFiscalYearId}
+          projects={scopedProjects}
+          organizations={organizationOptions}
+          cards={cards}
+          accountCodes={accountCodeOptions}
+          productionCategories={productionCategoryOptions}
+          fundingClaims={fundingClaims}
+          onCancel={() => setOpenDrawer(null)}
+        />
       </SideDrawer>
 
       <SideDrawer open={openDrawer === "statement"} onClose={() => setOpenDrawer(null)} eyebrow="Credit Cards" title="Open Statement Month">
@@ -316,7 +309,7 @@ export function CcPageClient({
           </div>
           <div className="buttonCluster">
             {(scopedProjects.length > 0 || organizationOptions.length > 0 || hasGlobalAdmin) ? (
-              <button type="button" className="buttonLink" onClick={() => setOpenDrawer("reimbursement")}>Add Reimbursement</button>
+              <button type="button" className="buttonLink buttonPrimary" onClick={() => setOpenDrawer("claim")}>New Expense Claim</button>
             ) : null}
             <button type="button" className="buttonLink" onClick={() => setOpenDrawer("statement")}>Open Statement Month</button>
           </div>
@@ -480,6 +473,44 @@ export function CcPageClient({
           </div>
         ) : null}
       </article>
+      ) : null}
+
+      {selectedView === "claims" ? (
+        <article className="panel panelFull">
+          <div className="ccWorkspaceHeader">
+            <div>
+              <p className="eyebrow">Expense Claims</p>
+              <h2>EC Claims &amp; EX Expenses</h2>
+              <p className="heroSubtitle">Funding requests hold the authorized maximum. Reconciliations and reimbursements record each purchase as its own Expense.</p>
+            </div>
+            <button type="button" className="buttonLink buttonPrimary" onClick={() => setOpenDrawer("claim")}>New Expense Claim</button>
+          </div>
+          {expenseClaims.length === 0 ? <p className="emptyState">No Expense Claims exist in this fiscal year.</p> : (
+            <div className="expenseClaimList">
+              {expenseClaims.map((claim) => {
+                const typeLabel = claim.claimType === "funding_request" ? "Card Funding Request" : claim.claimType === "monthly_reconciliation" ? "Monthly Card Reconciliation" : "Reimbursement";
+                const remaining = Math.max(claim.authorizedAmount - claim.settledAmount, 0);
+                return (
+                  <details className="contractCardDetails expenseClaimRecord" key={claim.id}>
+                    <summary>
+                      <span><strong>{claim.claimNumber}</strong> · {typeLabel} · {claim.projectLabel}</span>
+                      <small>{claim.cardLabel ?? "No card"} · {claim.claimMonth?.slice(0, 7) ?? "No month"} · {claim.status.replaceAll("_", " ")}</small>
+                    </summary>
+                    <div className="expenseClaimRecordBody">
+                      {claim.claimType === "funding_request" ? <p><strong>Authorized:</strong> {formatCurrency(claim.authorizedAmount)} · <strong>Reconciled:</strong> {formatCurrency(claim.settledAmount)} · <strong>Remaining hold:</strong> {formatCurrency(remaining)}</p> : <p><strong>Claim total:</strong> {formatCurrency(claim.settledAmount || claim.expenses.reduce((sum, expense) => sum + expense.amount, 0))}</p>}
+                      {claim.overageExplanation ? <p className="errorNote"><strong>Overage explanation:</strong> {claim.overageExplanation}</p> : null}
+                      <div className="tableWrap">
+                        <table><thead><tr><th>Expense</th><th>Purchase</th><th>Stage</th><th>Amount</th></tr></thead><tbody>
+                          {claim.expenses.map((expense) => <tr key={expense.id}><td>{expense.expenseNumber ?? "-"}</td><td>{expense.title}</td><td>{expense.stage?.replaceAll("_", " ") ?? "-"}</td><td>{formatCurrency(expense.amount)}</td></tr>)}
+                        </tbody></table>
+                      </div>
+                    </div>
+                  </details>
+                );
+              })}
+            </div>
+          )}
+        </article>
       ) : null}
 
       {selectedView === "exceptions" ? (

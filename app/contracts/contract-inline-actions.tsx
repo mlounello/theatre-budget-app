@@ -21,6 +21,7 @@ export function ContractWorkflowControl({
   compact?: boolean;
 }) {
   const [state, formAction] = useActionState(updateContractWorkflowAction, initialState);
+  const isTemporaryEmployee = contract.engagementType === "temporary_employee";
 
   return (
     <div className={compact ? "contractQuickStatusControl" : undefined}>
@@ -32,16 +33,16 @@ export function ContractWorkflowControl({
       ) : null}
       <form action={formAction} className={compact ? "contractQuickStatusForm" : "inlineEditForm"}>
         <input type="hidden" name="contractId" value={contract.id} />
-        <StatusSelector label="Contract status" className={compact ? "isCompact" : ""}>
+        <StatusSelector label={isTemporaryEmployee ? "Hiring status" : "Agreement status"} className={compact ? "isCompact" : ""}>
           <select
             name="workflowStatus"
             defaultValue={contract.workflowStatus}
             aria-label={`Contract status for ${contract.contractorName}`}
           >
-            <option value="w9_requested">W9 Requested</option>
-            <option value="contract_sent">Contract Sent</option>
-            <option value="contract_signed_returned">Contract Signed + Returned</option>
-            <option value="siena_signed">Siena Signed</option>
+            <option value="w9_requested">{isTemporaryEmployee ? "Not Started" : "W-9 Requested"}</option>
+            <option value="contract_sent">{isTemporaryEmployee ? "Submitted to HR" : "Agreement Sent"}</option>
+            <option value="contract_signed_returned">{isTemporaryEmployee ? "HR Onboarding" : "Signed + Returned"}</option>
+            <option value="siena_signed">{isTemporaryEmployee ? "Onboarding Complete" : "Siena Signed"}</option>
           </select>
         </StatusSelector>
         <PendingButton className="tinyButton" type="submit" pendingLabel="Saving…">
@@ -54,6 +55,7 @@ export function ContractWorkflowControl({
 
 export function ContractInstallmentControl({ installment }: { installment: ContractInstallmentRow }) {
   const [state, formAction] = useActionState(updateContractInstallmentStatusAction, initialState);
+  const isPayroll = installment.paymentChannel === "payroll";
 
   return (
     <>
@@ -70,9 +72,9 @@ export function ContractInstallmentControl({ installment }: { installment: Contr
             defaultValue={installment.status}
             aria-label={`Payment status for installment ${installment.installmentNumber}`}
           >
-            <option value="planned">Not Submitted</option>
-            <option value="check_request_submitted">Check Request Submitted</option>
-            <option value="check_paid">Check Paid</option>
+            <option value="planned">{isPayroll ? "Planned" : "Not Submitted"}</option>
+            <option value="check_request_submitted">{isPayroll ? "Submitted to Payroll" : "Check Request Submitted"}</option>
+            <option value="check_paid">{isPayroll ? "Paid through Payroll" : "Check Paid"}</option>
           </select>
         </StatusSelector>
         <PendingButton type="submit" className="tinyButton" pendingLabel="Saving…">

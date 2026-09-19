@@ -18,6 +18,9 @@ type ContractWorkflowStatus = "w9_requested" | "contract_sent" | "contract_signe
 type InstallmentStatus = "planned" | "check_request_submitted" | "check_paid";
 type CheckRequestHandling = "mail" | "business_affairs_pickup" | "other";
 type ContractSession = "summer" | "fall" | "winter" | "spring";
+type EngagementType = "independent_contractor" | "union_freelance_artist" | "temporary_employee";
+type CompensationBasis = "flat_fee" | "hourly";
+type HrOnboardingStatus = "not_started" | "submitted_to_hr" | "onboarding" | "complete" | "not_required";
 type GuestArtistDefaults = {
   id: string;
   display_name: string;
@@ -157,7 +160,25 @@ function parseProductionProjectIds(formData: FormData, accountingProjectId: stri
 }
 
 function formIsUnion(formData: FormData): boolean {
-  return formData.getAll("isUnion").some((value) => value === "true" || value === "on");
+  return parseEngagementType(formData.get("engagementType")) === "union_freelance_artist" ||
+    formData.getAll("isUnion").some((value) => value === "true" || value === "on");
+}
+
+function parseEngagementType(value: FormDataEntryValue | null): EngagementType {
+  const raw = String(value ?? "independent_contractor").trim();
+  if (raw === "union_freelance_artist" || raw === "temporary_employee") return raw;
+  return "independent_contractor";
+}
+
+function parseCompensationBasis(value: FormDataEntryValue | null): CompensationBasis {
+  return String(value ?? "flat_fee").trim() === "hourly" ? "hourly" : "flat_fee";
+}
+
+function parseHrOnboardingStatus(value: FormDataEntryValue | null, engagementType: EngagementType): HrOnboardingStatus {
+  if (engagementType !== "temporary_employee") return "not_required";
+  const raw = String(value ?? "not_started").trim();
+  if (raw === "submitted_to_hr" || raw === "onboarding" || raw === "complete") return raw;
+  return "not_started";
 }
 
 async function loadUnionCalculation(
@@ -499,7 +520,8 @@ function isMissingInstallmentScheduleColumn(error: { message?: string | null } |
     message.includes("mail_by") ||
     message.includes("check_request_foapal_id") ||
     message.includes("vendor_address") ||
-    message.includes("tax_id")
+    message.includes("tax_id") ||
+    message.includes("payment_channel")
   );
 }
 
@@ -616,6 +638,8 @@ export async function createContractAction(
     const contractorEmail = String(formData.get("contractorEmail") ?? "").trim() || guestArtist?.email || "";
     const contractorPhone = String(formData.get("contractorPhone") ?? "").trim() || guestArtist?.phone || "";
     const contractValue = parseMoney(formData.get("contractValue"));
+    const engagementType = parseEngagementType(formData.get("engagementType"));
+    const compensationBasis = parseCompensationBasis(formData.get("compensationBasis"));
     const installmentCount = parseInstallmentCount(formData.get("installmentCount"));
     const notes = String(formData.get("notes") ?? "").trim();
     const guestTax = guestArtist
@@ -629,6 +653,9 @@ export async function createContractAction(
     if (!bannerAccountCodeId) return err("Banner account code is required.");
     if (!contractorName) return err("Contracted employee name is required.");
     if (contractValue === 0) return err("Contract value must be non-zero.");
+    if (engagementType === "independent_contractor" && installmentCount > 2) {
+      return err("Independent Contractor Agreements use one or two payments.");
+    }
 
     const unionCalculation = await loadUnionCalculation(
       supabase,
@@ -693,6 +720,10 @@ export async function createContractAction(
         installment_count: installmentCount,
         contract_session: parseContractSessions(formData),
         is_union: Boolean(unionCalculation),
+        engagement_type: engagementType,
+        compensation_basis: compensationBasis,
+        hr_onboarding_status: parseHrOnboardingStatus(formData.get("hrOnboardingStatus"), engagementType),
+        hr_onboarding_reference: nullableFormText(formData, "hrOnboardingReference"),
         union_agreement_id: unionCalculation?.agreementId ?? null,
         union_agreement_name_snapshot: unionCalculation?.agreementName ?? null,
         union_signature_status: "not_started",
@@ -754,6 +785,7 @@ export async function createContractAction(
         purchase_id: purchase.id,
         installment_number: installmentNumber,
         installment_amount: installmentAmount,
+        payment_channel: engagementType === "temporary_employee" ? "payroll" : "check_request",
         ...scheduleValues,
         ...installmentCheckRequestDefaults,
         status: "planned"
@@ -816,6 +848,9 @@ export async function createContractsBulkAction(
     if (!projectId) return err("Project is required.");
     if (!bannerAccountCodeId) return err("Banner account code is required.");
     if (rows.length === 0) return err("Add at least one contract row.");
+    if (rows.some((row) => parseInstallmentCount(row.installmentCount ?? "1") > 2)) {
+      return err("Bulk Independent Contractor Agreements use one or two payments.");
+    }
 
     await ensurePmOrAdmin(projectId, user.id);
     const rpcRows = rows.map((row) => ({
@@ -870,6 +905,8 @@ export async function updateContractDetailsAction(
     const contractorEmail = String(formData.get("contractorEmail") ?? "").trim() || guestArtist?.email || "";
     const contractorPhone = String(formData.get("contractorPhone") ?? "").trim() || guestArtist?.phone || "";
     const contractValue = parseMoney(formData.get("contractValue"));
+    const engagementType = parseEngagementType(formData.get("engagementType"));
+    const compensationBasis = parseCompensationBasis(formData.get("compensationBasis"));
     const installmentCount = parseInstallmentCount(formData.get("installmentCount"));
     const notes = String(formData.get("notes") ?? "").trim();
 
@@ -1004,6 +1041,10 @@ export async function updateContractDetailsAction(
         installment_count: installmentCount,
         contract_session: parseContractSessions(formData),
         is_union: Boolean(unionCalculation),
+        engagement_type: engagementType,
+        compensation_basis: compensationBasis,
+        hr_onboarding_status: parseHrOnboardingStatus(formData.get("hrOnboardingStatus"), engagementType),
+        hr_onboarding_reference: nullableFormText(formData, "hrOnboardingReference"),
         union_agreement_id: unionCalculation?.agreementId ?? null,
         union_agreement_name_snapshot: unionCalculation?.agreementName ?? null,
         ...contractCheckRequestValues,
@@ -1083,6 +1124,7 @@ export async function updateContractDetailsAction(
         purchase_id: purchase.id,
         installment_number: installmentNumber,
         installment_amount: installmentAmount,
+        payment_channel: engagementType === "temporary_employee" ? "payroll" : "check_request",
         ...scheduleValues,
         ...installmentCheckRequestDefaults,
         status: "planned"
@@ -1114,6 +1156,7 @@ export async function updateContractDetailsAction(
 
       const installmentUpdate = {
         installment_amount: installmentAmount,
+        payment_channel: engagementType === "temporary_employee" ? "payroll" : "check_request",
         ...installmentScheduleValues(formData, Number(installment.installment_number ?? 1)),
         ...installmentCheckRequestDefaults
       };
@@ -1155,7 +1198,7 @@ export async function updateContractDetailsAction(
           budget_line_id: reportingBudgetLineId as string,
           production_category_id: productionCategoryId,
           banner_account_code_id: bannerAccountCodeId,
-          title: `${contractorName} Contract Payment ${installment.installment_number as number}/${installmentCount}`,
+          title: `${contractorName} ${engagementType === "temporary_employee" ? "Payroll" : "Contract Payment"} ${installment.installment_number as number}/${installmentCount}`,
           estimated_amount: installmentAmount,
           requested_amount: requestedAmount,
           encumbered_amount: encumberedAmount,
@@ -1231,7 +1274,7 @@ export async function updateContractWorkflowAction(
 
     const { data: contract, error: contractError } = await supabase
       .from("contracts")
-      .select("id, project_id")
+      .select("id, project_id, engagement_type")
       .eq("id", contractId)
       .single();
     if (contractError || !contract) return err("Contract not found.");
@@ -1241,7 +1284,21 @@ export async function updateContractWorkflowAction(
 
     const { data: updated, error: updateError } = await supabase
       .from("contracts")
-      .update({ workflow_status: workflowStatus })
+      .update({
+        workflow_status: workflowStatus,
+        ...(contract.engagement_type === "temporary_employee"
+          ? {
+              hr_onboarding_status:
+                workflowStatus === "contract_sent"
+                  ? "submitted_to_hr"
+                  : workflowStatus === "contract_signed_returned"
+                    ? "onboarding"
+                    : workflowStatus === "siena_signed"
+                      ? "complete"
+                      : "not_started"
+            }
+          : {})
+      })
       .eq("id", contractId)
       .select("id")
       .maybeSingle();
@@ -1304,7 +1361,7 @@ export async function updateContractInstallmentStatusAction(
       procurementStatus = "paid";
       postedDate = new Date().toISOString().slice(0, 10);
     } else {
-      requestedAmount = 0;
+      requestedAmount = amount;
     }
 
     if (installment.purchase_id) {

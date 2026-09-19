@@ -310,6 +310,9 @@ export type ContractInstallmentStatus = "planned" | "check_request_submitted" | 
 export type ContractSession = "summer" | "fall" | "winter" | "spring";
 export type UnionSignatureStatus = "not_started" | "sent_to_union" | "union_countersigned" | "complete";
 export type UnionContributionType = "employer_paid" | "artist_withholding";
+export type HiringEngagementType = "independent_contractor" | "union_freelance_artist" | "temporary_employee";
+export type HiringCompensationBasis = "flat_fee" | "hourly";
+export type HrOnboardingStatus = "not_started" | "submitted_to_hr" | "onboarding" | "complete" | "not_required";
 
 export type ContractRow = {
   id: string;
@@ -352,6 +355,10 @@ export type ContractRow = {
   unionAgreementId: string | null;
   unionAgreementName: string | null;
   unionSignatureStatus: UnionSignatureStatus;
+  engagementType: HiringEngagementType;
+  compensationBasis: HiringCompensationBasis;
+  hrOnboardingStatus: HrOnboardingStatus;
+  hrOnboardingReference: string | null;
   notes: string | null;
   createdAt: string;
 };
@@ -362,6 +369,7 @@ export type ContractInstallmentRow = {
   purchaseId: string | null;
   installmentNumber: number;
   installmentAmount: number;
+  paymentChannel: "check_request" | "payroll";
   status: ContractInstallmentStatus;
   dueDate: string | null;
   apReceiveBy: string | null;
@@ -1452,6 +1460,7 @@ export async function getProcurementData(
       "id, fiscal_year_id, project_id, organization_id, budget_line_id, production_category_id, banner_account_code_id, budget_tracked, title, reference_number, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, procurement_status, ordered_on, received_on, paid_on, vendor_id, notes, created_at, organizations(name, org_code), projects(name, season, organization_id, organizations(name, org_code)), production_categories(name), account_codes(code), project_budget_lines(budget_code, category, line_name), vendors(id, name)",
       { count: "exact" }
     )
+    .is("expense_claim_id", null)
     .order("created_at", { ascending: false });
   if (params.fiscalYearId) purchasesQuery = purchasesQuery.eq("fiscal_year_id", params.fiscalYearId);
   if (params.projectId === "__organization_budget__") purchasesQuery = purchasesQuery.is("project_id", null);
@@ -1904,7 +1913,7 @@ export async function getContractsData(): Promise<{
   let contractsResponse = (await supabase
     .from("contracts")
     .select(
-      "id, fiscal_year_id, organization_id, project_id, production_project_id, banner_account_code_id, guest_artist_id, contractor_name, contractor_employee_id, contractor_email, contractor_phone, contract_value, installment_count, contract_number, contract_role, contract_session, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, workflow_status, is_union, union_agreement_id, union_agreement_name_snapshot, union_signature_status, notes, created_at, fiscal_years(name), organizations(name, org_code), accounting_project:projects!contracts_project_id_fkey(name, season), production_project:projects!contracts_production_project_id_fkey(name, season), contract_productions(project_id, production:projects!contract_productions_project_id_fkey(name, season)), account_codes(code)"
+      "id, fiscal_year_id, organization_id, project_id, production_project_id, banner_account_code_id, guest_artist_id, contractor_name, contractor_employee_id, contractor_email, contractor_phone, contract_value, installment_count, contract_number, contract_role, contract_session, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, workflow_status, is_union, union_agreement_id, union_agreement_name_snapshot, union_signature_status, engagement_type, compensation_basis, hr_onboarding_status, hr_onboarding_reference, notes, created_at, fiscal_years(name), organizations(name, org_code), accounting_project:projects!contracts_project_id_fkey(name, season), production_project:projects!contracts_production_project_id_fkey(name, season), contract_productions(project_id, production:projects!contract_productions_project_id_fkey(name, season)), account_codes(code)"
     )
     .order("created_at", { ascending: false })
     .limit(200)) as DbListResponse;
@@ -1930,14 +1939,15 @@ export async function getContractsData(): Promise<{
   if (contractsResponse.error) throw contractsResponse.error;
   let installmentsResponse = (await supabase
     .from("contract_installments")
-    .select("id, contract_id, purchase_id, installment_number, installment_amount, status, due_date, ap_receive_by, mail_by, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, check_request_submitted_on, check_paid_on")
+    .select("id, contract_id, purchase_id, installment_number, installment_amount, payment_channel, status, due_date, ap_receive_by, mail_by, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, check_request_submitted_on, check_paid_on")
     .order("contract_id", { ascending: true })
     .order("installment_number", { ascending: true })) as DbListResponse;
 
   if (
     installmentsResponse.error &&
     (installmentsResponse.error.message.toLowerCase().includes("due_date") ||
-      installmentsResponse.error.message.toLowerCase().includes("check_request_foapal_id"))
+      installmentsResponse.error.message.toLowerCase().includes("check_request_foapal_id") ||
+      installmentsResponse.error.message.toLowerCase().includes("payment_channel"))
   ) {
     installmentsResponse = (await supabase
       .from("contract_installments")
@@ -2031,6 +2041,10 @@ export async function getContractsData(): Promise<{
       unionAgreementId: (row.union_agreement_id as string | null) ?? null,
       unionAgreementName: (row.union_agreement_name_snapshot as string | null) ?? null,
       unionSignatureStatus: ((row.union_signature_status as string | null) ?? "not_started") as UnionSignatureStatus,
+      engagementType: ((row.engagement_type as string | null) ?? (Boolean(row.is_union) ? "union_freelance_artist" : "independent_contractor")) as HiringEngagementType,
+      compensationBasis: ((row.compensation_basis as string | null) ?? "flat_fee") as HiringCompensationBasis,
+      hrOnboardingStatus: ((row.hr_onboarding_status as string | null) ?? "not_required") as HrOnboardingStatus,
+      hrOnboardingReference: (row.hr_onboarding_reference as string | null) ?? null,
       notes: (row.notes as string | null) ?? null,
       createdAt: row.created_at as string
     };
@@ -2042,6 +2056,7 @@ export async function getContractsData(): Promise<{
     purchaseId: (row.purchase_id as string | null) ?? null,
     installmentNumber: Number(row.installment_number ?? 1),
     installmentAmount: asNumber(row.installment_amount as string | number | null),
+    paymentChannel: ((row.payment_channel as string | null) ?? "check_request") as "check_request" | "payroll",
     status: ((row.status as string | null) ?? "planned") as ContractInstallmentStatus,
     dueDate: (row.due_date as string | null) ?? null,
     apReceiveBy: (row.ap_receive_by as string | null) ?? null,

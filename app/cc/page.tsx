@@ -77,6 +77,31 @@ type PendingCcRow = {
   pendingCcTotal: number;
 };
 
+type FundingClaimRow = {
+  id: string;
+  claimNumber: string;
+  authorizedAmount: number;
+  settledAmount: number;
+  projectId: string | null;
+  organizationId: string;
+  creditCardId: string | null;
+};
+
+type ExpenseClaimRow = {
+  id: string;
+  claimNumber: string;
+  claimType: string;
+  claimMonth: string | null;
+  status: string;
+  authorizedAmount: number;
+  settledAmount: number;
+  authorizationClaimId: string | null;
+  overageExplanation: string | null;
+  projectLabel: string;
+  cardLabel: string | null;
+  expenses: Array<{ id: string; expenseNumber: string | null; title: string; amount: number; stage: string | null }>;
+};
+
 export default async function CreditCardPage({
   searchParams
 }: {
@@ -102,8 +127,8 @@ export default async function CreditCardPage({
     fiscalYearOptions,
     (resolvedSearchParams?.fiscalYearId ?? "").trim()
   );
-  const selectedView = ["current", "exceptions", "history", "setup"].includes(resolvedSearchParams?.cc_view ?? "")
-    ? resolvedSearchParams?.cc_view as "current" | "exceptions" | "history" | "setup"
+  const selectedView = ["current", "claims", "exceptions", "history", "setup"].includes(resolvedSearchParams?.cc_view ?? "")
+    ? resolvedSearchParams?.cc_view as "current" | "claims" | "exceptions" | "history" | "setup"
     : "current";
   const requestedStatementId = (resolvedSearchParams?.cc_statement ?? "").trim();
 
@@ -116,6 +141,7 @@ export default async function CreditCardPage({
     receiptsResponse,
     pendingPurchasesResponse,
     statementLinesResponse,
+    expenseClaimsResponse,
     accountCodeOptions,
     productionCategoryOptions,
     organizationOptions
@@ -131,14 +157,14 @@ export default async function CreditCardPage({
     supabase
       .from("purchase_receipts")
       .select(
-        "id, purchase_id, amount_received, note, created_at, cc_statement_month_id, purchases!inner(id, fiscal_year_id, organization_id, title, reference_number, requisition_number, pending_cc_amount, cc_statement_month_id, credit_card_id, status, request_type, is_credit_card, projects(name, season), organizations(name, org_code), production_categories(name), account_codes(code), project_budget_lines(budget_code))"
+        "id, purchase_id, amount_received, note, created_at, cc_statement_month_id, purchases!inner(id, fiscal_year_id, organization_id, title, reference_number, requisition_number, expense_number, pending_cc_amount, cc_statement_month_id, credit_card_id, status, request_type, is_credit_card, projects(name, season), organizations(name, org_code), production_categories(name), account_codes(code), project_budget_lines(budget_code))"
       )
       .eq("purchases.fiscal_year_id", selectedFiscalYearId)
       .order("created_at", { ascending: true }),
     supabase
       .from("purchases")
       .select(
-        "id, fiscal_year_id, organization_id, title, reference_number, requisition_number, pending_cc_amount, status, request_type, is_credit_card, cc_workflow_status, cc_statement_month_id, credit_card_id, projects(name, season), organizations(name, org_code), production_categories(name), account_codes(code), project_budget_lines(budget_code), credit_cards(nickname)"
+        "id, fiscal_year_id, organization_id, title, reference_number, requisition_number, expense_number, pending_cc_amount, status, request_type, is_credit_card, cc_workflow_status, cc_statement_month_id, credit_card_id, projects(name, season), organizations(name, org_code), production_categories(name), account_codes(code), project_budget_lines(budget_code), credit_cards(nickname)"
       )
       .eq("fiscal_year_id", selectedFiscalYearId)
       .eq("status", "pending_cc")
@@ -149,6 +175,11 @@ export default async function CreditCardPage({
         "id, fiscal_year_id, organization_id, banner_account_code_id, statement_month_id, amount, note, matched_purchase_ids, organizations(name, org_code), account_codes(code), project_budget_lines(budget_code, account_codes(code), production_categories(name), projects(name, season))"
       )
       .eq("fiscal_year_id", selectedFiscalYearId),
+    supabase
+      .from("expense_claims")
+      .select("id, claim_number, claim_type, claim_month, status, authorized_amount, settled_amount, authorization_claim_id, overage_explanation, project_id, organization_id, credit_card_id, projects(name, season), organizations(name, org_code), credit_cards(nickname), purchases!purchases_expense_claim_id_fkey(id, expense_number, title, estimated_amount, expense_stage)")
+      .eq("fiscal_year_id", selectedFiscalYearId)
+      .order("created_at", { ascending: false }),
     getAccountCodeOptions(),
     getProductionCategoryOptions(),
     getFiscalYearOrganizationOptions(selectedFiscalYearId)
@@ -159,6 +190,7 @@ export default async function CreditCardPage({
   if (receiptsResponse.error) throw receiptsResponse.error;
   if (pendingPurchasesResponse.error) throw pendingPurchasesResponse.error;
   if (statementLinesResponse.error) throw statementLinesResponse.error;
+  if (expenseClaimsResponse.error) throw expenseClaimsResponse.error;
   const hasGlobalAdmin = access.role === "admin";
   const manageableProjectIds = access.manageableProjectIds;
 
@@ -171,6 +203,53 @@ export default async function CreditCardPage({
     maskedNumber: (row.masked_number as string | null) ?? null,
     active: Boolean(row.active as boolean | null)
   }));
+  const expenseClaims: ExpenseClaimRow[] = (expenseClaimsResponse.data ?? []).map((row) => {
+    const project = row.projects as { name?: string; season?: string | null } | null;
+    const organization = row.organizations as { name?: string; org_code?: string } | null;
+    const card = row.credit_cards as { nickname?: string } | null;
+    const claimExpenses = (row.purchases as Array<{ id?: string; expense_number?: string | null; title?: string; estimated_amount?: number | string; expense_stage?: string | null }> | null) ?? [];
+    return {
+      id: row.id as string,
+      claimNumber: row.claim_number as string,
+      claimType: row.claim_type as string,
+      claimMonth: (row.claim_month as string | null) ?? null,
+      status: row.status as string,
+      authorizedAmount: Number(row.authorized_amount ?? 0),
+      settledAmount: Number(row.settled_amount ?? 0),
+      authorizationClaimId: (row.authorization_claim_id as string | null) ?? null,
+      overageExplanation: (row.overage_explanation as string | null) ?? null,
+      projectLabel: project
+        ? `${project.name ?? "Unknown Project"}${project.season ? ` (${project.season})` : ""}`
+        : `${organization?.org_code ?? "-"} | ${organization?.name ?? "Organization Budget"}`,
+      cardLabel: card?.nickname ?? null,
+      expenses: claimExpenses.map((expense) => ({
+        id: expense.id as string,
+        expenseNumber: expense.expense_number ?? null,
+        title: expense.title ?? "Expense",
+        amount: Number(expense.estimated_amount ?? 0),
+        stage: expense.expense_stage ?? null
+      }))
+    };
+  });
+  const reconciledByAuthorization = new Map<string, number>();
+  for (const claim of expenseClaims) {
+    if (!claim.authorizationClaimId || claim.status === "cancelled") continue;
+    reconciledByAuthorization.set(
+      claim.authorizationClaimId,
+      (reconciledByAuthorization.get(claim.authorizationClaimId) ?? 0) + claim.settledAmount
+    );
+  }
+  const fundingClaims: FundingClaimRow[] = (expenseClaimsResponse.data ?? [])
+    .filter((row) => row.claim_type === "funding_request" && row.status !== "cancelled")
+    .map((row) => ({
+      id: row.id as string,
+      claimNumber: row.claim_number as string,
+      authorizedAmount: Number(row.authorized_amount ?? 0),
+      settledAmount: reconciledByAuthorization.get(row.id as string) ?? 0,
+      projectId: (row.project_id as string | null) ?? null,
+      organizationId: row.organization_id as string,
+      creditCardId: (row.credit_card_id as string | null) ?? null
+    }));
 
   const statementMonths: StatementMonthRow[] = (monthsResponse.data ?? []).map((row) => {
     const card = row.credit_cards as { nickname?: string } | null;
@@ -253,6 +332,7 @@ export default async function CreditCardPage({
           title?: string;
           reference_number?: string | null;
           requisition_number?: string | null;
+          expense_number?: string | null;
           pending_cc_amount?: number | string | null;
           cc_statement_month_id?: string | null;
           credit_card_id?: string | null;
@@ -271,7 +351,10 @@ export default async function CreditCardPage({
     const accountCode = purchase?.account_codes;
     const productionCategory = purchase?.production_categories;
     const budgetLine = purchase?.project_budget_lines;
-    const reqOrRef = (purchase?.requisition_number as string | null) ?? (purchase?.reference_number as string | null) ?? null;
+    const claimRef = (purchase?.reference_number as string | null) ?? null;
+    const expenseRef = (purchase?.expense_number as string | null) ?? null;
+    const reqOrRef = (purchase?.requisition_number as string | null) ??
+      (claimRef && expenseRef ? `${claimRef} / ${expenseRef}` : claimRef ?? expenseRef);
     const purchaseId = (row.purchase_id as string) ?? ((purchase?.id as string | undefined) ?? "");
     return {
       id: row.id as string,
@@ -341,7 +424,10 @@ export default async function CreditCardPage({
       requestType: requestType || "-",
       isCreditCard,
       requestTitle: (row.title as string) ?? "Request",
-      requestNumber: (row.requisition_number as string | null) ?? (row.reference_number as string | null) ?? null,
+      requestNumber: (row.requisition_number as string | null) ??
+        ((row.reference_number as string | null) && (row.expense_number as string | null)
+          ? `${row.reference_number as string} / ${row.expense_number as string}`
+          : (row.reference_number as string | null) ?? (row.expense_number as string | null) ?? null),
       pendingCcAmount: Number(row.pending_cc_amount ?? 0),
       receiptTotal: receiptSummary.total,
       receiptCount: receiptSummary.count,
@@ -410,6 +496,8 @@ export default async function CreditCardPage({
         organizationOptions={organizationOptions.filter((organization) => !organization.projectTrackingRequired)}
         accountCodeOptions={accountCodeOptions.filter((account) => !account.isRevenue)}
         productionCategoryOptions={productionCategoryOptions}
+        fundingClaims={fundingClaims}
+        expenseClaims={expenseClaims}
       />
     </section>
   );

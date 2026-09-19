@@ -454,6 +454,7 @@ export function ProcurementTable({
 
   return (
     <>
+      <p className="helperText procurementBoundaryNote">Expense Claims are managed in Credit Cards; this table retains the PO, requisition, receiving, invoice, and payment workflow.</p>
       {deleteState.message ? (
         <p className={deleteState.ok ? "successNote" : "errorNote"} key={deleteState.timestamp}>
           {deleteState.message}

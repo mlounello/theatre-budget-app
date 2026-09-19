@@ -4,9 +4,10 @@ import test from "node:test";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
-test("credit cards is split into four focused workspaces", async () => {
+test("credit cards keeps its focused workspaces and adds Expense Claims", async () => {
   const client = await read("app/cc/cc-page-client.tsx");
   assert.match(client, /Current Statement/);
+  assert.match(client, /Expense Claims/);
   assert.match(client, /Exceptions/);
   assert.match(client, /Statement History/);
   assert.match(client, /Cards & Setup/);
@@ -47,12 +48,12 @@ test("exceptions identify missing receipts, unassigned cards, and excluded recor
 
 test("projectless organization reimbursements remain supported", async () => {
   const page = await read("app/cc/page.tsx");
-  const client = await read("app/cc/cc-page-client.tsx");
-  const actions = await read("app/cc/actions.ts");
+  const form = await read("app/cc/expense-claim-form.tsx");
+  const actions = await read("app/cc/expense-claim-actions.ts");
   assert.match(page, /organizationOptions\.filter\(\(organization\) => !organization\.projectTrackingRequired\)/);
-  assert.match(client, /Organization budget \(no project\)/);
-  assert.match(client, /name="organizationId"/);
-  assert.match(client, /name="fiscalYearId" value=\{selectedFiscalYearId\}/);
+  assert.match(form, /Organization Budget/);
+  assert.match(form, /name="organizationId"/);
+  assert.match(form, /name="fiscalYearId" value=\{fiscalYearId\}/);
   assert.match(actions, /organizationId/);
 });
 
@@ -65,4 +66,3 @@ test("cards and statement administration can render independently", async () => 
   assert.match(client, /section="months"/);
   assert.match(client, /section="cards"/);
 });
-
