@@ -4,6 +4,7 @@ import { getFiscalYearOptions } from "@/lib/db";
 import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { VarianceCenterClient, type SourceCandidate, type VarianceRow } from "@/app/variance/variance-center-client";
+import { FilterToolbar } from "@/components/ui/toolbars";
 
 function moneyLabel(value: string | number | null | undefined): number {
   const parsed = Number(value ?? 0);
@@ -15,7 +16,6 @@ export default async function VariancePage({
 }: {
   searchParams?: Promise<{
     fiscalYearId?: string;
-    sourceSearch?: string;
   }>;
 }) {
   const access = await getAccessContext();
@@ -24,7 +24,6 @@ export default async function VariancePage({
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedFiscalYearId = (resolvedSearchParams?.fiscalYearId ?? "").trim();
-  const sourceSearch = (resolvedSearchParams?.sourceSearch ?? "").trim();
 
   const fiscalYearOptions = await getFiscalYearOptions();
   const fiscalYearId = resolveRequestedFiscalYearId(fiscalYearOptions, requestedFiscalYearId, { allowAll: true });
@@ -181,7 +180,7 @@ export default async function VariancePage({
 
   const { data: sourceData, error: sourceError } = await supabase.rpc("get_institutional_source_candidates", {
     p_fiscal_year_id: fiscalYearId && fiscalYearId !== "all" ? fiscalYearId : null,
-    p_search: sourceSearch || null,
+    p_search: null,
     p_allow_cross_org: true
   });
   if (sourceError) throw sourceError;
@@ -288,27 +287,23 @@ export default async function VariancePage({
       </header>
 
       <article className="panel">
-        <h2>Source Bucket Search</h2>
-        <form className="panelGrid">
-          <label>
-            Fiscal Year
-            <select name="fiscalYearId" defaultValue={fiscalYearId}>
-              <option value="all">All fiscal years</option>
-              {fiscalYearOptions.map((fy) => (
-                <option key={fy.id} value={fy.id}>
-                  {fy.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Search
-            <input name="sourceSearch" defaultValue={sourceSearch} placeholder="FY, org, account, or month" />
-          </label>
-          <button className="buttonLink" type="submit">
-            Search Sources
-          </button>
-        </form>
+        <FilterToolbar label="Variance filters">
+          <form method="get" className="inlineFilters">
+            <label>
+              Fiscal Year
+              <select name="fiscalYearId" defaultValue={fiscalYearId}>
+                <option value="all">All fiscal years</option>
+                {fiscalYearOptions.map((fy) => (
+                  <option key={fy.id} value={fy.id}>
+                    {fy.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button className="buttonLink" type="submit">Apply</button>
+          </form>
+          <p className="helperText">Source search appears inside the selected variance.</p>
+        </FilterToolbar>
       </article>
 
       <VarianceCenterClient variances={variances} sourceCandidates={sourceCandidates} canApprove={access.role === "admin"} />

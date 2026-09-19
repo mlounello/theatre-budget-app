@@ -14,6 +14,7 @@
     "test:phase4-gate3": "node --test scripts/phase4-gate3-application.test.mjs",
     "test:phase4-gate4": "node --test scripts/phase4-gate4-application.test.mjs",
     "test:phase4-gate5a": "node --test scripts/phase4-gate5a-application.test.mjs",
+    "test:phase4-gate5b": "node --test scripts/phase4-gate5b-application.test.mjs",
     "test:phase5a-integrations": "node --test scripts/phase5a-integration-boundaries.test.mjs"
   },
   "dependencies": {
