@@ -3,7 +3,7 @@
 **Date:** 2026-09-19  
 **Branch:** `codex/phase-4-gate-2`  
 **Database:** production Postgres, `app_theatre_budget` schema  
-**Status:** Approved 2026-09-19; ready for merge and production deployment
+**Status:** Approved, merged, and deployed to production 2026-09-19
 
 ## Outcome
 
@@ -130,3 +130,11 @@ No conflict below has been resolved or written into the source record. The propo
 - [x] Conflict report prepared for owner review.
 - [x] Owner confirmed the proposed fiscal years for the 26 unresolved legacy records on 2026-09-19.
 - [x] Gate 2 approved for merge and production deployment on 2026-09-19.
+- [x] Merged to `main`, deployed, and reverified in production on 2026-09-19.
+
+## Post-deployment verification
+
+- Production deployment `dpl_GbUHYSbKhFjLscbUivYLoAF4CxpD` reached Ready and received the primary application alias.
+- The full read-only schema, backfill, RLS, Credit Card policy, and fixed-record-set financial baseline suite passed in production.
+- Procurement Add Order and Quick Batch Add both inherited the selected FY27 page scope and displayed exactly the four FY27 memberships without FY26/global duplicates.
+- Impersonation was entered and exited again after deployment; the scoped dashboard and restored administrator Settings page both rendered correctly.
