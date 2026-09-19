@@ -19,7 +19,7 @@ import type {
 } from "@/lib/db";
 
 function typeLabel(type: IncomeRow["incomeType"]): string {
-  if (type === "starting_budget") return "Starting Budget";
+  if (type === "starting_budget") return "Legacy Starting Budget";
   if (type === "donation") return "Donation";
   if (type === "ticket_sales") return "Ticket Sales";
   return "Other";
@@ -280,7 +280,7 @@ export function IncomeTable({
           <form
             action={bulkDeleteAction}
             onSubmit={(event) => {
-              if (!window.confirm(`Delete ${selectedIds.length} selected income entries?`)) {
+              if (!window.confirm(`Delete ${selectedIds.length} selected revenue entries?`)) {
                 event.preventDefault();
               }
             }}
@@ -309,7 +309,7 @@ export function IncomeTable({
           Type
           <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
             <option value="">All</option>
-            <option value="starting_budget">Starting Budget</option>
+            <option value="starting_budget">Legacy Starting Budget</option>
             <option value="donation">Donation</option>
             <option value="ticket_sales">Ticket Sales</option>
             <option value="other">Other</option>
@@ -372,7 +372,7 @@ export function IncomeTable({
           <tbody>
             {sortedRows.length === 0 ? (
               <tr>
-                <td colSpan={11}>No income entries yet.</td>
+                <td colSpan={11}>No revenue entries yet.</td>
               </tr>
             ) : null}
             {sortedRows.map((row) => (
@@ -399,7 +399,7 @@ export function IncomeTable({
                       type="submit"
                       className="tinyButton dangerButton"
                       onClick={(event) => {
-                        if (!window.confirm("Delete this income entry?")) event.preventDefault();
+                        if (!window.confirm("Delete this revenue entry?")) event.preventDefault();
                       }}
                     >
                       Trash
@@ -413,9 +413,9 @@ export function IncomeTable({
       </div>
 
       {editingRow ? (
-        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit income entry">
+        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit revenue entry">
           <div className="modalPanel">
-            <h2>Edit Income Entry</h2>
+            <h2>Edit Revenue Entry</h2>
             {updateState.message ? (
               <p className={updateState.ok ? "successNote" : "errorNote"} key={updateState.timestamp}>
                 {updateState.message}
@@ -459,17 +459,19 @@ export function IncomeTable({
                 </select>
               </label>
               <label>
-                Income Type
+                Revenue Type
                 <select
                   name="incomeType"
                   value={editIncomeType}
                   onChange={(event) => setEditIncomeType(event.target.value as IncomeRow["incomeType"])}
                   required
                 >
-                  <option value="starting_budget">Starting Budget</option>
+                  {editingRow.incomeType === "starting_budget" ? (
+                    <option value="starting_budget">Legacy Starting Budget</option>
+                  ) : null}
                   <option value="donation">Donation</option>
                   <option value="ticket_sales">Ticket Sales</option>
-                  <option value="other">Other</option>
+                  <option value="other">Other Revenue</option>
                 </select>
               </label>
               <label>
@@ -561,9 +563,9 @@ export function IncomeTable({
       ) : null}
 
       {bulkEditOpen ? (
-        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Bulk edit income entries">
+        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Bulk edit revenue entries">
           <div className="modalPanel">
-            <h2>Bulk Edit Income Entries</h2>
+            <h2>Bulk Edit Revenue Entries</h2>
             <p className="heroSubtitle">Only checked fields are applied to all selected rows.</p>
             {bulkUpdateState.message ? (
               <p className={bulkUpdateState.ok ? "successNote" : "errorNote"} key={bulkUpdateState.timestamp}>
@@ -590,15 +592,14 @@ export function IncomeTable({
 
               <label className="checkboxLabel">
                 <input name="applyIncomeType" type="checkbox" />
-                Apply Income Type
+                Apply Revenue Type
               </label>
               <label>
-                Income Type
+                Revenue Type
                 <select name="incomeType" defaultValue="other">
-                  <option value="starting_budget">Starting Budget</option>
                   <option value="donation">Donation</option>
                   <option value="ticket_sales">Ticket Sales</option>
-                  <option value="other">Other</option>
+                  <option value="other">Other Revenue</option>
                 </select>
               </label>
 

@@ -439,6 +439,94 @@ th {
 
 .institutionalGridWrap {
   max-height: 72vh;
+  border: 1px solid #dfe8e1;
+  border-radius: 14px;
+}
+
+.institutionalSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 0 0 1rem;
+}
+
+.institutionalSummaryCard {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.institutionalSummaryCard span,
+.revenueSummaryStrip span {
+  color: var(--text-muted);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.institutionalSummaryCard strong {
+  font-size: clamp(1.4rem, 2vw, 2rem);
+}
+
+.institutionalSummaryCard small {
+  color: var(--text-muted);
+}
+
+.revenueSummaryStrip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin: 1rem 0;
+}
+
+.revenueSummaryStrip > div {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.75rem;
+  background: #f5f8f5;
+  border: 1px solid #e0e9e1;
+  border-radius: 10px;
+}
+
+.revenueProgress {
+  width: 100%;
+  height: 0.34rem;
+  margin-top: 0.35rem;
+  overflow: hidden;
+  background: #e0e8e1;
+  border-radius: 99px;
+}
+
+.revenueProgress span {
+  display: block;
+  height: 100%;
+  background: var(--siena-green);
+  border-radius: inherit;
+}
+
+.segmentedControl {
+  display: inline-flex;
+  padding: 0.2rem;
+  background: #eef3ef;
+  border: 1px solid #d5e0d7;
+  border-radius: 999px;
+}
+
+.segmentedControl a {
+  padding: 0.38rem 0.75rem;
+  color: var(--text-muted);
+  border-radius: 999px;
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.segmentedControl a.active {
+  color: var(--siena-dark-green);
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 53, 35, 0.12);
 }
 
 table {
@@ -464,6 +552,10 @@ th {
   min-width: 1680px;
 }
 
+.institutionalGrid-compact {
+  min-width: 1500px;
+}
+
 .institutionalGrid th,
 .institutionalGrid td {
   vertical-align: top;
@@ -485,6 +577,28 @@ th {
 .institutionalGrid thead .stickyCol {
   background: #f3f7f4;
   z-index: 5;
+}
+
+.institutionalAccountCol {
+  left: 0;
+  min-width: 220px;
+  width: 220px;
+}
+
+.institutionalGroupRow th {
+  position: relative;
+  top: auto;
+  z-index: 2;
+  padding: 0.55rem 0.75rem;
+  color: var(--siena-dark-green);
+  background: #e8f0e9;
+  border-top: 2px solid #c8d9cc;
+}
+
+.institutionalGroupRow span {
+  margin-left: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 400;
 }
 
 .stickyCol1 {
@@ -556,12 +670,82 @@ th {
   font-weight: 800;
 }
 
+.monthAvailable span {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .monthMeta {
   display: grid;
   gap: 0.12rem;
   margin: 0.25rem 0;
   color: var(--text-muted);
   font-size: 0.74rem;
+}
+
+.monthMeta span {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.monthMeta b {
+  font-weight: 700;
+}
+
+.revenueEntryPanel > summary,
+.legacyBudgetPanel > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.revenueEntryPanel > summary::-webkit-details-marker,
+.legacyBudgetPanel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.revenueEntryPanel > summary span,
+.legacyBudgetPanel > summary span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.revenueEntryPanel > summary span::after,
+.legacyBudgetPanel > summary span::after {
+  content: "Open";
+  justify-self: end;
+  margin-top: -2rem;
+  color: var(--siena-green);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-weight: 700;
+}
+
+.revenueEntryPanel[open] > summary span::after,
+.legacyBudgetPanel[open] > summary span::after {
+  content: "Close";
+}
+
+.revenueEntryPanel > summary small,
+.legacyBudgetPanel > summary small {
+  max-width: 70ch;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.revenueEntryPanel[open] > .requestForm,
+.legacyBudgetPanel[open] > .tableWrap {
+  margin-top: 1rem;
+}
+
+@media (max-width: 900px) {
+  .institutionalSummaryGrid,
+  .revenueSummaryStrip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .compactHeaderCell {

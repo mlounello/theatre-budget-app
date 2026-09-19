@@ -53,7 +53,7 @@ function navigationForRole(role: string): Navigation {
             { href: "/budget-planning", label: "Budget Planning" },
             { href: "/institutional-budget", label: "Institutional Budget" },
             { href: "/variance", label: "Variances" },
-            { href: "/income", label: "Revenue & Income" }
+            { href: "/income", label: "Revenue" }
           ]
         },
         {

@@ -112,12 +112,12 @@ export default async function DebugPage() {
               <tbody>
                 <tr>
                   <td>Admin</td>
-                  <td>Dashboard, Overview, Requests, Procurement, Contracts, Income, CC, Settings, Debug</td>
+                  <td>Dashboard, Overview, Requests, Procurement, Contracts, Revenue, CC, Settings, Debug</td>
                   <td>Global settings + all projects</td>
                 </tr>
                 <tr>
                   <td>Project Manager</td>
-                  <td>Dashboard, Overview, Requests, Procurement, Contracts, Income, CC, Settings</td>
+                  <td>Dashboard, Overview, Requests, Procurement, Contracts, Revenue, CC, Settings</td>
                   <td>Managed projects only; no global admin panels</td>
                 </tr>
                 <tr>

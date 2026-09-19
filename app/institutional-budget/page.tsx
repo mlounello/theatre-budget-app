@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Fragment } from "react";
 import { redirect } from "next/navigation";
 import { createBulkVarianceFromBucketsAction, createVarianceFromBucketAction } from "@/app/institutional-budget/actions";
 import { getAccessContext } from "@/lib/access";
@@ -64,6 +65,7 @@ export default async function InstitutionalBudgetPage({
     organizationId?: string;
     q?: string;
     negativeOnly?: string;
+    view?: string;
   }>;
 }) {
   const access = await getAccessContext();
@@ -75,6 +77,7 @@ export default async function InstitutionalBudgetPage({
   const organizationId = (resolvedSearchParams?.organizationId ?? "").trim();
   const queryText = (resolvedSearchParams?.q ?? "").trim().toLowerCase();
   const negativeOnly = resolvedSearchParams?.negativeOnly === "1";
+  const viewMode = resolvedSearchParams?.view === "detail" ? "detail" : "compact";
 
   const supabase = await getSupabaseServerClient();
   const { data: fiscalYearData, error: fiscalYearError } = await supabase
@@ -187,19 +190,100 @@ export default async function InstitutionalBudgetPage({
     a.accountCode.localeCompare(b.accountCode)
   );
 
+  const expenseRows = rows.filter((row) => !row.is_revenue);
+  const totals = expenseRows.reduce(
+    (summary, row) => {
+      summary.allocated += asNumber(row.monthly_allocation);
+      summary.committed += asNumber(row.submitted_commitments_amount);
+      summary.available += asNumber(row.official_available_amount);
+      summary.projected += asNumber(row.projected_available_amount);
+      if (asNumber(row.official_available_amount) < 0 || asNumber(row.projected_available_amount) < 0) {
+        summary.needsVariance += 1;
+      }
+      return summary;
+    },
+    { allocated: 0, committed: 0, available: 0, projected: 0, needsVariance: 0 }
+  );
+  const revenueTotals = revenueRows.reduce(
+    (summary, row) => {
+      summary.target += asNumber(row.target_amount);
+      summary.received += asNumber(row.received_amount);
+      summary.remaining += asNumber(row.remaining_to_target);
+      summary.over += asNumber(row.over_target_amount);
+      return summary;
+    },
+    { target: 0, received: 0, remaining: 0, over: 0 }
+  );
+  const gridGroups = Array.from(
+    gridRows.reduce((groups, row) => {
+      const key = `${row.fiscalYearName}:${row.orgCode}:${row.accountCategory || "Other"}`;
+      const group = groups.get(key) ?? {
+        key,
+        fiscalYearName: row.fiscalYearName,
+        orgCode: row.orgCode,
+        organizationName: row.organizationName,
+        category: row.accountCategory || "Other",
+        rows: [] as typeof gridRows
+      };
+      group.rows.push(row);
+      groups.set(key, group);
+      return groups;
+    }, new Map<string, {
+      key: string;
+      fiscalYearName: string;
+      orgCode: string;
+      organizationName: string;
+      category: string;
+      rows: typeof gridRows;
+    }>()).values()
+  );
+  const viewHref = (nextView: "compact" | "detail") => {
+    const params = new URLSearchParams();
+    if (fiscalYearId) params.set("fiscalYearId", fiscalYearId);
+    if (organizationId) params.set("organizationId", organizationId);
+    if (resolvedSearchParams?.q) params.set("q", resolvedSearchParams.q);
+    if (negativeOnly) params.set("negativeOnly", "1");
+    params.set("view", nextView);
+    return `/institutional-budget?${params.toString()}`;
+  };
+
   return (
     <section>
       <header className="sectionHeader">
         <p className="eyebrow">Institutional Budget</p>
-        <h1>Monthly Budget View</h1>
+        <h1>Institutional Budget</h1>
         <p className="heroSubtitle">
-          Official availability includes monthly allocation, submitted commitments, and approved or posted variances. Projected availability also includes pending variance lines.
+          Follow monthly allocations, commitments, and availability. Revenue targets are reported separately and never become spendable funds.
         </p>
       </header>
+
+      <div className="institutionalSummaryGrid" aria-label="Institutional budget summary">
+        <article className="projectCard institutionalSummaryCard">
+          <span>Allocated</span>
+          <strong>{formatCurrency(totals.allocated)}</strong>
+          <small>Expense budget in this scope</small>
+        </article>
+        <article className="projectCard institutionalSummaryCard">
+          <span>Committed</span>
+          <strong>{formatCurrency(totals.committed)}</strong>
+          <small>Submitted commitments</small>
+        </article>
+        <article className="projectCard institutionalSummaryCard">
+          <span>Available</span>
+          <strong className={totals.available < 0 ? "negative" : "positive"}>{formatCurrency(totals.available)}</strong>
+          <small>Official availability</small>
+        </article>
+        <article className="projectCard institutionalSummaryCard">
+          <span>Needs variance</span>
+          <strong>{totals.needsVariance}</strong>
+          <small>Monthly buckets requiring attention</small>
+        </article>
+      </div>
 
       <article className="panel">
         <h2>Filters</h2>
         <form className="panelGrid">
+          <input name="view" type="hidden" value={viewMode} />
           <label>
             Fiscal Year
             <select name="fiscalYearId" defaultValue={fiscalYearId}>
@@ -233,6 +317,11 @@ export default async function InstitutionalBudgetPage({
           <button className="buttonLink" type="submit">
             Apply
           </button>
+          {(queryText || negativeOnly || organizationId) ? (
+            <Link className="buttonLink" href={`/institutional-budget?fiscalYearId=${encodeURIComponent(fiscalYearId)}&view=${viewMode}`}>
+              Clear filters
+            </Link>
+          ) : null}
         </form>
       </article>
 
@@ -244,6 +333,12 @@ export default async function InstitutionalBudgetPage({
           </div>
         </div>
         <p className="heroSubtitle">Revenue offsets its target for reporting but is never available to spend.</p>
+        <div className="revenueSummaryStrip" aria-label="Revenue performance summary">
+          <div><span>Target</span><strong>{formatCurrency(revenueTotals.target)}</strong></div>
+          <div><span>Received</span><strong>{formatCurrency(revenueTotals.received)}</strong></div>
+          <div><span>Remaining</span><strong>{formatCurrency(revenueTotals.remaining)}</strong></div>
+          <div><span>Over target</span><strong>{formatCurrency(revenueTotals.over)}</strong></div>
+        </div>
         <div className="tableWrap">
           <table>
             <thead>
@@ -267,7 +362,12 @@ export default async function InstitutionalBudgetPage({
                   <td>{row.org_code ?? "-"} | {row.organization_name ?? "Organization"}</td>
                   <td>{row.account_code ?? "-"} | {row.account_name ?? "Revenue"}</td>
                   <td>{formatCurrency(asNumber(row.target_amount))}</td>
-                  <td>{formatCurrency(asNumber(row.received_amount))}</td>
+                  <td>
+                    <strong>{formatCurrency(asNumber(row.received_amount))}</strong>
+                    <div className="revenueProgress" aria-label={`${Math.round(Math.min(100, asNumber(row.target_amount) > 0 ? (asNumber(row.received_amount) / asNumber(row.target_amount)) * 100 : 0))}% of target received`}>
+                      <span style={{ width: `${Math.min(100, asNumber(row.target_amount) > 0 ? (asNumber(row.received_amount) / asNumber(row.target_amount)) * 100 : 0)}%` }} />
+                    </div>
+                  </td>
                   <td>{formatCurrency(asNumber(row.remaining_to_target))}</td>
                   <td>{formatCurrency(asNumber(row.over_target_amount))}</td>
                 </tr>
@@ -280,10 +380,19 @@ export default async function InstitutionalBudgetPage({
       <article className="panel">
         <div className="sectionHeader compactHeader">
           <div>
-            <p className="eyebrow">FY / Org / Account</p>
-            <h2>Institutional Availability</h2>
+            <p className="eyebrow">June through May</p>
+            <h2>Monthly Availability Matrix</h2>
+            <p className="heroSubtitle">Grouped by organization and account category. Freeze the identifying columns while reviewing each month.</p>
           </div>
           <div className="buttonCluster">
+            <div className="segmentedControl" aria-label="Matrix detail level">
+              <Link className={viewMode === "compact" ? "active" : ""} href={viewHref("compact")} aria-current={viewMode === "compact" ? "page" : undefined}>
+                Compact
+              </Link>
+              <Link className={viewMode === "detail" ? "active" : ""} href={viewHref("detail")} aria-current={viewMode === "detail" ? "page" : undefined}>
+                Detail
+              </Link>
+            </div>
             <Link className="buttonLink" href="/variance">
               Open Variance Center
             </Link>
@@ -294,13 +403,13 @@ export default async function InstitutionalBudgetPage({
         </div>
         <form id="bulkVarianceForm" action={createBulkVarianceFromBucketsAction} className="institutionalBulkForm">
         <div className="tableWrap institutionalGridWrap">
-          <table className="institutionalGrid">
+          <table className={`institutionalGrid institutionalGrid-${viewMode}`}>
             <thead>
               <tr>
-                <th className="stickyCol stickyCol1">FY</th>
-                <th className="stickyCol stickyCol2">Org</th>
-                <th className="stickyCol stickyCol3">Account</th>
-                <th className="stickyCol stickyCol4">Category</th>
+                {viewMode === "detail" ? <th className="stickyCol stickyCol1">FY</th> : null}
+                {viewMode === "detail" ? <th className="stickyCol stickyCol2">Org</th> : null}
+                <th className={viewMode === "detail" ? "stickyCol stickyCol3" : "stickyCol institutionalAccountCol"}>Account</th>
+                {viewMode === "detail" ? <th className="stickyCol stickyCol4">Category</th> : null}
                 {monthColumns.map((month) => (
                   <th key={month.monthStart} className="monthHeader">
                     {month.label}
@@ -311,23 +420,32 @@ export default async function InstitutionalBudgetPage({
             <tbody>
               {gridRows.length === 0 ? (
                 <tr>
-                  <td colSpan={4 + Math.max(monthColumns.length, 1)}>No institutional monthly budget rows found.</td>
+                  <td colSpan={(viewMode === "detail" ? 4 : 1) + Math.max(monthColumns.length, 1)}>No institutional monthly budget rows found.</td>
                 </tr>
               ) : null}
-              {gridRows.map((gridRow) => {
-                return (
+              {gridGroups.map((group) => (
+                <Fragment key={group.key}>
+                  <tr className="institutionalGroupRow">
+                    <th colSpan={(viewMode === "detail" ? 4 : 1) + Math.max(monthColumns.length, 1)}>
+                      <strong>{group.orgCode} | {group.organizationName}</strong>
+                      <span>{group.fiscalYearName} · {group.category} · {group.rows.length} account{group.rows.length === 1 ? "" : "s"}</span>
+                    </th>
+                  </tr>
+                  {group.rows.map((gridRow) => (
                   <tr key={gridRow.key}>
-                    <td className="stickyCol stickyCol1">{gridRow.fiscalYearName}</td>
-                    <td className="stickyCol stickyCol2">
-                      <strong>{gridRow.orgCode}</strong>
-                      <div className="muted">{gridRow.organizationName}</div>
-                    </td>
-                    <td className="stickyCol stickyCol3">
+                    {viewMode === "detail" ? <td className="stickyCol stickyCol1">{gridRow.fiscalYearName}</td> : null}
+                    {viewMode === "detail" ? (
+                      <td className="stickyCol stickyCol2">
+                        <strong>{gridRow.orgCode}</strong>
+                        <div className="muted">{gridRow.organizationName}</div>
+                      </td>
+                    ) : null}
+                    <td className={viewMode === "detail" ? "stickyCol stickyCol3" : "stickyCol institutionalAccountCol"}>
                       <strong>{gridRow.accountCode}</strong>
                       <div className="muted">{gridRow.accountName}</div>
                       {gridRow.isRevenue ? <div className="statusPill status-held">Revenue target</div> : null}
                     </td>
-                    <td className="stickyCol stickyCol4">{gridRow.accountCategory || "-"}</td>
+                    {viewMode === "detail" ? <td className="stickyCol stickyCol4">{gridRow.accountCategory || "-"}</td> : null}
                     {monthColumns.map((month) => {
                       const cell = gridRow.cells.get(month.monthStart);
                       if (!cell) return <td key={month.monthStart} className="budgetMonthCell emptyMonthCell">-</td>;
@@ -341,12 +459,16 @@ export default async function InstitutionalBudgetPage({
                           ) : (
                             <div className={officialAvailable < 0 ? "negative monthAvailable" : "positive monthAvailable"}>
                               {formatCurrency(officialAvailable)}
+                              <span>Available</span>
                             </div>
                           )}
-                          <div className="monthMeta">
-                            <span>{gridRow.isRevenue ? "Target" : "Alloc"} {formatCurrency(asNumber(cell.monthly_allocation))}</span>
-                            {!gridRow.isRevenue ? <span>Commit {formatCurrency(asNumber(cell.submitted_commitments_amount))}</span> : null}
-                          </div>
+                          {viewMode === "detail" ? (
+                            <div className="monthMeta">
+                              <span><b>{gridRow.isRevenue ? "Target" : "Allocated"}</b> {formatCurrency(asNumber(cell.monthly_allocation))}</span>
+                              {!gridRow.isRevenue ? <span><b>Committed</b> {formatCurrency(asNumber(cell.submitted_commitments_amount))}</span> : null}
+                              {!gridRow.isRevenue ? <span><b>Projected</b> {formatCurrency(projectedAvailable)}</span> : null}
+                            </div>
+                          ) : null}
                           {!gridRow.isRevenue && isNegative && cell.budget_plan_month_id ? (
                             <div className="varianceCellActions">
                               <label className="varianceSelectLabel">
@@ -368,8 +490,9 @@ export default async function InstitutionalBudgetPage({
                       );
                     })}
                   </tr>
-                );
-              })}
+                  ))}
+                </Fragment>
+              ))}
             </tbody>
           </table>
         </div>
