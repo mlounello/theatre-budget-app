@@ -3,7 +3,7 @@
 **Date:** 2026-09-19  
 **Branch:** `codex/phase-4-gate-3`  
 **Database:** production Postgres, `app_theatre_budget` schema  
-**Status:** Complete and awaiting owner approval
+**Status:** Approved, merged, and deployed to production 2026-09-19
 
 ## Outcome
 
@@ -114,4 +114,5 @@ One intentional reporting correction occurred: FY27 submitted institutional comm
 - [x] RLS and financial boundaries verified.
 - [x] Project and projectless workflows verified.
 - [x] No Gate 4 organization consolidation performed.
-- [ ] Owner review and Gate 3 approval.
+- [x] Owner approved Gate 3 on 2026-09-19.
+- [x] Fast-forward merged to `main` and production deployment initiated from the merged revision.
