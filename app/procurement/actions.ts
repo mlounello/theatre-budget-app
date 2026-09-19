@@ -127,6 +127,29 @@ function parseMoney(value: FormDataEntryValue | null): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+type ProcurementAllocationInput = {
+  projectId: string | null;
+  organizationId: string | null;
+  productionCategoryId: string | null;
+  accountCodeId: string;
+  amount: number;
+  note: string | null;
+};
+
+function parseProcurementAllocations(value: FormDataEntryValue | null): ProcurementAllocationInput[] {
+  if (typeof value !== "string" || !value.trim()) return [];
+  const parsed = JSON.parse(value) as Array<Record<string, unknown>>;
+  if (!Array.isArray(parsed)) return [];
+  return parsed.map((row) => ({
+    projectId: String(row.projectId ?? "").trim() || null,
+    organizationId: String(row.organizationId ?? "").trim() || null,
+    productionCategoryId: String(row.productionCategoryId ?? "").trim() || null,
+    accountCodeId: String(row.accountCodeId ?? "").trim(),
+    amount: Math.round(Number(row.amount ?? 0) * 100) / 100,
+    note: String(row.note ?? "").trim() || null
+  }));
+}
+
 function parseDateInput(value: FormDataEntryValue | null): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -768,6 +791,10 @@ export async function updateProcurementAction(
       .single();
     if (existingError || !existing) return err("Purchase not found.");
     await ensurePurchasePmOrAdminAccess(supabase, user.id, id);
+    const isRequisitionPurchase = (existing.request_type as string | null) === "requisition";
+    const requestedAllocations = isRequisitionPurchase
+      ? parseProcurementAllocations(formData.get("allocationsJson"))
+      : [];
     const nextProjectId = projectId;
     if (nextProjectId && nextProjectId !== ((existing.project_id as string | null) ?? "")) {
       await ensureProjectPmOrAdminAccess(supabase, user.id, nextProjectId);
@@ -866,6 +893,65 @@ export async function updateProcurementAction(
       verifiedBudgetLine = { id: line.id as string, account_code_id: (line.account_code_id as string | null) ?? null };
     }
 
+    const resolvedAllocations: Array<{
+      reporting_budget_line_id: string | null;
+      organization_id: string | null;
+      account_code_id: string;
+      production_category_id: string | null;
+      amount: number;
+      note: string | null;
+    }> = [];
+    if (budgetTracked && isRequisitionPurchase) {
+      if (requestedAllocations.length === 0) return err("Add at least one budget allocation for this PO.");
+      const allocationTotal = Math.round(requestedAllocations.reduce((sum, allocation) => sum + allocation.amount, 0) * 100) / 100;
+      if (Math.abs(allocationTotal - nextRequested) > 0.005) {
+        return err(`Allocations must total the PO value. Allocated $${allocationTotal.toFixed(2)} of $${nextRequested.toFixed(2)}.`);
+      }
+      for (const [index, allocation] of requestedAllocations.entries()) {
+        if (Boolean(allocation.projectId) === Boolean(allocation.organizationId)) {
+          return err(`Allocation ${index + 1} must choose exactly one project or organization budget.`);
+        }
+        if (!allocation.accountCodeId) return err(`Allocation ${index + 1} needs a Banner account.`);
+        if (!Number.isFinite(allocation.amount) || allocation.amount <= 0) return err(`Allocation ${index + 1} needs an amount greater than zero.`);
+        if (allocation.projectId) {
+          if (!allocation.productionCategoryId) return err(`Allocation ${index + 1} needs a production category.`);
+          await requireProjectRole(allocation.projectId, ["admin", "project_manager"], {
+            productionCategoryId: allocation.productionCategoryId,
+            errorMessage: `You do not have permission to use the project or category in allocation ${index + 1}.`
+          });
+          const allocationProject = await getProjectMeta(supabase, allocation.projectId);
+          if (allocationProject.fiscalYearId !== nextFiscalYearId) return err(`Allocation ${index + 1} uses a project outside this PO's fiscal year.`);
+          const { data: allocationLineId, error: allocationLineError } = await supabase.rpc("ensure_project_category_line", {
+            p_project_id: allocation.projectId,
+            p_production_category_id: allocation.productionCategoryId
+          });
+          if (allocationLineError || !allocationLineId) return err(allocationLineError?.message ?? `Could not resolve allocation ${index + 1}.`);
+          resolvedAllocations.push({
+            reporting_budget_line_id: allocationLineId as string,
+            organization_id: null,
+            account_code_id: allocation.accountCodeId,
+            production_category_id: allocation.productionCategoryId,
+            amount: allocation.amount,
+            note: allocation.note
+          });
+        } else {
+          const allocationOrganizationId = allocation.organizationId as string;
+          if (!nextFiscalYearId) return err("Fiscal year is required for organization-budget allocations.");
+          await ensureOrganizationPmOrAdminAccess(allocationOrganizationId, nextFiscalYearId);
+          const membership = await validateOrganizationFiscalYear(supabase, allocationOrganizationId, nextFiscalYearId);
+          if (membership.projectTrackingRequired) return err(`Allocation ${index + 1} must use a theatre project for that organization.`);
+          resolvedAllocations.push({
+            reporting_budget_line_id: null,
+            organization_id: allocationOrganizationId,
+            account_code_id: allocation.accountCodeId,
+            production_category_id: null,
+            amount: allocation.amount,
+            note: allocation.note
+          });
+        }
+      }
+    }
+
     let resolvedVendorId: string | null = vendorId || null;
     if (vendorId === NEW_VENDOR_VALUE) {
       if (!newVendorName) return err("New vendor name is required.");
@@ -929,7 +1015,12 @@ export async function updateProcurementAction(
     } else {
       const { error: deleteAllocationsError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", id);
       if (deleteAllocationsError) return err(deleteAllocationsError.message);
-      if (verifiedBudgetLine) {
+      if (resolvedAllocations.length > 0) {
+        const { error: createAllocationError } = await supabase.from("purchase_allocations").insert(
+          resolvedAllocations.map((allocation) => ({ purchase_id: id, reporting_bucket: "direct", ...allocation }))
+        );
+        if (createAllocationError) return err(createAllocationError.message);
+      } else if (verifiedBudgetLine) {
         const allocationAmount =
           nextBudgetStatus === "encumbered"
             ? nextEncumberedAmount

@@ -70,6 +70,21 @@ test("procurement drawer shows only fields relevant to the row workflow", async 
   assert.match(actions, /Choose whether this is a card funding request, reconciliation expense, or reimbursement/);
 });
 
+test("purchase orders support balanced split allocations across budgets, categories, and accounts", async () => {
+  const table = await read("app/procurement/procurement-table.tsx");
+  const actions = await read("app/procurement/actions.ts");
+  const institutional = await read("lib/institutional-budget.ts");
+  const migration = await read("supabase/migrations/20260919234500_split_po_budget_allocations.sql");
+  assert.match(table, /Budget Allocations/);
+  assert.match(table, /Split Allocation/);
+  assert.match(table, /Allocated \/ PO total/);
+  assert.match(actions, /Allocations must total the PO value/);
+  assert.match(actions, /resolvedAllocations/);
+  assert.match(institutional, /allocation\.organization_id/);
+  assert.match(migration, /purchase_allocations_target_check/);
+  assert.match(migration, /v_monthly_actuals_by_org_account/);
+});
+
 test("supporting records are restricted to purchases on the current page", async () => {
   const db = await read("lib/db.ts");
   assert.match(db, /currentPagePurchaseIds/);

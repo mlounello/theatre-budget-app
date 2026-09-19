@@ -242,6 +242,17 @@ export type ProcurementReceivingDocRow = {
   createdAt: string;
 };
 
+export type ProcurementAllocationRow = {
+  id: string;
+  purchaseId: string;
+  projectId: string | null;
+  organizationId: string | null;
+  productionCategoryId: string | null;
+  accountCodeId: string | null;
+  amount: number;
+  note: string | null;
+};
+
 const STORAGE_REFERENCE_PREFIX = "storage:";
 
 function parseStorageReference(value: string | null | undefined): { bucket: string; path: string } | null {
@@ -1436,6 +1447,7 @@ export async function getProcurementData(
   purchases: ProcurementRow[];
   receipts: ProcurementReceiptRow[];
   receivingDocs: ProcurementReceivingDocRow[];
+  allocations: ProcurementAllocationRow[];
   budgetLineOptions: ProcurementBudgetLineOption[];
   projectOptions: ProcurementProjectOption[];
   organizationOptions: OrganizationOption[];
@@ -1550,7 +1562,7 @@ export async function getProcurementData(
   if (needsAttentionCountResponse.error) throw needsAttentionCountResponse.error;
 
   const currentPagePurchaseIds = (purchasesResponse.data ?? []).map((row) => row.id as string);
-  const [receiptsResponse, receivingDocsResponse] = currentPagePurchaseIds.length > 0
+  const [receiptsResponse, receivingDocsResponse, allocationsResponse] = currentPagePurchaseIds.length > 0
     ? await Promise.all([
         supabase
           .from("purchase_receipts")
@@ -1561,14 +1573,21 @@ export async function getProcurementData(
           .from("purchase_receiving_docs")
           .select("id, purchase_id, doc_code, received_on, note, created_at")
           .in("purchase_id", currentPagePurchaseIds)
-          .order("created_at", { ascending: false })
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("purchase_allocations")
+          .select("id, purchase_id, reporting_budget_line_id, organization_id, production_category_id, account_code_id, amount, note, project_budget_lines(project_id)")
+          .in("purchase_id", currentPagePurchaseIds)
+          .order("created_at", { ascending: true })
       ])
     : [
+        { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null }
       ];
   if (receiptsResponse.error) throw receiptsResponse.error;
   if (receivingDocsResponse.error) throw receivingDocsResponse.error;
+  if (allocationsResponse.error) throw allocationsResponse.error;
 
   const procurementAttachmentUrls = await resolveAttachmentUrls(
     supabase,
@@ -1766,6 +1785,20 @@ export async function getProcurementData(
     createdAt: row.created_at as string
   }));
 
+  const allocations: ProcurementAllocationRow[] = (allocationsResponse.data ?? []).map((row) => {
+    const reportingLine = row.project_budget_lines as { project_id?: string | null } | null;
+    return {
+      id: row.id as string,
+      purchaseId: row.purchase_id as string,
+      projectId: (reportingLine?.project_id as string | null) ?? null,
+      organizationId: (row.organization_id as string | null) ?? null,
+      productionCategoryId: (row.production_category_id as string | null) ?? null,
+      accountCodeId: (row.account_code_id as string | null) ?? null,
+      amount: Number(row.amount ?? 0),
+      note: (row.note as string | null) ?? null
+    };
+  });
+
   const receivingDocs: ProcurementReceivingDocRow[] = (receivingDocsResponse.data ?? []).map((row) => ({
     id: row.id as string,
     purchaseId: row.purchase_id as string,
@@ -1779,6 +1812,7 @@ export async function getProcurementData(
     purchases,
     receipts,
     receivingDocs,
+    allocations,
     budgetLineOptions,
     projectOptions: normalizedProjectOptions,
     organizationOptions,

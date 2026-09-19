@@ -61,12 +61,14 @@ type PurchaseForInstitutionalBudget = {
 };
 
 type AllocationForInstitutionalBudget = {
-  id: string;
+  id: string | null;
+  organization_id: string | null;
   account_code_id: string | null;
   reporting_budget_line_id: string | null;
   amount: string | number | null;
   project_budget_lines?: {
     account_code_id?: string | null;
+    projects?: { organization_id?: string | null } | null;
   } | null;
 };
 
@@ -432,7 +434,7 @@ export async function createInstitutionalCommitmentForPurchase(
     warnInstitutionalSync(purchaseId, "missing_fiscal_year", { orderDate });
     return { ok: true, skippedReason: "missing_fiscal_year", commitmentCount: 0, committedAmount: 0, varianceRequired: false, shortageAmount: 0 };
   }
-  const organizationId = await resolveInstitutionalOrganizationId(db, {
+  const purchaseOrganizationId = await resolveInstitutionalOrganizationId(db, {
     organizationId: rawOrganizationId,
     fiscalYearId: fiscalYear.id,
     purchaseId
@@ -440,7 +442,7 @@ export async function createInstitutionalCommitmentForPurchase(
 
   const { data: allocations, error: allocationsError } = await db
     .from("purchase_allocations")
-    .select("id, account_code_id, reporting_budget_line_id, amount, project_budget_lines(account_code_id)")
+    .select("id, organization_id, account_code_id, reporting_budget_line_id, amount, project_budget_lines(account_code_id, projects(organization_id))")
     .eq("purchase_id", purchaseId);
   if (allocationsError) throw new Error(allocationsError.message);
 
@@ -455,12 +457,13 @@ export async function createInstitutionalCommitmentForPurchase(
   }
 
   const commitments: Array<Record<string, unknown>> = [];
-  const allocationInputs =
+  const allocationInputs: AllocationForInstitutionalBudget[] =
     allocationRows.length > 0
       ? allocationRows
       : [
           {
             id: null,
+            organization_id: purchaseOrganizationId,
             account_code_id: purchaseRow.banner_account_code_id ?? purchaseRow.project_budget_lines?.account_code_id ?? null,
             reporting_budget_line_id: purchaseRow.budget_line_id,
             amount: purchaseAmount,
@@ -481,6 +484,14 @@ export async function createInstitutionalCommitmentForPurchase(
     });
     const committedAmount = asNumber(allocation.amount);
     if (committedAmount === 0) continue;
+    const rawAllocationOrganizationId = allocation.organization_id ??
+      allocation.project_budget_lines?.projects?.organization_id ??
+      purchaseOrganizationId;
+    const organizationId = await resolveInstitutionalOrganizationId(db, {
+      organizationId: rawAllocationOrganizationId,
+      fiscalYearId: fiscalYear.id,
+      purchaseId
+    });
     const bucket = await resolveInstitutionalBudgetBucket(db, {
       fiscalYearId: fiscalYear.id,
       organizationId,

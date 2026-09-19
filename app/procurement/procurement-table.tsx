@@ -20,12 +20,27 @@ import type {
   AccountCodeOption,
   OrganizationOption,
   ProcurementProjectOption,
+  ProcurementAllocationRow,
   ProcurementReceivingDocRow,
   ProcurementReceiptRow,
   ProcurementRow,
   ProductionCategoryOption,
   VendorOption
 } from "@/lib/db";
+
+type AllocationDraft = {
+  id: string;
+  projectId: string;
+  organizationId: string;
+  productionCategoryId: string;
+  accountCodeId: string;
+  amount: string;
+  note: string;
+};
+
+const blankAllocation = (): AllocationDraft => ({
+  id: crypto.randomUUID(), projectId: "", organizationId: "", productionCategoryId: "", accountCodeId: "", amount: "", note: ""
+});
 
 const PROCUREMENT_STATUSES = [
   { value: "requested", label: "Requested" },
@@ -257,6 +272,7 @@ export function ProcurementTable({
   purchases,
   receipts,
   receivingDocs,
+  allocations,
   vendors,
   projectOptions,
   organizationOptions,
@@ -267,6 +283,7 @@ export function ProcurementTable({
   purchases: ProcurementRow[];
   receipts: ProcurementReceiptRow[];
   receivingDocs: ProcurementReceivingDocRow[];
+  allocations: ProcurementAllocationRow[];
   vendors: VendorOption[];
   projectOptions: ProcurementProjectOption[];
   organizationOptions: OrganizationOption[];
@@ -313,6 +330,7 @@ export function ProcurementTable({
   const [editReceivedOn, setEditReceivedOn] = useState("");
   const [editPaidOn, setEditPaidOn] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [editAllocations, setEditAllocations] = useState<AllocationDraft[]>([blankAllocation()]);
   const lastEditIdRef = useRef<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
@@ -417,7 +435,33 @@ export function ProcurementTable({
     setEditReceivedOn(editingPurchase.receivedOn ?? "");
     setEditPaidOn(editingPurchase.paidOn ?? "");
     setEditNotes(editingPurchase.notes ?? "");
-  }, [editingPurchase]);
+    const savedAllocations = allocations.filter((allocation) => allocation.purchaseId === editingPurchase.id);
+    setEditAllocations(savedAllocations.length > 0
+      ? savedAllocations.map((allocation) => ({
+          id: allocation.id,
+          projectId: allocation.projectId ?? "",
+          organizationId: allocation.organizationId ?? "",
+          productionCategoryId: allocation.productionCategoryId ?? "",
+          accountCodeId: allocation.accountCodeId ?? "",
+          amount: String(allocation.amount),
+          note: allocation.note ?? ""
+        }))
+      : [{
+          id: crypto.randomUUID(),
+          projectId: editingPurchase.projectId ?? "",
+          organizationId: editingPurchase.projectId ? "" : editingPurchase.organizationId ?? "",
+          productionCategoryId: editingPurchase.productionCategoryId ?? "",
+          accountCodeId: editingPurchase.bannerAccountCodeId ?? "",
+          amount: String(resolvedOrderValue ?? ""),
+          note: ""
+        }]);
+  }, [editingPurchase, allocations]);
+
+  function updateAllocation(id: string, patch: Partial<AllocationDraft>): void {
+    setEditAllocations((current) => current.map((allocation) => allocation.id === id ? { ...allocation, ...patch } : allocation));
+  }
+
+  const allocationTotal = editAllocations.reduce((sum, allocation) => sum + (Number.parseFloat(allocation.amount) || 0), 0);
 
   useEffect(() => {
     if (!deleteState.ok || !deleteState.message) return;
@@ -668,6 +712,7 @@ export function ProcurementTable({
             ) : null}
             <form action={updateAction} className="requestForm">
               <input type="hidden" name="id" value={editingPurchase.id} />
+              <input type="hidden" name="allocationsJson" value={JSON.stringify(editAllocations)} />
               <label>
                 <input
                   name="budgetTracked"
@@ -677,7 +722,7 @@ export function ProcurementTable({
                 />
                 Track in budget
               </label>
-              <label>
+              {editingPurchase.requestType !== "requisition" ? <><label>
                 Project
                 <select
                   name="projectId"
@@ -750,6 +795,78 @@ export function ProcurementTable({
                   ))}
                 </select>
               </label>
+              </> : (
+                <section className="expenseLinesEditor procurementAllocationsEditor">
+                  <input type="hidden" name="projectId" value={editAllocations[0]?.projectId ?? ""} />
+                  <input type="hidden" name="organizationId" value={editAllocations[0]?.organizationId ?? ""} />
+                  <input type="hidden" name="productionCategoryId" value={editAllocations[0]?.productionCategoryId ?? ""} />
+                  <input type="hidden" name="bannerAccountCodeId" value={editAllocations[0]?.accountCodeId ?? ""} />
+                  <input type="hidden" name="budgetLineId" value="" />
+                  <div className="contractsPanelHeader">
+                    <div>
+                      <h3>Budget Allocations</h3>
+                      <p className="helperText">Most POs need one line. Add a split only when this PO crosses projects, production categories, or accounts.</p>
+                    </div>
+                    <button type="button" className="tinyButton" onClick={() => setEditAllocations((current) => [...current, blankAllocation()])}>Split Allocation</button>
+                  </div>
+                  {editAllocations.map((allocation, index) => (
+                    <fieldset className="expenseLineCard" key={allocation.id}>
+                      <legend>Allocation {index + 1}</legend>
+                      <div className="drawerFieldGrid">
+                        <label>
+                          Charge To
+                          <select
+                            value={allocation.projectId ? `project:${allocation.projectId}` : allocation.organizationId ? `organization:${allocation.organizationId}` : ""}
+                            onChange={(event) => {
+                              const [scopeType, scopeId] = event.target.value.split(":");
+                              updateAllocation(allocation.id, {
+                                projectId: scopeType === "project" ? scopeId : "",
+                                organizationId: scopeType === "organization" ? scopeId : "",
+                                productionCategoryId: ""
+                              });
+                            }}
+                            required={editBudgetTracked}
+                          >
+                            <option value="">Select project or organization budget</option>
+                            <optgroup label="Theatre Projects">
+                              {projectOptions.map((project) => <option key={project.id} value={`project:${project.id}`}>{project.label}</option>)}
+                            </optgroup>
+                            <optgroup label="Organization Budgets">
+                              {organizationOptions.filter((organization) => !organization.projectTrackingRequired).map((organization) => <option key={organization.id} value={`organization:${organization.id}`}>{organization.label}</option>)}
+                            </optgroup>
+                          </select>
+                        </label>
+                        <label>
+                          Production Category
+                          <select value={allocation.productionCategoryId} onChange={(event) => updateAllocation(allocation.id, { productionCategoryId: event.target.value })} required={editBudgetTracked && Boolean(allocation.projectId)} disabled={!allocation.projectId}>
+                            <option value="">{allocation.projectId ? "Select category" : "Not used for organization budgets"}</option>
+                            {productionCategoryOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          Banner Account / FOAP Charge
+                          <select value={allocation.accountCodeId} onChange={(event) => updateAllocation(allocation.id, { accountCodeId: event.target.value })} required={editBudgetTracked}>
+                            <option value="">Select account</option>
+                            {accountCodeOptions.map((accountCode) => <option key={accountCode.id} value={accountCode.id}>{accountCode.label}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          Allocated Amount
+                          <input type="number" min="0.01" step="0.01" value={allocation.amount} onChange={(event) => updateAllocation(allocation.id, { amount: event.target.value })} required={editBudgetTracked} />
+                        </label>
+                        <label className="drawerFieldWide">Allocation Note<input value={allocation.note} onChange={(event) => updateAllocation(allocation.id, { note: event.target.value })} /></label>
+                      </div>
+                      {editAllocations.length > 1 ? <button type="button" className="tinyButton dangerButton" onClick={() => setEditAllocations((current) => current.filter((entry) => entry.id !== allocation.id))}>Remove Allocation</button> : null}
+                    </fieldset>
+                  ))}
+                  <div className="expenseClaimTotal">
+                    <span>Allocated / PO total</span>
+                    <strong className={Math.abs(allocationTotal - (Number.parseFloat(editOrderValue) || 0)) > 0.005 ? "allocationMismatch" : ""}>
+                      {formatCurrency(allocationTotal)} / {formatCurrency(Number.parseFloat(editOrderValue) || 0)}
+                    </strong>
+                  </div>
+                </section>
+              )}
               <label>
                 {editingPurchase.requestType === "expense" ? "Expense Status" : "Procurement Status"}
                 <select
