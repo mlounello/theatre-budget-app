@@ -16,6 +16,7 @@ import {
 import { CcAdminTables } from "@/app/cc/cc-admin-tables";
 import { CreateStatementMonthForm } from "@/app/cc/create-statement-month-form";
 import { ExpenseClaimForm } from "@/app/cc/expense-claim-form";
+import { ExpenseClaimsPanel, type ExpenseClaimView } from "@/app/cc/expense-claims-panel";
 import { SideDrawer } from "@/components/ui/side-drawer";
 import { StatusPill } from "@/components/ui/status-controls";
 import { formatCurrency } from "@/lib/format";
@@ -102,21 +103,6 @@ type FundingClaim = {
   creditCardId: string | null;
 };
 
-type ExpenseClaim = {
-  id: string;
-  claimNumber: string;
-  claimType: string;
-  claimMonth: string | null;
-  status: string;
-  authorizedAmount: number;
-  settledAmount: number;
-  authorizationClaimId: string | null;
-  overageExplanation: string | null;
-  projectLabel: string;
-  cardLabel: string | null;
-  expenses: Array<{ id: string; expenseNumber: string | null; title: string; amount: number; stage: string | null }>;
-};
-
 type Props = {
   cards: CardRow[];
   statementMonths: StatementMonthRow[];
@@ -141,7 +127,10 @@ type Props = {
   selectedView: "current" | "claims" | "exceptions" | "history" | "setup";
   requestedStatementId: string;
   fundingClaims: FundingClaim[];
-  expenseClaims: ExpenseClaim[];
+  expenseClaims: ExpenseClaimView[];
+  expenseClaimPage: number;
+  expenseClaimTotal: number;
+  expenseClaimPageSize: number;
 };
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
@@ -170,7 +159,10 @@ export function CcPageClient({
   selectedView,
   requestedStatementId,
   fundingClaims,
-  expenseClaims
+  expenseClaims,
+  expenseClaimPage,
+  expenseClaimTotal,
+  expenseClaimPageSize
 }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -239,6 +231,13 @@ export function CcPageClient({
     params.set("cc_view", view);
     if (statementId) params.set("cc_statement", statementId);
     else if (view !== "current") params.delete("cc_statement");
+    return `${pathname}?${params.toString()}`;
+  };
+  const expenseClaimHref = (page: number) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("cc_view", "claims");
+    if (page > 1) params.set("cc_claim_page", String(page));
+    else params.delete("cc_claim_page");
     return `${pathname}?${params.toString()}`;
   };
 
@@ -476,41 +475,14 @@ export function CcPageClient({
       ) : null}
 
       {selectedView === "claims" ? (
-        <article className="panel panelFull">
-          <div className="ccWorkspaceHeader">
-            <div>
-              <p className="eyebrow">Expense Claims</p>
-              <h2>EC Claims &amp; EX Expenses</h2>
-              <p className="heroSubtitle">Funding requests hold the authorized maximum. Reconciliations and reimbursements record each purchase as its own Expense.</p>
-            </div>
-            <button type="button" className="buttonLink buttonPrimary" onClick={() => setOpenDrawer("claim")}>New Expense Claim</button>
-          </div>
-          {expenseClaims.length === 0 ? <p className="emptyState">No Expense Claims exist in this fiscal year.</p> : (
-            <div className="expenseClaimList">
-              {expenseClaims.map((claim) => {
-                const typeLabel = claim.claimType === "funding_request" ? "Card Funding Request" : claim.claimType === "monthly_reconciliation" ? "Monthly Card Reconciliation" : "Reimbursement";
-                const remaining = Math.max(claim.authorizedAmount - claim.settledAmount, 0);
-                return (
-                  <details className="contractCardDetails expenseClaimRecord" key={claim.id}>
-                    <summary>
-                      <span><strong>{claim.claimNumber}</strong> · {typeLabel} · {claim.projectLabel}</span>
-                      <small>{claim.cardLabel ?? "No card"} · {claim.claimMonth?.slice(0, 7) ?? "No month"} · {claim.status.replaceAll("_", " ")}</small>
-                    </summary>
-                    <div className="expenseClaimRecordBody">
-                      {claim.claimType === "funding_request" ? <p><strong>Authorized:</strong> {formatCurrency(claim.authorizedAmount)} · <strong>Reconciled:</strong> {formatCurrency(claim.settledAmount)} · <strong>Remaining hold:</strong> {formatCurrency(remaining)}</p> : <p><strong>Claim total:</strong> {formatCurrency(claim.settledAmount || claim.expenses.reduce((sum, expense) => sum + expense.amount, 0))}</p>}
-                      {claim.overageExplanation ? <p className="errorNote"><strong>Overage explanation:</strong> {claim.overageExplanation}</p> : null}
-                      <div className="tableWrap">
-                        <table><thead><tr><th>Expense</th><th>Purchase</th><th>Stage</th><th>Amount</th></tr></thead><tbody>
-                          {claim.expenses.map((expense) => <tr key={expense.id}><td>{expense.expenseNumber ?? "-"}</td><td>{expense.title}</td><td>{expense.stage?.replaceAll("_", " ") ?? "-"}</td><td>{formatCurrency(expense.amount)}</td></tr>)}
-                        </tbody></table>
-                      </div>
-                    </div>
-                  </details>
-                );
-              })}
-            </div>
-          )}
-        </article>
+        <ExpenseClaimsPanel
+          claims={expenseClaims}
+          page={expenseClaimPage}
+          total={expenseClaimTotal}
+          pageSize={expenseClaimPageSize}
+          hrefForPage={expenseClaimHref}
+          onCreate={() => setOpenDrawer("claim")}
+        />
       ) : null}
 
       {selectedView === "exceptions" ? (

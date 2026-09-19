@@ -378,7 +378,12 @@ export function IncomeTable({
             {sortedRows.map((row) => (
               <tr key={row.id} id={`income-${row.id}`}>
                 <td className="rowSelectCell">
-                  <input type="checkbox" checked={selectedSet.has(row.id)} onChange={() => toggleRowSelection(row.id)} />
+                  <input
+                    type="checkbox"
+                    checked={selectedSet.has(row.id)}
+                    onChange={() => toggleRowSelection(row.id)}
+                    aria-label={`Select revenue entry ${row.lineName}`}
+                  />
                 </td>
                 <td>{row.projectName ?? "-"}</td>
                 <td>{row.organizationLabel}</td>

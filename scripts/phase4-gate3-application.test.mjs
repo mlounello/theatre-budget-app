@@ -9,6 +9,7 @@ function source(path) {
 const ccActions = source("../app/cc/actions.ts");
 const ccPage = source("../app/cc/page.tsx");
 const ccClient = source("../app/cc/cc-page-client.tsx");
+const expenseClaimForm = source("../app/cc/expense-claim-form.tsx");
 const statementForm = source("../app/cc/create-statement-month-form.tsx");
 const procurementPage = source("../app/procurement/page.tsx");
 const paginationControls = source("../components/ui/pagination-controls.tsx");
@@ -25,8 +26,9 @@ test("Credit Card writers require explicit fiscal-year scope", () => {
 });
 
 test("Credit Card UI includes projectless organization reimbursements", () => {
-  assert.match(ccClient, /name="organizationId"/);
-  assert.match(ccClient, /Organization budget \(no project\)/);
+  assert.match(ccClient, /ExpenseClaimForm/);
+  assert.match(expenseClaimForm, /name="organizationId"/);
+  assert.match(expenseClaimForm, /No organization budget/);
   assert.match(ccPage, /getFiscalYearOrganizationOptions\(selectedFiscalYearId\)/);
   assert.match(ccPage, /organizations\(name, org_code\)/);
 });

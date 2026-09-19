@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getAccessContext } from "@/lib/access";
+import type { Database } from "@/lib/database.types";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 type ActionState = {
@@ -363,8 +364,8 @@ export async function updateVarianceStatusAction(
             : nextStatus === "denied"
               ? "denied_at"
               : null;
-    const updateValues: Record<string, string> = { status: nextStatus };
-    if (timestampColumn) updateValues[timestampColumn] = new Date().toISOString();
+    const updateValues: Database["app_theatre_budget"]["Tables"]["variance_requests"]["Update"] = { status: nextStatus };
+    if (timestampColumn) Object.assign(updateValues, { [timestampColumn]: new Date().toISOString() });
 
     const { error: updateError } = await supabase.from("variance_requests").update(updateValues).eq("id", varianceRequestId);
     if (updateError) return err(updateError.message);

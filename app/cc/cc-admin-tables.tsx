@@ -225,7 +225,7 @@ export function CcAdminTables({
           <thead>
             <tr>
               <th className="rowSelectHeader">
-                <input type="checkbox" checked={allCardsSelected} onChange={toggleAllCards} />
+                <input type="checkbox" checked={allCardsSelected} onChange={toggleAllCards} aria-label="Select all credit cards" />
               </th>
               <th>Nickname</th>
               <th>Masked</th>
@@ -242,7 +242,7 @@ export function CcAdminTables({
             {cards.map((card) => (
               <tr key={card.id}>
                 <td className="rowSelectCell">
-                  <input type="checkbox" checked={selectedCardSet.has(card.id)} onChange={() => toggleCard(card.id)} />
+                  <input type="checkbox" checked={selectedCardSet.has(card.id)} onChange={() => toggleCard(card.id)} aria-label={`Select credit card ${card.nickname}`} />
                 </td>
                 <td>{card.nickname}</td>
                 <td>{card.maskedNumber ?? "-"}</td>
@@ -385,7 +385,7 @@ export function CcAdminTables({
           <thead>
             <tr>
               <th className="rowSelectHeader">
-                <input type="checkbox" checked={allMonthsSelected} onChange={toggleAllMonths} />
+                <input type="checkbox" checked={allMonthsSelected} onChange={toggleAllMonths} aria-label="Select all statement months" />
               </th>
               <th>
                 <button type="button" className="sortHeaderButton" onClick={() => toggleMonthSort("statementMonth")}>
@@ -414,7 +414,7 @@ export function CcAdminTables({
             {sortedStatementMonths.map((month) => (
               <tr key={month.id}>
                 <td className="rowSelectCell">
-                  <input type="checkbox" checked={selectedMonthSet.has(month.id)} onChange={() => toggleMonth(month.id)} />
+                  <input type="checkbox" checked={selectedMonthSet.has(month.id)} onChange={() => toggleMonth(month.id)} aria-label={`Select ${month.creditCardName} ${month.statementMonth.slice(0, 7)}`} />
                 </td>
                 <td>{month.statementMonth.slice(0, 7)}</td>
                 <td>{month.creditCardName}</td>

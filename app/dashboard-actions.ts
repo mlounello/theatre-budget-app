@@ -1,10 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { createSupabaseServerClient, createTbServerDb } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
 import { createInstitutionalCommitmentForPurchase } from "@/lib/institutional-budget";
-import { getServerAppSchema } from "@/lib/supabase-schema";
 import type { PurchaseStatus } from "@/lib/types";
 
 const REQUISITION_PROCUREMENT_STATUSES = [
@@ -97,7 +96,7 @@ function rethrowIfRedirect(error: unknown): void {
 }
 
 async function ensureProjectPmOrAdminAccess(
-  db: Awaited<ReturnType<typeof createSupabaseServerClient>>["schema"] extends (schema: string) => infer T ? T : never,
+  db: Awaited<ReturnType<typeof createTbServerDb>>,
   userId: string,
   projectId: string
 ): Promise<void> {
@@ -119,7 +118,6 @@ async function ensureProjectPmOrAdminAccess(
 }
 
 async function ensureOrganizationPmOrAdminAccess(
-  db: Awaited<ReturnType<typeof createSupabaseServerClient>>["schema"] extends (schema: string) => infer T ? T : never,
   organizationId: string,
   fiscalYearId: string
 ): Promise<void> {
@@ -141,8 +139,7 @@ export async function updateDashboardRequisitionStatusAction(
 ): Promise<ActionState> {
   try {
     void _prevState;
-    const supabase = await createSupabaseServerClient();
-    const db = supabase.schema(getServerAppSchema());
+    const [supabase, db] = await Promise.all([createSupabaseServerClient(), createTbServerDb()]);
     const {
       data: { user }
     } = await supabase.auth.getUser();
@@ -169,7 +166,7 @@ export async function updateDashboardRequisitionStatusAction(
     const organizationId = (existing.organization_id as string | null) ?? null;
     const fiscalYearId = (existing.fiscal_year_id as string | null) ?? null;
     if (projectId) await ensureProjectPmOrAdminAccess(db, user.id, projectId);
-    else if (organizationId && fiscalYearId) await ensureOrganizationPmOrAdminAccess(db, organizationId, fiscalYearId);
+    else if (organizationId && fiscalYearId) await ensureOrganizationPmOrAdminAccess(organizationId, fiscalYearId);
     else throw new Error("Purchase has no budget scope.");
 
     const currentValue = getStatusAmount(existing.status as string, {

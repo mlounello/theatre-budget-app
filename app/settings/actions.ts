@@ -1451,12 +1451,12 @@ export async function importHierarchyCsvAction(_prevState: ActionState = emptySt
         }
       }
 
-      const { data: projectExisting } = await supabase
+      let projectExistingQuery = supabase
         .from("projects")
         .select("id")
-        .eq("name", projectName)
-        .eq("season", season)
-        .maybeSingle();
+        .eq("name", projectName);
+      projectExistingQuery = season ? projectExistingQuery.eq("season", season) : projectExistingQuery.is("season", null);
+      const { data: projectExisting } = await projectExistingQuery.maybeSingle();
 
       let projectId: string;
       if (projectExisting?.id) {
