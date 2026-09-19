@@ -1,6 +1,6 @@
 # Phase 4 Gate 5D — Institutional Budget and Revenue
 
-Status: Implemented on `codex/phase-4-gate-5d`; awaiting approval.
+Status: Approved on 2026-09-19.
 
 ## Delivered
 
@@ -41,4 +41,6 @@ Status: Implemented on `codex/phase-4-gate-5d`; awaiting approval.
 - `npm run test:phase4-gate3`
 - `npm run build`
 
-Gate 5D must not merge to `main` or deploy until explicitly approved.
+## Approval
+
+Gate 5D was approved for merge and production deployment on 2026-09-19. No database migration is required.
