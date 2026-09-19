@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-19  
 **Branch:** `codex/phase-4-gate-4`  
-**Status:** Additive audit foundation live; consolidation prepared but not applied
+**Status:** Consolidation applied and verified; see `phase-4-gate-4-report.md`
 
 ## Live findings
 
@@ -36,9 +36,12 @@ The prepared migration keeps the current FY27 plan on the canonical organization
 - Deployed the compatible application before any reference migration (`dpl_6FGFBB9Ffnp8m4Y5dP39mCAU8VkA`).
 - Ran the full proposed consolidation in a production rollback-only transaction. It produced four active canonical identities, seven active FY memberships, and 96 reversible reference-log rows, then rolled back successfully.
 
-## Pending confirmation
+## Confirmed decisions
 
-Before the persistent consolidation runs, the owner must confirm:
+The owner confirmed:
 
 1. canonical display name `Theatre Productions` for `2AC230`;
-2. current July–September `SJ5000 / 11080` plan remains current, while the older evenly distributed plan remains historical on the superseded organization.
+2. current July–September `SJ5000 / 11080` plan remains current, while the older evenly distributed plan remains historical on the superseded organization;
+3. fiscal years run from June 1 through May 31.
+
+The persistent consolidation was subsequently applied and passed every Gate 4 postcondition.

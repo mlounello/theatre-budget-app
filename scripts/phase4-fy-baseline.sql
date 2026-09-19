@@ -41,10 +41,8 @@ select 'budget_plans' as metric, fiscal_year, is_revenue, count(*) as record_cou
 from plans group by fiscal_year, is_revenue order by fiscal_year, is_revenue;
 
 with purchases_with_fy as (
-  select purchase.*, coalesce(project.fiscal_year_id, organization.fiscal_year_id) as resolved_fiscal_year_id
+  select purchase.*, purchase.fiscal_year_id as resolved_fiscal_year_id
   from purchases purchase
-  left join projects project on project.id = purchase.project_id
-  left join organizations organization on organization.id = purchase.organization_id
 )
 select 'purchases' as metric, fiscal_year.name as fiscal_year, count(*) as record_count,
   sum(coalesce(purchase.estimated_amount, 0)) as estimated,
@@ -74,15 +72,8 @@ group by fiscal_year.name, contract.workflow_status
 order by fiscal_year.name, contract.workflow_status;
 
 with income_with_fy as (
-  select income.*,
-    coalesce(project.fiscal_year_id, (
-      select fiscal_year.id from fiscal_years fiscal_year
-      where coalesce(income.received_on, income.created_at::date)
-        between fiscal_year.start_date and fiscal_year.end_date
-      order by fiscal_year.start_date desc limit 1
-    )) as resolved_fiscal_year_id
+  select income.*, income.fiscal_year_id as resolved_fiscal_year_id
   from income_lines income
-  left join projects project on project.id = income.project_id
 )
 select 'income' as metric, fiscal_year.name as fiscal_year, count(*) as record_count,
   sum(income.amount) as amount,
@@ -100,10 +91,7 @@ group by fiscal_year.name, variance.status
 order by fiscal_year.name, variance.status;
 
 with statements_with_fy as (
-  select statement.*,
-    (select fiscal_year.id from fiscal_years fiscal_year
-      where statement.statement_month between fiscal_year.start_date and fiscal_year.end_date
-      order by fiscal_year.start_date desc limit 1) as resolved_fiscal_year_id
+  select statement.*, statement.fiscal_year_id as resolved_fiscal_year_id
   from cc_statement_months statement
 )
 select 'cc_statements' as metric, fiscal_year.name as fiscal_year, count(*) as record_count,

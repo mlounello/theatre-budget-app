@@ -39,3 +39,10 @@ test("institutional organization resolution uses active memberships", () => {
   assert.match(institutional, /resolveInstitutionalOrganizationId[\s\S]*from\("fiscal_year_organizations"\)/);
   assert.match(institutional, /superseded_by_organization_id/);
 });
+
+test("settings keeps canonical organization project counts isolated by fiscal year", () => {
+  const settings = read("app/settings/settings-page-client.tsx");
+  assert.match(settings, /projectCountByOrganizationFiscalYear/);
+  assert.match(settings, /const key = `\$\{project\.organizationId\}:\$\{project\.fiscalYearId\}`/);
+  assert.match(settings, /key=\{`\$\{orgOption\.id\}:\$\{orgOption\.fiscalYearId/);
+});
