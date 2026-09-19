@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -98,6 +99,21 @@ type Props = {
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
+type SettingsSection = "structure" | "allocations" | "people" | "payment" | "maintenance";
+
+const SETTINGS_SECTIONS: Array<{
+  id: SettingsSection;
+  label: string;
+  description: string;
+  adminOnly?: boolean;
+}> = [
+  { id: "structure", label: "Structure", description: "Fiscal years, organizations, projects, and budget lines" },
+  { id: "allocations", label: "Project Allocations", description: "Plan and adjust project budget allocations" },
+  { id: "people", label: "People & Access", description: "Production teams, scopes, and user access" },
+  { id: "payment", label: "Payment Setup", description: "Funds, programs, and approved FOAPAL combinations", adminOnly: true },
+  { id: "maintenance", label: "Imports & Maintenance", description: "CSV imports, templates, and diagnostics", adminOnly: true }
+];
+
 export function SettingsPageClient({
   isAdmin,
   accessUserId,
@@ -122,6 +138,19 @@ export function SettingsPageClient({
   const searchParams = useSearchParams();
   const editType = (searchParams.get("editType") ?? "") as "fy" | "org" | "project" | "line" | "account" | "production_category" | "";
   const editId = searchParams.get("editId") ?? "";
+  const requestedSection = searchParams.get("settings_view") as SettingsSection | null;
+  const availableSettingsSections = SETTINGS_SECTIONS.filter((section) => isAdmin || !section.adminOnly);
+  const selectedSection = availableSettingsSections.some((section) => section.id === requestedSection)
+    ? (requestedSection as SettingsSection)
+    : "structure";
+  const selectedSectionDetails = availableSettingsSections.find((section) => section.id === selectedSection) ?? SETTINGS_SECTIONS[0];
+  const settingsSectionHref = (section: SettingsSection) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("settings_view", section);
+    params.delete("editType");
+    params.delete("editId");
+    return `/settings?${params.toString()}`;
+  };
 
   const [importState, importAction] = useActionState(importHierarchyCsvAction, initialState);
   const [addBudgetLineState, addBudgetLineActionForm] = useActionState(addBudgetLineAction, initialState);
@@ -532,31 +561,58 @@ export function SettingsPageClient({
       <header className="sectionHeader">
         <p className="eyebrow">{isAdmin ? "Admin" : "Project Manager"}</p>
         <h1>Settings</h1>
+        <p className="heroSubtitle">Choose a workspace to manage one part of the app at a time.</p>
       </header>
 
-      {isAdmin ? (
+      <nav className="settingsWorkspaceNav" aria-label="Settings workspaces">
+        {availableSettingsSections.map((section) => (
+          <Link
+            key={section.id}
+            href={settingsSectionHref(section.id)}
+            className={`settingsWorkspaceTab${selectedSection === section.id ? " active" : ""}`}
+            aria-current={selectedSection === section.id ? "page" : undefined}
+          >
+            <strong>{section.label}</strong>
+            <span>{section.description}</span>
+          </Link>
+        ))}
+      </nav>
+
+      <div className="settingsWorkspaceHeader">
+        <div>
+          <p className="eyebrow">Settings workspace</p>
+          <h2>{selectedSectionDetails.label}</h2>
+          <p>{selectedSectionDetails.description}</p>
+        </div>
+      </div>
+
+      {isAdmin && selectedSection === "payment" ? (
         <FoapalManager funds={funds} programs={programs} organizations={organizations} foapals={foapals} />
       ) : null}
 
-      <ProjectAllocationEditor
-        fiscalYears={fiscalYears}
-        organizations={organizations}
-        hierarchyRows={hierarchyRows}
-      />
+      {selectedSection === "allocations" ? (
+        <ProjectAllocationEditor
+          fiscalYears={fiscalYears}
+          organizations={organizations}
+          hierarchyRows={hierarchyRows}
+        />
+      ) : null}
 
       <div className="panelGrid">
-        <article className="panel panelFull">
+        {selectedSection === "structure" ? (
+        <article className="panel panelFull settingsStructureGuide">
           <h2>How To Use This Page</h2>
           <p>
-            Step 1: Add or import structure. Step 2: Expand the hierarchy and edit inline. Step 3: Open each Reorder panel only when you
-            need to change display order.
+            Add structure here, then expand the hierarchy to edit it inline. Open Reorder panels only when you need to change display
+            order. Bulk imports are available under Imports & Maintenance.
           </p>
           <p className="heroSubtitle">
             Hierarchy: Fiscal Year - Organization - Project - Budget Line. Reorder controls are collapsed to reduce clutter.
           </p>
         </article>
+        ) : null}
 
-        {isAdmin ? (
+        {isAdmin && selectedSection === "structure" ? (
           <AddEntityPanel
             fiscalYears={fiscalYears}
             organizations={organizations}
@@ -566,7 +622,7 @@ export function SettingsPageClient({
           />
         ) : null}
 
-        {isAdmin ? (
+        {isAdmin && selectedSection === "maintenance" ? (
           <article className="panel panelFull">
             <h2>CSV Import</h2>
             <p>Download template, fill rows, upload to create/update hierarchy and budget lines.</p>
@@ -592,7 +648,23 @@ export function SettingsPageClient({
           </article>
         ) : null}
 
-        <article className="panel panelFull">
+        {isAdmin && selectedSection === "maintenance" ? (
+          <article className="panel panelFull">
+            <h2>Diagnostics & Maintenance</h2>
+            <p>
+              Review application diagnostics and maintenance information here. This area is intended for troubleshooting and does not
+              change financial records by itself.
+            </p>
+            <div className="inlineActionRow">
+              <Link className="buttonLink" href="/debug">
+                Open Debug & Diagnostics
+              </Link>
+            </div>
+          </article>
+        ) : null}
+
+        {selectedSection === "structure" ? (
+        <article className="panel panelFull settingsHierarchyPrimary">
           <h2>Hierarchy Manager</h2>
           <p>Expand each level to edit records. Use Reorder sections only when you want to change card/table order.</p>
           <HierarchyTreeControls containerId="settingsHierarchyTree" />
@@ -768,8 +840,9 @@ export function SettingsPageClient({
             ))}
           </div>
         </article>
+        ) : null}
 
-        {isAdmin ? (
+        {isAdmin && selectedSection === "structure" ? (
           <article className="panel panelFull">
             <h2>Current Organizations</h2>
             <p className="heroSubtitle">
@@ -832,7 +905,7 @@ export function SettingsPageClient({
           </article>
         ) : null}
 
-        {isAdmin ? (
+        {isAdmin && selectedSection === "structure" ? (
           <article className="panel panelFull">
             <h2>Current Production Categories</h2>
             {deleteProductionCategoryState.message ? (
@@ -886,7 +959,7 @@ export function SettingsPageClient({
           </article>
         ) : null}
 
-        {isAdmin ? (
+        {isAdmin && selectedSection === "payment" ? (
           <article className="panel panelFull">
             <h2>Current Account Codes</h2>
             {deleteAccountCodeState.message ? (
@@ -971,6 +1044,7 @@ export function SettingsPageClient({
           </article>
         ) : null}
 
+        {selectedSection === "people" ? (
         <article className="panel panelFull">
           <h2>Production Team & Budget Access</h2>
           <p className="heroSubtitle">
@@ -1167,8 +1241,9 @@ export function SettingsPageClient({
             </table>
           </div>
         </article>
+        ) : null}
 
-        {isAdmin ? (
+        {isAdmin && selectedSection === "people" ? (
           <article className="panel panelFull">
             <h2>User Profiles</h2>
             <p className="heroSubtitle">
