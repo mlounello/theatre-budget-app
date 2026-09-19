@@ -744,6 +744,7 @@ export async function updateProcurementAction(
     const budgetLineId = String(formData.get("budgetLineId") ?? "").trim();
     const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
     const expenseNumber = String(formData.get("expenseNumber") ?? "").trim().toUpperCase();
+    const expenseStageRaw = String(formData.get("expenseStage") ?? "").trim();
     const requisitionNumber = String(formData.get("requisitionNumber") ?? "").trim();
     const poNumber = String(formData.get("poNumber") ?? "").trim();
     const invoiceNumber = String(formData.get("invoiceNumber") ?? "").trim();
@@ -761,7 +762,7 @@ export async function updateProcurementAction(
     const { data: existing, error: existingError } = await supabase
       .from("purchases")
       .select(
-        "id, fiscal_year_id, project_id, organization_id, status, procurement_status, request_type, is_credit_card, expense_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, budget_tracked, budget_line_id, ordered_on, received_on, paid_on"
+        "id, fiscal_year_id, project_id, organization_id, status, procurement_status, request_type, is_credit_card, reference_number, expense_number, expense_stage, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, budget_tracked, budget_line_id, ordered_on, received_on, paid_on"
       )
       .eq("id", id)
       .single();
@@ -797,6 +798,12 @@ export async function updateProcurementAction(
     const isExpensePurchase = (existing.request_type as string | null) === "expense";
     if (isExpensePurchase && expenseNumber && !/^EX\d{6}$/.test(expenseNumber)) {
       return err("Expense number must use the EX###### format.");
+    }
+    const expenseStage = expenseStageRaw === "authorization" || expenseStageRaw === "actual" || expenseStageRaw === "reimbursement"
+      ? expenseStageRaw
+      : null;
+    if (isExpensePurchase && !expenseStage) {
+      return err("Choose whether this is a card funding request, reconciliation expense, or reimbursement.");
     }
     const procurementStatus = parseStatus(formData.get("procurementStatus"), isCreditCardPurchase);
     const existingProcurementStatus = parseStatus((existing.procurement_status as string | null) ?? "requested", isCreditCardPurchase);
@@ -887,9 +894,16 @@ export async function updateProcurementAction(
         expense_number: isExpensePurchase
           ? expenseNumber || null
           : ((existing.expense_number as string | null) ?? null),
-        requisition_number: requisitionNumber || null,
-        po_number: poNumber || null,
-        invoice_number: invoiceNumber || null,
+        expense_stage: isExpensePurchase
+          ? expenseStage
+          : ((existing.expense_stage as string | null) ?? null),
+        requisition_number: isExpensePurchase
+          ? ((existing.requisition_number as string | null) ?? null)
+          : requisitionNumber || null,
+        po_number: isExpensePurchase ? ((existing.po_number as string | null) ?? null) : poNumber || null,
+        invoice_number: isExpensePurchase
+          ? ((existing.invoice_number as string | null) ?? null)
+          : invoiceNumber || null,
         vendor_id: resolvedVendorId,
         notes: notes || null,
         ordered_on: nextOrderedOn,

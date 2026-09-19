@@ -120,6 +120,13 @@ function expenseIdentifier(purchase: ProcurementRow): string | null {
   return /^EX\d{6}$/.test(reference) ? reference : null;
 }
 
+function expenseStageLabel(stage: ProcurementRow["expenseStage"]): string {
+  if (stage === "authorization") return "Funding Request";
+  if (stage === "actual") return "Reconciliation";
+  if (stage === "reimbursement") return "Reimbursement";
+  return "Unclassified";
+}
+
 function extractSortablePoNumber(value: string | null | undefined): number | null {
   if (!value) return null;
   const match = value.match(/\d+/g);
@@ -297,6 +304,7 @@ export function ProcurementTable({
   const [editProcurementStatus, setEditProcurementStatus] = useState("requested");
   const [editReferenceNumber, setEditReferenceNumber] = useState("");
   const [editExpenseNumber, setEditExpenseNumber] = useState("");
+  const [editExpenseStage, setEditExpenseStage] = useState("");
   const [editRequisitionNumber, setEditRequisitionNumber] = useState("");
   const [editPoNumber, setEditPoNumber] = useState("");
   const [editInvoiceNumber, setEditInvoiceNumber] = useState("");
@@ -400,6 +408,7 @@ export function ProcurementTable({
     setEditProcurementStatus(editingPurchase.procurementStatus);
     setEditReferenceNumber(editingPurchase.referenceNumber ?? "");
     setEditExpenseNumber(expenseIdentifier(editingPurchase) ?? "");
+    setEditExpenseStage(editingPurchase.expenseStage ?? "");
     setEditRequisitionNumber(editingPurchase.requisitionNumber ?? "");
     setEditPoNumber(editingPurchase.poNumber ?? "");
     setEditInvoiceNumber(editingPurchase.invoiceNumber ?? "");
@@ -579,8 +588,9 @@ export function ProcurementTable({
                     {purchase.requestType === "expense" ? (
                       <>
                         <span><b>Expense</b> {displayedExpenseNumber ?? "—"}</span>
+                        <span><b>Type</b> {expenseStageLabel(purchase.expenseStage)}</span>
                         {purchase.referenceNumber && purchase.referenceNumber.toUpperCase() !== displayedExpenseNumber
-                          ? <span><b>Ref</b> {purchase.referenceNumber}</span>
+                          ? <span><b>{/^EC\d{6}$/i.test(purchase.referenceNumber) ? "Claim" : "Ref"}</b> {purchase.referenceNumber}</span>
                           : null}
                       </>
                     ) : (
@@ -741,7 +751,7 @@ export function ProcurementTable({
                 </select>
               </label>
               <label>
-                Procurement Status
+                {editingPurchase.requestType === "expense" ? "Expense Status" : "Procurement Status"}
                 <select
                   name="procurementStatus"
                   value={editProcurementStatus}
@@ -760,47 +770,69 @@ export function ProcurementTable({
                 </select>
               </label>
               <label>
-                Reference #
+                {editingPurchase.requestType === "expense" ? "Expense Claim #" : "Reference #"}
                 <input
                   name="referenceNumber"
                   value={editReferenceNumber}
                   onChange={(event) => setEditReferenceNumber(event.target.value)}
+                  placeholder={editingPurchase.requestType === "expense" ? "EC######" : undefined}
                 />
               </label>
               {editingPurchase.requestType === "expense" ? (
-                <label>
-                  Expense #
-                  <input
-                    name="expenseNumber"
-                    value={editExpenseNumber}
-                    onChange={(event) => setEditExpenseNumber(event.target.value.toUpperCase())}
-                    placeholder="EX######"
-                    pattern="EX[0-9]{6}"
-                    title="Use the format EX followed by six digits"
-                  />
-                  <span className="helperText">Use the Expense number issued for this card purchase or reimbursement.</span>
-                </label>
+                <>
+                  <label>
+                    Expense Workflow
+                    <select
+                      name="expenseStage"
+                      value={editExpenseStage}
+                      onChange={(event) => setEditExpenseStage(event.target.value)}
+                      required
+                    >
+                      <option value="">Select workflow</option>
+                      <option value="authorization">Card Funding Request</option>
+                      <option value="actual">Monthly Reconciliation Expense</option>
+                      <option value="reimbursement">Reimbursement</option>
+                    </select>
+                    <span className="helperText">Funding requests hold the maximum amount. Reconciliation expenses record actual card purchases against that request.</span>
+                  </label>
+                  <label>
+                    Expense #
+                    <input
+                      name="expenseNumber"
+                      value={editExpenseNumber}
+                      onChange={(event) => setEditExpenseNumber(event.target.value.toUpperCase())}
+                      placeholder="EX######"
+                      pattern="EX[0-9]{6}"
+                      title="Use the format EX followed by six digits"
+                    />
+                    <span className="helperText">Use the Expense number issued for this card purchase or reimbursement.</span>
+                  </label>
+                </>
               ) : null}
-              <label>
-                Requisition #
-                <input
-                  name="requisitionNumber"
-                  value={editRequisitionNumber}
-                  onChange={(event) => setEditRequisitionNumber(event.target.value)}
-                />
-              </label>
-              <label>
-                PO #
-                <input name="poNumber" value={editPoNumber} onChange={(event) => setEditPoNumber(event.target.value)} />
-              </label>
-              <label>
-                Invoice #
-                <input
-                  name="invoiceNumber"
-                  value={editInvoiceNumber}
-                  onChange={(event) => setEditInvoiceNumber(event.target.value)}
-                />
-              </label>
+              {editingPurchase.requestType === "requisition" ? (
+                <>
+                  <label>
+                    Requisition #
+                    <input
+                      name="requisitionNumber"
+                      value={editRequisitionNumber}
+                      onChange={(event) => setEditRequisitionNumber(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    PO #
+                    <input name="poNumber" value={editPoNumber} onChange={(event) => setEditPoNumber(event.target.value)} />
+                  </label>
+                  <label>
+                    Invoice #
+                    <input
+                      name="invoiceNumber"
+                      value={editInvoiceNumber}
+                      onChange={(event) => setEditInvoiceNumber(event.target.value)}
+                    />
+                  </label>
+                </>
+              ) : null}
               <label>
                 Vendor
                 <select name="vendorId" value={editVendorId} onChange={(event) => setEditVendorId(event.target.value)}>
@@ -826,7 +858,7 @@ export function ProcurementTable({
                 </label>
               ) : null}
               <label>
-                Order Value
+                {editingPurchase.requestType === "expense" ? "Expense Amount" : "Order Value"}
                 <input
                   name="orderValue"
                   type="number"
@@ -835,33 +867,37 @@ export function ProcurementTable({
                   onChange={(event) => setEditOrderValue(event.target.value)}
                 />
               </label>
-              <label>
-                Ordered On
-                <input
-                  name="orderedOn"
-                  type="date"
-                  value={editOrderedOn}
-                  onChange={(event) => setEditOrderedOn(event.target.value)}
-                />
-              </label>
-              <label>
-                Received On
-                <input
-                  name="receivedOn"
-                  type="date"
-                  value={editReceivedOn}
-                  onChange={(event) => setEditReceivedOn(event.target.value)}
-                />
-              </label>
-              <label>
-                Paid On
-                <input
-                  name="paidOn"
-                  type="date"
-                  value={editPaidOn}
-                  onChange={(event) => setEditPaidOn(event.target.value)}
-                />
-              </label>
+              {editingPurchase.requestType === "requisition" ? (
+                <>
+                  <label>
+                    Ordered On
+                    <input
+                      name="orderedOn"
+                      type="date"
+                      value={editOrderedOn}
+                      onChange={(event) => setEditOrderedOn(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Received On
+                    <input
+                      name="receivedOn"
+                      type="date"
+                      value={editReceivedOn}
+                      onChange={(event) => setEditReceivedOn(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Paid On
+                    <input
+                      name="paidOn"
+                      type="date"
+                      value={editPaidOn}
+                      onChange={(event) => setEditPaidOn(event.target.value)}
+                    />
+                  </label>
+                </>
+              ) : null}
               <label>
                 Notes
                 <input name="notes" value={editNotes} onChange={(event) => setEditNotes(event.target.value)} />
@@ -876,7 +912,7 @@ export function ProcurementTable({
               </div>
             </form>
 
-            <article className="panel">
+            {editingPurchase.requestType === "requisition" ? <article className="panel">
               <h2>Receiving Docs</h2>
               {addReceivingState.message ? (
                 <p className={addReceivingState.ok ? "successNote" : "errorNote"} key={addReceivingState.timestamp}>
@@ -925,9 +961,9 @@ export function ProcurementTable({
                   ))}
                 {receivingDocs.filter((doc) => doc.purchaseId === editingPurchase.id).length === 0 ? <li>(none)</li> : null}
               </ul>
-            </article>
+            </article> : null}
 
-            <article className="panel">
+            {editingPurchase.requestType === "expense" ? <article className="panel">
               <h2>Receipts</h2>
               {addReceiptState.message ? (
                 <p className={addReceiptState.ok ? "successNote" : "errorNote"} key={addReceiptState.timestamp}>
@@ -979,7 +1015,7 @@ export function ProcurementTable({
                   ))}
                 {receipts.filter((receipt) => receipt.purchaseId === editingPurchase.id).length === 0 ? <li>(none)</li> : null}
               </ul>
-            </article>
+            </article> : null}
         </SideDrawer>
       ) : null}
 

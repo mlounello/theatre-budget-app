@@ -47,7 +47,7 @@ test("card expenses show and edit EX identifiers instead of empty requisition an
   const table = await read("app/procurement/procurement-table.tsx");
   const db = await read("lib/db.ts");
   const actions = await read("app/procurement/actions.ts");
-  assert.match(db, /reference_number, expense_number, requisition_number/);
+  assert.match(db, /reference_number, expense_number, expense_stage, requisition_number/);
   assert.match(db, /expenseNumber: \(row\.expense_number/);
   assert.match(table, /Order \/ Expense #/);
   assert.match(table, /<b>Expense<\/b>/);
@@ -55,6 +55,19 @@ test("card expenses show and edit EX identifiers instead of empty requisition an
   assert.match(table, /placeholder="EX######"/);
   assert.match(actions, /Expense number must use the EX###### format/);
   assert.match(actions, /expense_number: isExpensePurchase/);
+});
+
+test("procurement drawer shows only fields relevant to the row workflow", async () => {
+  const table = await read("app/procurement/procurement-table.tsx");
+  const actions = await read("app/procurement/actions.ts");
+  assert.match(table, /editingPurchase\.requestType === "expense"[\s\S]*?Expense Workflow/);
+  assert.match(table, /Card Funding Request/);
+  assert.match(table, /Monthly Reconciliation Expense/);
+  assert.match(table, /editingPurchase\.requestType === "requisition"[\s\S]*?Requisition #/);
+  assert.match(table, /editingPurchase\.requestType === "requisition" \? <article className="panel">[\s\S]*?Receiving Docs/);
+  assert.match(table, /editingPurchase\.requestType === "expense" \? <article className="panel">[\s\S]*?Receipts/);
+  assert.match(table, /expenseStageLabel/);
+  assert.match(actions, /Choose whether this is a card funding request, reconciliation expense, or reimbursement/);
 });
 
 test("supporting records are restricted to purchases on the current page", async () => {
