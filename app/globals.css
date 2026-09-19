@@ -984,6 +984,153 @@ th {
   gap: 1rem;
 }
 
+.varianceQueueGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.8rem;
+  align-items: start;
+}
+
+.varianceQueue {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  min-width: 0;
+}
+
+.varianceQueue > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.varianceQueue > header h2,
+.varianceQueue > header p,
+.varianceDrawerSection h3 {
+  margin: 0;
+}
+
+.varianceQueueCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  min-height: 2rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: #edf4ef;
+  color: var(--siena-dark-green);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-weight: 800;
+}
+
+.varianceQueueList {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.varianceQueueCard {
+  display: grid;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #d8e2da;
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text-main);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: 0 1px 2px #10291e0a;
+}
+
+.varianceQueueCard:hover,
+.varianceQueueCard:focus-visible {
+  border-color: var(--siena-green);
+  box-shadow: 0 0 0 3px #006b5417;
+  outline: none;
+}
+
+.varianceQueueCardHeader,
+.varianceQueueMeta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.varianceQueueCardHeader > span:first-child {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.varianceQueueCardHeader strong,
+.varianceQueueCardHeader small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.varianceQueueCardHeader small,
+.varianceQueueMetrics small,
+.varianceQueueMeta {
+  color: var(--text-muted);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.75rem;
+}
+
+.varianceQueueMetrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.83rem;
+  font-weight: 800;
+}
+
+.varianceQueueMetrics > span {
+  display: grid;
+  gap: 0.08rem;
+}
+
+.varianceQueueEmpty {
+  margin: 0;
+  padding: 1rem 0.5rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.varianceDrawerBody,
+.varianceDrawerSection {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.varianceDrawerBody {
+  gap: 1rem;
+}
+
+.varianceDrawerSection {
+  padding: 0.9rem;
+  border: 1px solid #dfe7e1;
+  border-radius: 10px;
+  background: #fbfdfb;
+}
+
+.varianceDuplicateSection {
+  border-color: #e8d9a8;
+  background: #fffaf0;
+}
+
+.varianceDuplicateRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid #eadfb9;
+}
+
 .varianceStatusPanel {
   display: grid;
   gap: 0.9rem;
@@ -1106,6 +1253,17 @@ th {
   font-family: "Gudea", "Arial", sans-serif;
   font-size: 0.75rem;
   font-style: normal;
+}
+
+.sourceCandidateFlags {
+  display: grid;
+  justify-items: end;
+  gap: 0.25rem;
+}
+
+.sourceCandidate .suggestionFlag {
+  color: var(--siena-dark-green);
+  font-weight: 800;
 }
 
 .sourceCandidateAmount {
@@ -2478,7 +2636,35 @@ th {
   background: #6f887c;
 }
 
+@media (max-width: 1200px) {
+  .varianceQueueGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 720px) {
+  .varianceQueueGrid,
+  .varianceQueueMetrics {
+    grid-template-columns: 1fr;
+  }
+
+  .varianceDuplicateRow,
+  .varianceQueueCardHeader,
+  .varianceQueueMeta {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sourceCandidate {
+    grid-template-columns: 1fr;
+  }
+
+  .sourceCandidateAmount,
+  .sourceCandidateFlags {
+    text-align: left;
+    justify-items: start;
+  }
+
   .uiDrawerFooter,
   .uiModalFooter,
   .uiFilterToolbar,

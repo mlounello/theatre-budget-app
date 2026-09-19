@@ -1,6 +1,6 @@
 # Phase 4 — Fiscal-Year Integrity and Application Cleanup
 
-**Status:** Gates 1 through 4 and Gate 5A approved; Gate 5B in progress
+**Status:** Gates 1 through 4 and Gates 5A–5B approved; Gate 5C in progress
 **Scope:** All 23 items and all five gates described below  
 **Delivery model:** Incremental, review-gated work in short-lived gate/stage branches that merge to main after approval  
 **Database target:** Production Postgres, `app_theatre_budget` schema

@@ -423,4 +423,48 @@ export async function generateVarianceWorkbookAction(
   }
 }
 
+export async function resolveDuplicateVarianceAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    await requireVarianceAccess();
+    const supabase = await getSupabaseServerClient();
+    const primaryVarianceId = String(formData.get("primaryVarianceId") ?? "").trim();
+    const duplicateVarianceId = String(formData.get("duplicateVarianceId") ?? "").trim();
+    const mode = String(formData.get("mode") ?? "").trim();
+    if (!primaryVarianceId || !duplicateVarianceId || primaryVarianceId === duplicateVarianceId) {
+      return err("Choose two different variance drafts.");
+    }
+    if (mode !== "combine" && mode !== "dismiss") return err("Choose how to resolve the duplicate draft.");
+
+    const { data: requests, error: requestsError } = await supabase
+      .from("variance_requests")
+      .select("id, status, fiscal_year_id")
+      .in("id", [primaryVarianceId, duplicateVarianceId]);
+    if (requestsError) return err(requestsError.message);
+    if ((requests ?? []).length !== 2) return err("One of the variance drafts could not be found.");
+    if ((requests ?? []).some((request) => !["draft", "ready_for_review"].includes(String(request.status ?? "")))) {
+      return err("Only Draft or Ready for Review variances can be resolved as duplicates.");
+    }
+    const fiscalYears = new Set((requests ?? []).map((request) => String(request.fiscal_year_id ?? "")));
+    if (fiscalYears.size !== 1) return err("Variance drafts from different fiscal years cannot be combined or dismissed together.");
+
+    const { error: resolutionError } = await supabase.rpc("resolve_duplicate_variance_draft", {
+      p_primary_variance_id: primaryVarianceId,
+      p_duplicate_variance_id: duplicateVarianceId,
+      p_mode: mode
+    });
+    if (resolutionError) return err(resolutionError.message);
+
+    revalidatePath("/variance");
+    revalidatePath("/budget-planning");
+    revalidatePath("/");
+    return ok(mode === "combine" ? "Duplicate draft combined into this variance." : "Duplicate draft dismissed and retained in history.");
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not resolve the duplicate variance."));
+  }
+}
+
 export type { ActionState };
