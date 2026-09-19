@@ -1412,7 +1412,16 @@ export async function getRequestsData(): Promise<{
 }
 
 export async function getProcurementData(
-  params: { fiscalYearId?: string; page?: number; pageSize?: number } = {}
+  params: {
+    fiscalYearId?: string;
+    page?: number;
+    pageSize?: number;
+    queue?: "needs_attention" | "open" | "paid" | "all";
+    query?: string;
+    projectId?: string;
+    procurementStatus?: string;
+    requestType?: string;
+  } = {}
 ): Promise<{
   purchases: ProcurementRow[];
   receipts: ProcurementReceiptRow[];
@@ -1427,6 +1436,7 @@ export async function getProcurementData(
   totalCount: number;
   page: number;
   pageSize: number;
+  queueCounts: { needsAttention: number; open: number; paid: number; all: number };
 }> {
   const supabase = await getSupabaseServerClient();
   const access = await getAccessContext();
@@ -1435,26 +1445,49 @@ export async function getProcurementData(
   const rangeFrom = (requestedPage - 1) * pageSize;
   const rangeTo = rangeFrom + pageSize - 1;
 
+  const needsAttentionFilter = "and(procurement_status.eq.requested,requisition_number.is.null),and(procurement_status.eq.ordered,po_number.is.null),and(procurement_status.in.(partial_received,fully_received),invoice_number.is.null),and(procurement_status.eq.invoice_received,paid_on.is.null)";
   let purchasesQuery = supabase
     .from("purchases")
     .select(
       "id, fiscal_year_id, project_id, organization_id, budget_line_id, production_category_id, banner_account_code_id, budget_tracked, title, reference_number, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, procurement_status, ordered_on, received_on, paid_on, vendor_id, notes, created_at, organizations(name, org_code), projects(name, season, organization_id, organizations(name, org_code)), production_categories(name), account_codes(code), project_budget_lines(budget_code, category, line_name), vendors(id, name)",
       { count: "exact" }
     )
-    .order("created_at", { ascending: false })
-    .range(rangeFrom, rangeTo);
+    .order("created_at", { ascending: false });
   if (params.fiscalYearId) purchasesQuery = purchasesQuery.eq("fiscal_year_id", params.fiscalYearId);
+  if (params.projectId === "__organization_budget__") purchasesQuery = purchasesQuery.is("project_id", null);
+  else if (params.projectId) purchasesQuery = purchasesQuery.eq("project_id", params.projectId);
+  if (params.procurementStatus) purchasesQuery = purchasesQuery.eq("procurement_status", params.procurementStatus);
+  if (params.requestType) purchasesQuery = purchasesQuery.eq("request_type", params.requestType);
+  if (params.queue === "open") purchasesQuery = purchasesQuery.not("procurement_status", "in", "(paid,posted_to_account,cancelled)");
+  else if (params.queue === "paid") purchasesQuery = purchasesQuery.in("procurement_status", ["paid", "posted_to_account"]);
+  else if (params.queue === "needs_attention") purchasesQuery = purchasesQuery.or(needsAttentionFilter);
+  const normalizedQuery = (params.query ?? "").trim().replace(/[(),]/g, " ").slice(0, 120);
+  if (normalizedQuery) {
+    const pattern = `%${normalizedQuery}%`;
+    purchasesQuery = purchasesQuery.or(
+      `title.ilike.${pattern},reference_number.ilike.${pattern},requisition_number.ilike.${pattern},po_number.ilike.${pattern},invoice_number.ilike.${pattern}`
+    );
+  }
+  purchasesQuery = purchasesQuery.range(rangeFrom, rangeTo);
+
+  const scopedCountQuery = () => {
+    let query = supabase.from("purchases").select("id", { count: "exact", head: true });
+    if (params.fiscalYearId) query = query.eq("fiscal_year_id", params.fiscalYearId);
+    return query;
+  };
 
   const [
     purchasesResponse,
     linesResponse,
     vendorsResponse,
-    receiptsResponse,
-    receivingDocsResponse,
     projectsResponse,
     organizationOptionsResponse,
     accountCodeResponse,
-    categoryResponse
+    categoryResponse,
+    allCountResponse,
+    openCountResponse,
+    paidCountResponse,
+    needsAttentionCountResponse
   ] =
     await Promise.all([
     purchasesQuery,
@@ -1466,14 +1499,6 @@ export async function getProcurementData(
       .eq("active", true)
       .order("budget_code", { ascending: true }),
     supabase.from("vendors").select("id, name").order("name", { ascending: true }),
-    supabase
-      .from("purchase_receipts")
-      .select("id, purchase_id, note, amount_received, fully_received, attachment_url, created_at")
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("purchase_receiving_docs")
-      .select("id, purchase_id, doc_code, received_on, note, created_at")
-      .order("created_at", { ascending: false }),
     supabase
       .from("projects")
       .select("id, name, season, organization_id, fiscal_year_id")
@@ -1491,17 +1516,44 @@ export async function getProcurementData(
       .select("id, name, sort_order")
       .order("active", { ascending: false })
       .order("sort_order", { ascending: true })
-      .order("name", { ascending: true })
+      .order("name", { ascending: true }),
+    scopedCountQuery(),
+    scopedCountQuery().not("procurement_status", "in", "(paid,posted_to_account,cancelled)"),
+    scopedCountQuery().in("procurement_status", ["paid", "posted_to_account"]),
+    scopedCountQuery().or(needsAttentionFilter)
   ]);
 
   if (purchasesResponse.error) throw purchasesResponse.error;
   if (linesResponse.error) throw linesResponse.error;
   if (vendorsResponse.error) throw vendorsResponse.error;
-  if (receiptsResponse.error) throw receiptsResponse.error;
-  if (receivingDocsResponse.error) throw receivingDocsResponse.error;
   if (projectsResponse.error) throw projectsResponse.error;
   if (accountCodeResponse.error) throw accountCodeResponse.error;
   if (categoryResponse.error) throw categoryResponse.error;
+  if (allCountResponse.error) throw allCountResponse.error;
+  if (openCountResponse.error) throw openCountResponse.error;
+  if (paidCountResponse.error) throw paidCountResponse.error;
+  if (needsAttentionCountResponse.error) throw needsAttentionCountResponse.error;
+
+  const currentPagePurchaseIds = (purchasesResponse.data ?? []).map((row) => row.id as string);
+  const [receiptsResponse, receivingDocsResponse] = currentPagePurchaseIds.length > 0
+    ? await Promise.all([
+        supabase
+          .from("purchase_receipts")
+          .select("id, purchase_id, note, amount_received, fully_received, attachment_url, created_at")
+          .in("purchase_id", currentPagePurchaseIds)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("purchase_receiving_docs")
+          .select("id, purchase_id, doc_code, received_on, note, created_at")
+          .in("purchase_id", currentPagePurchaseIds)
+          .order("created_at", { ascending: false })
+      ])
+    : [
+        { data: [], error: null },
+        { data: [], error: null }
+      ];
+  if (receiptsResponse.error) throw receiptsResponse.error;
+  if (receivingDocsResponse.error) throw receivingDocsResponse.error;
 
   const procurementAttachmentUrls = await resolveAttachmentUrls(
     supabase,
@@ -1719,7 +1771,13 @@ export async function getProcurementData(
     canManageProcurement,
     totalCount: purchasesResponse.count ?? purchases.length,
     page: requestedPage,
-    pageSize
+    pageSize,
+    queueCounts: {
+      needsAttention: needsAttentionCountResponse.count ?? 0,
+      open: openCountResponse.count ?? 0,
+      paid: paidCountResponse.count ?? 0,
+      all: allCountResponse.count ?? 0
+    }
   };
 }
 
