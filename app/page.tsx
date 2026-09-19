@@ -128,8 +128,17 @@ function AttentionCard({ title, count, description, href, actionLabel, items = [
         <ul className="dashboardAttentionList">
           {items.slice(0, 3).map((item) => (
             <li key={item.id}>
-              <span>{item.label}</span>
-              <small>{item.detail}</small>
+              {item.href ? (
+                <Link href={item.href} aria-label={`Review ${item.label}`}>
+                  <span>{item.label}</span>
+                  <small>{item.detail}</small>
+                </Link>
+              ) : (
+                <>
+                  <span>{item.label}</span>
+                  <small>{item.detail}</small>
+                </>
+              )}
             </li>
           ))}
         </ul>
@@ -385,13 +394,14 @@ export default async function DashboardPage({
             items={openRequisitions.slice(0, 3).map((row) => ({
               id: row.id,
               label: row.title,
-              detail: `${row.projectName} · ${requisitionProcurementLabel(row.procurementStatus)} · ${formatCurrency(row.orderValue)}`
+              detail: `${row.projectName} · ${requisitionProcurementLabel(row.procurementStatus)} · ${formatCurrency(row.orderValue)}`,
+              href: `/procurement?fiscalYearId=${encodeURIComponent(fiscalYearId)}&pr_queue=all&pr_q=${encodeURIComponent(row.title)}&pr_edit=${encodeURIComponent(row.id)}`
             }))}
           />
           <AttentionCard
             title="Missing Receipts"
             count={operationalAttention.missingReceipts.length}
-            description="Credit-card purchases without enough receipt documentation."
+            description="Credit-card purchases with no receipt documentation attached."
             href={`/cc?fiscalYearId=${encodeURIComponent(fiscalYearId)}&cc_view=exceptions`}
             actionLabel="Review Exceptions"
             items={operationalAttention.missingReceipts}

@@ -46,6 +46,20 @@ test("exceptions identify missing receipts, unassigned cards, and excluded recor
   assert.match(client, /exceptionRows\.map/);
 });
 
+test("attention transactions edit in a drawer and can release an unused card hold", async () => {
+  const client = await read("app/cc/cc-page-client.tsx");
+  const actions = await read("app/cc/actions.ts");
+  assert.match(client, /searchParams\.get\("cc_purchase"\)/);
+  assert.match(client, /title=\{activeAttentionPurchase\?\.requestTitle/);
+  assert.match(client, /Review &amp; Edit/);
+  assert.match(client, /Reconcile at actual/);
+  assert.match(client, /addProcurementReceiptAction/);
+  assert.match(actions, /reconcileCcPurchaseToReceiptsAction/);
+  assert.match(actions, /released .* unused authorization/);
+  assert.match(actions, /cc_workflow_status: "receipts_uploaded"/);
+  assert.match(actions, /createInstitutionalCommitmentForPurchase/);
+});
+
 test("projectless organization reimbursements remain supported", async () => {
   const page = await read("app/cc/page.tsx");
   const form = await read("app/cc/expense-claim-form.tsx");

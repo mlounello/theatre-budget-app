@@ -5,6 +5,7 @@ export type DashboardAttentionItem = {
   id: string;
   label: string;
   detail: string;
+  href?: string;
 };
 
 export type DashboardOperationalAttention = {
@@ -64,14 +65,14 @@ export async function getDashboardOperationalAttention(params: {
     supabase
       .from("contract_installments")
       .select(
-        "id, installment_number, installment_amount, status, due_date, mail_by, contracts!inner(fiscal_year_id, contractor_name, contract_role)"
+        "id, installment_number, installment_amount, status, due_date, mail_by, contracts!inner(id, fiscal_year_id, contractor_name, contract_role)"
       )
       .eq("contracts.fiscal_year_id", params.fiscalYearId)
       .neq("status", "check_paid"),
     supabase
       .from("contract_union_contributions")
       .select(
-        "id, fund_name_snapshot, amount, status, due_date, mail_by, contracts!inner(fiscal_year_id, contractor_name, contract_role)"
+        "id, fund_name_snapshot, amount, status, due_date, mail_by, contracts!inner(id, fiscal_year_id, contractor_name, contract_role)"
       )
       .eq("contracts.fiscal_year_id", params.fiscalYearId)
       .neq("status", "check_paid"),
@@ -87,16 +88,16 @@ export async function getDashboardOperationalAttention(params: {
     .map((row) => {
       const pendingAmount = asNumber(row.pending_cc_amount as string | number | null);
       const receipts = (row.purchase_receipts as Array<{ amount_received?: string | number | null }> | null) ?? [];
-      const receiptTotal = receipts.reduce((total, receipt) => total + asNumber(receipt.amount_received), 0);
       return {
         id: String(row.id ?? ""),
         label: String(row.title ?? "Credit-card purchase"),
-        detail: `${scopeLabel(row)} · ${money(Math.max(pendingAmount - receiptTotal, 0))} receipt gap`,
-        receiptGap: Math.max(pendingAmount - receiptTotal, 0)
+        detail: `${scopeLabel(row)} · ${money(pendingAmount)} authorized · no receipt attached`,
+        receiptCount: receipts.length,
+        href: `/cc?fiscalYearId=${encodeURIComponent(params.fiscalYearId)}&cc_view=exceptions&cc_purchase=${encodeURIComponent(String(row.id ?? ""))}`
       };
     })
-    .filter((row) => row.receiptGap > 0.005)
-    .map(({ id, label, detail }) => ({ id, label, detail }));
+    .filter((row) => row.receiptCount === 0)
+    .map(({ id, label, detail, href }) => ({ id, label, detail, href }));
 
   const statementsAwaitingReconciliation = ((statementsResponse.data ?? []) as Array<Record<string, unknown>>).map((row) => {
     const card = row.credit_cards as { nickname?: string } | null;
@@ -104,7 +105,8 @@ export async function getDashboardOperationalAttention(params: {
     return {
       id: String(row.id ?? ""),
       label: `${String(row.statement_month ?? "").slice(0, 7)} · ${card?.nickname ?? "Credit card"}`,
-      detail: paid ? "Statement paid · awaiting Banner posting" : "Open · awaiting reconciliation"
+      detail: paid ? "Statement paid · awaiting Banner posting" : "Open · awaiting reconciliation",
+      href: `/cc?fiscalYearId=${encodeURIComponent(params.fiscalYearId)}&cc_view=current&cc_statement=${encodeURIComponent(String(row.id ?? ""))}`
     };
   });
 
@@ -115,23 +117,25 @@ export async function getDashboardOperationalAttention(params: {
   const cutoffKey = cutoff.toISOString().slice(0, 10);
   const contractChecks = [
     ...((installmentsResponse.data ?? []) as Array<Record<string, unknown>>).map((row) => {
-      const contract = row.contracts as { contractor_name?: string; contract_role?: string | null } | null;
+      const contract = row.contracts as { id?: string; contractor_name?: string; contract_role?: string | null } | null;
       return {
         id: `installment:${String(row.id ?? "")}`,
         label: `${contract?.contractor_name ?? "Contractor"} · Installment ${Number(row.installment_number ?? 1)}`,
         amount: asNumber(row.installment_amount as string | number | null),
         date: String(row.mail_by ?? row.due_date ?? ""),
-        role: contract?.contract_role ?? null
+        role: contract?.contract_role ?? null,
+        contractId: contract?.id ?? null
       };
     }),
     ...((unionContributionsResponse.data ?? []) as Array<Record<string, unknown>>).map((row) => {
-      const contract = row.contracts as { contractor_name?: string; contract_role?: string | null } | null;
+      const contract = row.contracts as { id?: string; contractor_name?: string; contract_role?: string | null } | null;
       return {
         id: `union:${String(row.id ?? "")}`,
         label: `${contract?.contractor_name ?? "Contractor"} · ${String(row.fund_name_snapshot ?? "Union fund")}`,
         amount: asNumber(row.amount as string | number | null),
         date: String(row.mail_by ?? row.due_date ?? ""),
-        role: contract?.contract_role ?? null
+        role: contract?.contract_role ?? null,
+        contractId: contract?.id ?? null
       };
     })
   ]
@@ -141,7 +145,8 @@ export async function getDashboardOperationalAttention(params: {
   const upcomingContractChecks = contractChecks.map((row) => ({
     id: row.id,
     label: row.label,
-    detail: `${row.date < todayKey ? "Overdue" : `Due ${row.date}`} · ${money(row.amount)}${row.role ? ` · ${row.role}` : ""}`
+    detail: `${row.date < todayKey ? "Overdue" : `Due ${row.date}`} · ${money(row.amount)}${row.role ? ` · ${row.role}` : ""}`,
+    href: row.contractId ? `/contracts?fiscalYearId=${encodeURIComponent(params.fiscalYearId)}&ct_edit=${encodeURIComponent(row.contractId)}` : undefined
   }));
 
   const progress = fiscalYearProgress(params.fiscalYear);

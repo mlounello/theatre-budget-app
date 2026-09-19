@@ -974,6 +974,8 @@ export async function addProcurementReceiptAction(
     if (error) return err(error.message);
 
     revalidatePath("/procurement");
+    revalidatePath("/cc");
+    revalidatePath("/");
     return ok("Receipt log added.");
   } catch (error) {
     return err(getErrorMessage(error, "Could not add receipt log."));
@@ -1065,6 +1067,8 @@ export async function deleteProcurementReceiptAction(
     if (error) return err(error.message);
 
     revalidatePath("/procurement");
+    revalidatePath("/cc");
+    revalidatePath("/");
     return ok("Receipt log deleted.");
   } catch (error) {
     return err(getErrorMessage(error, "Could not delete receipt log."));

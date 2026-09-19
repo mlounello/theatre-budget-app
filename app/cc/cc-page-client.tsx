@@ -2,17 +2,20 @@
 
 import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   assignReceiptsToStatementAction,
   createCreditCardAction,
   postStatementMonthToBannerAction,
+  reconcileCcPurchaseToReceiptsAction,
   reopenStatementMonthAction,
   submitStatementMonthAction,
   unpostStatementMonthFromBannerAction,
   unassignReceiptFromStatementAction,
+  updateCcAttentionPurchaseAction,
   type ActionState
 } from "@/app/cc/actions";
+import { addProcurementReceiptAction, deleteProcurementReceiptAction } from "@/app/procurement/actions";
 import { CcAdminTables } from "@/app/cc/cc-admin-tables";
 import { CreateStatementMonthForm } from "@/app/cc/create-statement-month-form";
 import { ExpenseClaimForm } from "@/app/cc/expense-claim-form";
@@ -61,6 +64,7 @@ type PendingPurchaseDetailRow = {
   pendingCcAmount: number;
   receiptTotal: number;
   receiptCount: number;
+  creditCardId: string | null;
   creditCardName: string | null;
   ccWorkflowStatus: string | null;
   statementMonthLabel: string | null;
@@ -165,6 +169,7 @@ export function CcPageClient({
   expenseClaimPageSize
 }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [createCardState, createCardAction] = useActionState(createCreditCardAction, initialState);
   const [assignState, assignAction] = useActionState(assignReceiptsToStatementAction, initialState);
@@ -173,6 +178,10 @@ export function CcPageClient({
   const [postState, postAction] = useActionState(postStatementMonthToBannerAction, initialState);
   const [reopenState, reopenAction] = useActionState(reopenStatementMonthAction, initialState);
   const [unpostState, unpostAction] = useActionState(unpostStatementMonthFromBannerAction, initialState);
+  const [attentionUpdateState, attentionUpdateAction] = useActionState(updateCcAttentionPurchaseAction, initialState);
+  const [attentionReconcileState, attentionReconcileAction] = useActionState(reconcileCcPurchaseToReceiptsAction, initialState);
+  const [attentionReceiptState, attentionReceiptAction] = useActionState(addProcurementReceiptAction, initialState);
+  const [attentionDeleteReceiptState, attentionDeleteReceiptAction] = useActionState(deleteProcurementReceiptAction, initialState);
   const [openDrawer, setOpenDrawer] = useState<"claim" | "statement" | "card" | null>(null);
   const selectedStatement = useMemo(
     () =>
@@ -226,6 +235,10 @@ export function CcPageClient({
   );
   const missingReceiptCount = exceptionRows.filter((purchase) => purchase.assignmentState === "Missing receipts").length;
   const unassignedCardCount = exceptionRows.filter((purchase) => purchase.assignmentState === "Unassigned card").length;
+  const activeAttentionPurchase = pendingPurchaseDetails.find((purchase) => purchase.id === searchParams.get("cc_purchase")) ?? null;
+  const activeAttentionReceipts = activeAttentionPurchase
+    ? pendingReceipts.filter((receipt) => receipt.purchaseId === activeAttentionPurchase.id)
+    : [];
   const workspaceHref = (view: Props["selectedView"], statementId?: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("cc_view", view);
@@ -239,6 +252,15 @@ export function CcPageClient({
     if (page > 1) params.set("cc_claim_page", String(page));
     else params.delete("cc_claim_page");
     return `${pathname}?${params.toString()}`;
+  };
+  const setActiveAttentionPurchase = (purchaseId: string | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (purchaseId) {
+      params.set("cc_purchase", purchaseId);
+    } else {
+      params.delete("cc_purchase");
+    }
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
   return (
@@ -296,6 +318,70 @@ export function CcPageClient({
           <label className="checkboxLabel"><input name="active" type="checkbox" defaultChecked />Active</label>
           <button type="submit" className="buttonLink buttonPrimary">Save Card</button>
         </form>
+      </SideDrawer>
+
+      <SideDrawer
+        open={Boolean(activeAttentionPurchase)}
+        onClose={() => setActiveAttentionPurchase(null)}
+        eyebrow="Transaction needing attention"
+        title={activeAttentionPurchase?.requestTitle ?? "Credit-card transaction"}
+        description={activeAttentionPurchase ? `${activeAttentionPurchase.projectLabel} · ${activeAttentionPurchase.assignmentState}` : undefined}
+        closeLabel="Close transaction editor"
+      >
+        {activeAttentionPurchase ? (
+          <div className="varianceDrawerBody">
+            <section className="varianceDrawerSection">
+              <h3>Reconciliation summary</h3>
+              <p><strong>Authorized cap:</strong> {formatCurrency(activeAttentionPurchase.pendingCcAmount)}</p>
+              <p><strong>Receipt total:</strong> {formatCurrency(activeAttentionPurchase.receiptTotal)} across {activeAttentionPurchase.receiptCount} receipt{activeAttentionPurchase.receiptCount === 1 ? "" : "s"}</p>
+              <p><strong>Unused authorization:</strong> {formatCurrency(Math.max(activeAttentionPurchase.pendingCcAmount - activeAttentionPurchase.receiptTotal, 0))}</p>
+              <p className="helperText">The authorization is a ceiling, not a spending target. Reconcile at actual to release an unused balance after all receipts are present.</p>
+              {attentionReconcileState.message ? <p className={attentionReconcileState.ok ? "successNote" : "errorNote"}>{attentionReconcileState.message}</p> : null}
+              <form action={attentionReconcileAction}>
+                <input type="hidden" name="purchaseId" value={activeAttentionPurchase.id} />
+                <button type="submit" className="buttonLink buttonPrimary" disabled={activeAttentionPurchase.receiptCount === 0 || activeAttentionPurchase.receiptTotal > activeAttentionPurchase.pendingCcAmount + 0.005}>
+                  Reconcile at actual ({formatCurrency(activeAttentionPurchase.receiptTotal)})
+                </button>
+              </form>
+            </section>
+
+            <section className="varianceDrawerSection">
+              <h3>Edit transaction</h3>
+              {attentionUpdateState.message ? <p className={attentionUpdateState.ok ? "successNote" : "errorNote"}>{attentionUpdateState.message}</p> : null}
+              <form action={attentionUpdateAction} className="requestForm">
+                <input type="hidden" name="purchaseId" value={activeAttentionPurchase.id} />
+                <label>Credit Card<select name="creditCardId" defaultValue={activeAttentionPurchase.creditCardId ?? ""} required><option value="">Select card</option>{cards.filter((card) => card.active || card.id === activeAttentionPurchase.creditCardId).map((card) => <option key={card.id} value={card.id}>{card.nickname}{card.maskedNumber ? ` (${card.maskedNumber})` : ""}</option>)}</select></label>
+                <label>Authorized Cap<input name="pendingCcAmount" type="number" min="0.01" step="0.01" defaultValue={activeAttentionPurchase.pendingCcAmount.toFixed(2)} required /></label>
+                <button type="submit" className="tinyButton">Save Transaction</button>
+              </form>
+            </section>
+
+            <section className="varianceDrawerSection">
+              <h3>Receipts</h3>
+              {attentionReceiptState.message ? <p className={attentionReceiptState.ok ? "successNote" : "errorNote"}>{attentionReceiptState.message}</p> : null}
+              {attentionDeleteReceiptState.message ? <p className={attentionDeleteReceiptState.ok ? "successNote" : "errorNote"}>{attentionDeleteReceiptState.message}</p> : null}
+              <form action={attentionReceiptAction} className="requestForm">
+                <input type="hidden" name="purchaseId" value={activeAttentionPurchase.id} />
+                <label>Receipt Description<input name="note" placeholder="Vendor or purchase description" /></label>
+                <label>Receipt Amount<input name="amountReceived" type="number" min="0.01" step="0.01" required /></label>
+                <label>Receipt Link<input name="attachmentUrl" type="url" placeholder="Optional receipt URL" /></label>
+                <input type="hidden" name="fullyReceived" value="on" />
+                <button type="submit" className="tinyButton">Add Receipt</button>
+              </form>
+              <ul>
+                {activeAttentionReceipts.map((receipt) => (
+                  <li key={receipt.id}>{receipt.note ?? "Receipt"} · {formatCurrency(receipt.amount)}
+                    <form action={attentionDeleteReceiptAction} className="inlineEditForm">
+                      <input type="hidden" name="id" value={receipt.id} />
+                      <button type="submit" className="tinyButton dangerButton">Remove</button>
+                    </form>
+                  </li>
+                ))}
+                {activeAttentionReceipts.length === 0 ? <li>No receipts recorded.</li> : null}
+              </ul>
+            </section>
+          </div>
+        ) : null}
       </SideDrawer>
 
       {selectedView === "current" ? (
@@ -417,11 +503,14 @@ export function CcPageClient({
                     <input type="hidden" name="statementMonthId" value={selectedStatement.id} />
                     <div className="checkboxStack">
                       {unassignedCandidates.map((receipt) => (
-                        <label key={receipt.id} className="checkboxLabel">
-                          <input type="checkbox" name="receiptId" value={receipt.id} />
-                          {receipt.projectLabel} | {receipt.budgetLineLabel} | {receipt.requestNumber ?? receipt.id.slice(0, 8)} |{" "}
-                          {receipt.requestTitle} | {formatCurrency(receipt.amount)}
-                        </label>
+                        <div key={receipt.id} className="ccCandidateRow">
+                          <label className="checkboxLabel">
+                            <input type="checkbox" name="receiptId" value={receipt.id} />
+                            {receipt.projectLabel} | {receipt.budgetLineLabel} | {receipt.requestNumber ?? receipt.id.slice(0, 8)} |{" "}
+                            {receipt.requestTitle} | {formatCurrency(receipt.amount)}
+                          </label>
+                          <button type="button" className="tinyButton" onClick={() => setActiveAttentionPurchase(receipt.purchaseId)}>Review &amp; Reconcile</button>
+                        </div>
                       ))}
                       {unassignedCandidates.length === 0 ? <p>No unassigned Pending CC receipts for this card.</p> : null}
                     </div>
@@ -583,12 +672,13 @@ export function CcPageClient({
                 <th>Workflow</th>
                 <th>Statement</th>
                 <th>Where It Is</th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {exceptionRows.length === 0 ? (
                 <tr>
-                  <td colSpan={11}>No credit card exceptions found.</td>
+                  <td colSpan={12}>No credit card exceptions found.</td>
                 </tr>
               ) : null}
               {exceptionRows.map((purchase) => (
@@ -606,6 +696,7 @@ export function CcPageClient({
                   <td>{purchase.ccWorkflowStatus ?? "-"}</td>
                   <td>{purchase.statementMonthLabel ?? "-"}</td>
                   <td>{purchase.assignmentState}</td>
+                  <td><button type="button" className="tinyButton" onClick={() => setActiveAttentionPurchase(purchase.id)}>Review &amp; Edit</button></td>
                 </tr>
               ))}
             </tbody>

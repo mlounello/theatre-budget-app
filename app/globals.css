@@ -3335,8 +3335,35 @@ th {
   border-bottom: 1px solid #e4ebe6;
 }
 
+.dashboardAttentionList li > a {
+  display: grid;
+  gap: 0.12rem;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 8px;
+  padding: 0.25rem;
+  margin: -0.25rem;
+}
+
+.dashboardAttentionList li > a:hover,
+.dashboardAttentionList li > a:focus-visible {
+  background: #f2f7f4;
+  outline: 2px solid transparent;
+}
+
 .dashboardAttentionList span {
   font-weight: 700;
+}
+
+.ccCandidateRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ccCandidateRow .checkboxLabel {
+  flex: 1;
 }
 
 .dashboardAttentionList small,
