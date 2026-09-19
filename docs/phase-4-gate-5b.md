@@ -1,6 +1,6 @@
 # Phase 4 Gate 5B — Variance Center
 
-**Status:** Implemented and verified in code; awaiting approval; not deployed
+**Status:** Approved and applied 2026-09-19
 
 ## Outcome
 
@@ -33,3 +33,9 @@ Possible duplicates are open drafts with the same fiscal year and exact target-b
 - Confirm scoped and impersonated users see only permitted variances.
 - Confirm an attempted cross-fiscal-year source still fails at the database boundary.
 - Obtain explicit Gate 5B approval before merge or production deployment.
+
+## Approval and production database application
+
+Gate 5B was approved on 2026-09-19. The additive duplicate-resolution function was rehearsed in a rollback-only transaction, applied to production, and recorded as migration `20260919143000`.
+
+The timestamped pre-migration baseline ran at `2026-09-19 07:51:47 UTC`; the post-migration baseline ran at `2026-09-19 07:52:44 UTC`. Every FY26/FY27 financial count, amount, and fixed-record-set hash matched. The migration changed no financial records, RLS policy, or existing variance status.
