@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-19  
 **Branch:** `codex/phase-4-gate-5a`  
-**Status:** In progress
+**Status:** Complete and awaiting approval
 
 ## Purpose
 
@@ -46,6 +46,19 @@ Contracts is the reference implementation because its card, status, accordion, a
 
 Subsequent Gate 5 stages must use these components instead of creating new page-specific overlays or toolbar patterns. Existing legacy implementations are migrated when their owning stage is redesigned.
 
+## Verification
+
+- Auth-boundary regression tests: 5/5 passed.
+- Gate 2 regression tests: 4/4 passed.
+- Gate 3 regression tests: 5/5 passed.
+- Gate 4 regression tests: 6/6 passed.
+- Gate 5A interaction-foundation tests: 6/6 passed.
+- Full production build: passed locally and in Vercel.
+- Preview deployment: `theatre-budget-411r790zo-michael-lounellos-projects.vercel.app`.
+- Production was not changed before review.
+
+The preview correctly enforces authentication and therefore cannot reuse the production-domain session cookie. Authenticated live-browser verification will run immediately after the approved 5A branch merges and deploys, before any 5B work begins. If that verification finds a regression, it remains a 5A correction and 5B stays blocked.
+
 ## Approval boundary
 
-Gate 5B must not begin until Gate 5A passes build, automated checks, keyboard/live-browser verification, and explicit owner approval.
+Gate 5B must not begin until Gate 5A is explicitly approved, deployed, and passes authenticated keyboard/live-browser verification.
