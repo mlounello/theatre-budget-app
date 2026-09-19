@@ -182,8 +182,6 @@ export function CreateContractBatchForm({
             >
               <option value="1">1 installment</option>
               <option value="2">2 installments</option>
-              <option value="3">3 installments</option>
-              <option value="4">4 installments</option>
             </select>
             <button type="button" className="tinyButton dangerButton" onClick={() => removeRow(index)}>
               Remove

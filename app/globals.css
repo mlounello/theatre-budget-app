@@ -1870,6 +1870,100 @@ th {
   overflow: hidden;
 }
 
+.hiringToolbarPanel {
+  margin-bottom: 1rem;
+}
+
+.hiringFilters {
+  display: flex;
+  flex: 1 1 760px;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.65rem;
+}
+
+.hiringFilters label {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 145px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.hiringFilters input,
+.hiringFilters select {
+  min-height: 38px;
+}
+
+.contractEngagementBadge {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 0.35rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  background: #e8f0ea;
+  color: #17462f;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.expenseLinesEditor {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.expenseLineCard {
+  margin: 0;
+  padding: 0.8rem;
+  border: 1px solid #d8e1d9;
+  border-radius: 12px;
+  background: #f8faf8;
+}
+
+.expenseLineCard legend {
+  padding: 0 0.35rem;
+  color: var(--green-dark);
+  font-weight: 800;
+}
+
+.expenseClaimTotal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  background: var(--green-dark);
+  color: white;
+}
+
+.expenseClaimTotal strong {
+  font-size: 1.2rem;
+}
+
+.expenseClaimList {
+  display: grid;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.expenseClaimRecord {
+  border: 1px solid #d8e1d9;
+  border-radius: 12px;
+  background: white;
+}
+
+.expenseClaimRecordBody {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0 1rem 1rem;
+}
+
+.procurementBoundaryNote {
+  margin-bottom: 0.75rem;
+}
+
 .contractsPanelHeader {
   display: flex;
   justify-content: space-between;

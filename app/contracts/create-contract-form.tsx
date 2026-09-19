@@ -47,6 +47,8 @@ export function CreateContractForm({
   const [contractorEmail, setContractorEmail] = useState("");
   const [contractorPhone, setContractorPhone] = useState("");
   const [contractValue, setContractValue] = useState("");
+  const [engagementType, setEngagementType] = useState<"independent_contractor" | "union_freelance_artist" | "temporary_employee">("independent_contractor");
+  const [compensationBasis, setCompensationBasis] = useState<"flat_fee" | "hourly">("flat_fee");
   const [isUnion, setIsUnion] = useState(false);
   const [unionAgreementId, setUnionAgreementId] = useState("");
   const [unionDueDates, setUnionDueDates] = useState<Record<string, string>>({});
@@ -101,6 +103,8 @@ export function CreateContractForm({
     setContractorEmail("");
     setContractorPhone("");
     setContractValue("");
+    setEngagementType("independent_contractor");
+    setCompensationBasis("flat_fee");
     setIsUnion(false);
     setUnionAgreementId("");
     setUnionDueDates({});
@@ -129,6 +133,7 @@ export function CreateContractForm({
     setContractorEmail(guestArtist.email ?? "");
     setContractorPhone(guestArtist.phone ?? "");
     setIsUnion(guestArtist.isUnion);
+    setEngagementType(guestArtist.isUnion ? "union_freelance_artist" : "independent_contractor");
     setUnionAgreementId(guestArtist.defaultUnionAgreementId ?? "");
     setUnionDueDates({});
     setCheckRequestFoapalId(guestArtist.defaultFoapalId ?? "");
@@ -234,7 +239,7 @@ export function CreateContractForm({
         </select>
       </label>
       <label>
-        Contracted Employee Name
+        Person / Artist Name
         <input name="contractorName" value={contractorName} onChange={(event) => setContractorName(event.target.value)} required />
       </label>
       <label>
@@ -250,7 +255,7 @@ export function CreateContractForm({
         <input name="contractorPhone" value={contractorPhone} onChange={(event) => setContractorPhone(event.target.value)} />
       </label>
       <label>
-        Contract Value
+        Planned Compensation
         <input
           name="contractValue"
           type="number"
@@ -261,6 +266,44 @@ export function CreateContractForm({
         />
       </label>
       <label>
+        Hiring Path
+        <select
+          name="engagementType"
+          value={engagementType}
+          onChange={(event) => {
+            const next = event.target.value as typeof engagementType;
+            setEngagementType(next);
+            setIsUnion(next === "union_freelance_artist");
+            if (next === "independent_contractor" && installmentCount > 2) setInstallmentCount(2);
+          }}
+        >
+          <option value="independent_contractor">Independent Contractor Agreement</option>
+          <option value="union_freelance_artist">Union + Freelance Artist Agreement</option>
+          <option value="temporary_employee">Temporary Employee through HR</option>
+        </select>
+      </label>
+      <label>
+        Compensation Basis
+        <select name="compensationBasis" value={compensationBasis} onChange={(event) => setCompensationBasis(event.target.value as typeof compensationBasis)}>
+          <option value="flat_fee">Flat Fee</option>
+          <option value="hourly">Hourly</option>
+        </select>
+      </label>
+      {engagementType === "temporary_employee" ? (
+        <>
+          <label>
+            HR Onboarding Status
+            <select name="hrOnboardingStatus" defaultValue="not_started">
+              <option value="not_started">Not Started</option>
+              <option value="submitted_to_hr">Submitted to HR</option>
+              <option value="onboarding">Onboarding</option>
+              <option value="complete">Complete</option>
+            </select>
+          </label>
+          <label>HR Reference<input name="hrOnboardingReference" placeholder="Optional HR / payroll reference" /></label>
+        </>
+      ) : null}
+      <label>
         Payment Installments
         <select
           name="installmentCount"
@@ -269,8 +312,8 @@ export function CreateContractForm({
         >
           <option value="1">1</option>
           <option value="2">2</option>
-          <option value="3">3</option>
-          <option value="4">4</option>
+          {engagementType !== "independent_contractor" ? <option value="3">3</option> : null}
+          {engagementType !== "independent_contractor" ? <option value="4">4</option> : null}
         </select>
       </label>
       <label>
@@ -281,17 +324,7 @@ export function CreateContractForm({
         Role
         <input name="contractRole" placeholder="Designer, Director, Musician..." />
       </label>
-      <input type="hidden" name="isUnion" value="false" />
-      <label className="checkboxLabel">
-        <input
-          name="isUnion"
-          value="true"
-          type="checkbox"
-          checked={isUnion}
-          onChange={(event) => setIsUnion(event.target.checked)}
-        />
-        Is Union?
-      </label>
+      <input type="hidden" name="isUnion" value={isUnion ? "true" : "false"} />
       {isUnion ? (
         <div className="stackedDetails">
           <label>

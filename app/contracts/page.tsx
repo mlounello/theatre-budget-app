@@ -1,5 +1,4 @@
-import { CreateContractBatchForm } from "@/app/contracts/create-contract-batch-form";
-import { CreateContractForm } from "@/app/contracts/create-contract-form";
+import { CreateHiringDrawers } from "@/app/contracts/create-hiring-drawers";
 import { BulkCheckRequestExport } from "@/app/contracts/bulk-check-request-export";
 import { ContractRowActions } from "@/app/contracts/contract-row-actions";
 import { ContractCalendarSubscription } from "@/app/contracts/contract-calendar-subscription";
@@ -15,14 +14,25 @@ import { contractCalendarFeedToken } from "@/lib/contract-calendar";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-function workflowLabel(value: string): string {
+function workflowLabel(value: string, engagementType = "independent_contractor"): string {
+  if (engagementType === "temporary_employee") {
+    if (value === "contract_sent") return "Submitted to HR";
+    if (value === "contract_signed_returned") return "HR Onboarding";
+    if (value === "siena_signed") return "Onboarding Complete";
+    return "Not Started";
+  }
   if (value === "contract_sent") return "Contract Sent";
   if (value === "contract_signed_returned") return "Contract Signed + Returned";
   if (value === "siena_signed") return "Siena Signed";
   return "W9 Requested";
 }
 
-function installmentLabel(value: string): string {
+function installmentLabel(value: string, paymentChannel = "check_request"): string {
+  if (paymentChannel === "payroll") {
+    if (value === "check_request_submitted") return "Submitted to Payroll";
+    if (value === "check_paid") return "Paid through Payroll";
+    return "Planned";
+  }
   if (value === "check_request_submitted") return "Check Request Submitted";
   if (value === "check_paid") return "Check Paid";
   return "Not Submitted";
@@ -57,10 +67,23 @@ function shortDate(value: string | null): string {
   return `${month}/${day}/${year.slice(2)}`;
 }
 
+function engagementLabel(value: string): string {
+  if (value === "union_freelance_artist") return "Union Freelance Artist";
+  if (value === "temporary_employee") return "Temporary Employee";
+  return "Independent Contractor";
+}
+
 export default async function ContractsPage({
   searchParams
 }: {
-  searchParams?: Promise<{ fiscalYearId?: string }>;
+  searchParams?: Promise<{
+    fiscalYearId?: string;
+    hiring_q?: string;
+    hiring_status?: string;
+    hiring_session?: string;
+    hiring_production?: string;
+    hiring_view?: string;
+  }>;
 }) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
@@ -90,9 +113,39 @@ export default async function ContractsPage({
     await getContractsData();
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const selectedFiscalYearId = resolveRequestedFiscalYearId(fiscalYearOptions, resolvedSearchParams?.fiscalYearId);
-  const visibleContracts = selectedFiscalYearId
+  const fiscalYearContracts = selectedFiscalYearId
     ? contracts.filter((contract) => contract.fiscalYearId === selectedFiscalYearId)
     : contracts;
+  const query = (resolvedSearchParams?.hiring_q ?? "").trim().toLowerCase();
+  const statusFilter = (resolvedSearchParams?.hiring_status ?? "").trim();
+  const sessionFilter = (resolvedSearchParams?.hiring_session ?? "").trim();
+  const productionFilter = (resolvedSearchParams?.hiring_production ?? "").trim();
+  const viewFilter = (resolvedSearchParams?.hiring_view ?? "all").trim();
+  const today = new Date();
+  const dueCutoff = new Date(today);
+  dueCutoff.setDate(dueCutoff.getDate() + 30);
+  const isDue = (contractId: string) => installments.some((row) => {
+    if (row.contractId !== contractId || row.status === "check_paid" || !row.dueDate) return false;
+    const due = new Date(`${row.dueDate}T12:00:00`);
+    return due <= dueCutoff;
+  });
+  const needsAttention = (contract: (typeof contracts)[number]) =>
+    contract.workflowStatus === "w9_requested" ||
+    (contract.engagementType === "temporary_employee" && contract.hrOnboardingStatus !== "complete") ||
+    (contract.engagementType === "union_freelance_artist" && contract.unionSignatureStatus !== "complete") ||
+    isDue(contract.id);
+  const visibleContracts = fiscalYearContracts.filter((contract) => {
+    if (query) {
+      const haystack = `${contract.contractorName} ${contract.contractRole ?? ""} ${contract.contractorEmployeeId ?? ""} ${contract.projectName} ${contract.productionProjects.map((production) => production.name).join(" ")}`.toLowerCase();
+      if (!haystack.includes(query)) return false;
+    }
+    if (statusFilter && contract.workflowStatus !== statusFilter) return false;
+    if (sessionFilter && !contract.contractSessions.includes(sessionFilter as "summer" | "fall" | "winter" | "spring")) return false;
+    if (productionFilter && !contract.productionProjects.some((production) => production.id === productionFilter)) return false;
+    if (viewFilter === "checks_due" && !isDue(contract.id)) return false;
+    if (viewFilter === "needs_attention" && !needsAttention(contract)) return false;
+    return true;
+  });
   const visibleContractIds = new Set(visibleContracts.map((contract) => contract.id));
   const visibleInstallments = installments.filter((installment) => visibleContractIds.has(installment.contractId));
 
@@ -114,7 +167,7 @@ export default async function ContractsPage({
     );
     const contractContributions = unionContributionsByContract.get(contract.id) ?? [];
     return [
-      ...contractInstallments.map((installment) => ({
+      ...contractInstallments.filter((installment) => installment.paymentChannel !== "payroll").map((installment) => ({
         value: `installment:${contract.id}:${installment.id}`,
         contractorName: contract.contractorName,
         role: contract.contractRole || "Role not set",
@@ -136,9 +189,9 @@ export default async function ContractsPage({
   return (
     <section>
       <header className="sectionHeader">
-        <p className="eyebrow">Contracts</p>
-        <h1>Contract Payments</h1>
-        <p className="heroSubtitle">Track contract paperwork workflow and installment check payments outside procurement.</p>
+        <p className="eyebrow">Hiring</p>
+        <h1>Hiring &amp; Payments</h1>
+        <p className="heroSubtitle">Track independent contractors, union freelance artists, and temporary employees by project and payment month.</p>
       </header>
 
       {canManageContracts ? (
@@ -148,10 +201,18 @@ export default async function ContractsPage({
         />
       ) : null}
 
-      {canManageContracts ? (
-        <article className="panel requestFormPanel">
-          <h2>Add Contract</h2>
-          <CreateContractForm
+      <article className="panel hiringToolbarPanel">
+        <div className="contractsPanelHeader">
+          <form method="get" className="hiringFilters">
+            <input type="hidden" name="fiscalYearId" value={selectedFiscalYearId} />
+            <label>Search<input name="hiring_q" defaultValue={resolvedSearchParams?.hiring_q ?? ""} placeholder="Name, role, ID, or production" /></label>
+            <label>Status<select name="hiring_status" defaultValue={statusFilter}><option value="">All statuses</option><option value="w9_requested">Not Started</option><option value="contract_sent">Agreement Sent</option><option value="contract_signed_returned">Signed + Returned</option><option value="siena_signed">Complete</option></select></label>
+            <label>Session<select name="hiring_session" defaultValue={sessionFilter}><option value="">All sessions</option><option value="summer">Summer</option><option value="fall">Fall</option><option value="winter">Winter</option><option value="spring">Spring</option></select></label>
+            <label>Production<select name="hiring_production" defaultValue={productionFilter}><option value="">All productions</option>{projectOptions.filter((project) => project.fiscalYearId === selectedFiscalYearId).map((project) => <option key={project.id} value={project.id}>{project.label}</option>)}</select></label>
+            <label>View<select name="hiring_view" defaultValue={viewFilter}><option value="all">All Hiring</option><option value="checks_due">Checks Due</option><option value="needs_attention">Needs Attention</option></select></label>
+            <button type="submit" className="tinyButton">Apply</button>
+          </form>
+          {canManageContracts ? <CreateHiringDrawers
             fiscalYearOptions={fiscalYearOptions}
             organizationOptions={organizationOptions}
             projectOptions={projectOptions}
@@ -159,28 +220,15 @@ export default async function ContractsPage({
             foapalOptions={foapalOptions}
             guestArtistOptions={guestArtistOptions}
             unionAgreementOptions={unionAgreementOptions}
-          />
-        </article>
-      ) : null}
-
-      {canManageContracts ? (
-        <article className="panel requestFormPanel">
-          <h2>Bulk Add Contracts</h2>
-          <p className="helperText">Use one shared FY/Org/Project/Account and add multiple names, amounts, and installments.</p>
-          <CreateContractBatchForm
-            fiscalYearOptions={fiscalYearOptions}
-            organizationOptions={organizationOptions}
-            projectOptions={projectOptions}
-            accountCodeOptions={accountCodeOptions}
-          />
-        </article>
-      ) : null}
+          /> : null}
+        </div>
+      </article>
 
       <article className="panel contractsPanel">
         <div className="contractsPanelHeader">
           <div>
-            <h2>Contracts</h2>
-            <p className="helperText">{visibleContracts.length} contracts in the selected fiscal year</p>
+            <h2>Hiring Records</h2>
+            <p className="helperText">{visibleContracts.length} records match the selected view</p>
           </div>
         </div>
         {canManageContracts && bulkCheckRequestItems.length > 0 ? (
@@ -217,6 +265,7 @@ export default async function ContractsPage({
                         {sessionLabels.length > 0 ? ` · ${sessionLabels.join(", ")}` : ""}
                       </p>
                       <small>Vendor #{contract.contractorEmployeeId ?? "Not assigned"}</small>
+                      <span className="contractEngagementBadge">{engagementLabel(contract.engagementType)}</span>
                     </div>
                     <div className="contractMetaItem">
                       <span>Production</span>
@@ -246,16 +295,17 @@ export default async function ContractsPage({
                       {canManageContracts ? (
                         <>
                           <StatusPill tone={workflowTone(contract.workflowStatus)}>
-                            {workflowLabel(contract.workflowStatus)}
+                            {workflowLabel(contract.workflowStatus, contract.engagementType)}
                           </StatusPill>
                           <ContractWorkflowControl contract={contract} compact />
                         </>
                       ) : (
                         <StatusPill tone={workflowTone(contract.workflowStatus)}>
-                          {workflowLabel(contract.workflowStatus)}
+                          {workflowLabel(contract.workflowStatus, contract.engagementType)}
                         </StatusPill>
                       )}
                       {contract.isUnion ? <span className="contractUnionBadge">Union</span> : null}
+                      {contract.engagementType === "temporary_employee" ? <span className="contractUnionBadge">HR: {contract.hrOnboardingStatus.replaceAll("_", " ")}</span> : null}
                     </div>
                     {canManageContracts ? (
                       <ContractRowActions
@@ -284,7 +334,7 @@ export default async function ContractsPage({
                       <section className="contractWorkflowPanel">
                         <h4>Contract workflow</h4>
                         <StatusPill tone={workflowTone(contract.workflowStatus)}>
-                          {workflowLabel(contract.workflowStatus)}
+                          {workflowLabel(contract.workflowStatus, contract.engagementType)}
                         </StatusPill>
                         {contract.isUnion ? (
                           <div className="contractUnionWorkflow">
@@ -295,7 +345,7 @@ export default async function ContractsPage({
                       </section>
 
                       <section className="contractChecksPanel">
-                        <h4>Artist installments</h4>
+                        <h4>{contract.engagementType === "temporary_employee" ? "Payroll schedule" : "Artist installments"}</h4>
                         <div className="contractCheckList">
                           {rows.map((row) => (
                             <div className="contractCheckRow" key={row.id}>
@@ -308,18 +358,15 @@ export default async function ContractsPage({
                                 </small>
                               </div>
                               <StatusPill tone={installmentTone(row.status)}>
-                                {installmentLabel(row.status)}
+                                {installmentLabel(row.status, row.paymentChannel)}
                               </StatusPill>
                               {canManageContracts ? (
                                 <div className="contractCheckActions">
                                   <ContractInstallmentControl installment={row} />
-                                  <InstallmentCheckRequestActions installment={row} foapalOptions={foapalOptions} />
-                                  <a
-                                    className="tinyButton"
-                                    href={`/contracts/${contract.id}/installments/${row.id}/check-request`}
-                                  >
-                                    PDF
-                                  </a>
+                                  {contract.engagementType !== "temporary_employee" ? <>
+                                    <InstallmentCheckRequestActions installment={row} foapalOptions={foapalOptions} />
+                                    <a className="tinyButton" href={`/contracts/${contract.id}/installments/${row.id}/check-request`}>PDF</a>
+                                  </> : null}
                                 </div>
                               ) : null}
                             </div>

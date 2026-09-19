@@ -40,10 +40,10 @@ function navigationForRole(role: string): Navigation {
           ]
         },
         {
-          label: "Contracts",
+          label: "Hiring",
           links: [
-            { href: "/contracts", label: "All Contracts" },
-            { href: "/guest-artists", label: "Guest Artists" },
+            { href: "/contracts", label: "Hiring & Payments" },
+            { href: "/guest-artists", label: "People & Artists" },
             { href: "/union-agreements", label: "Union Agreements" }
           ]
         },

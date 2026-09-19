@@ -99,6 +99,7 @@ export default async function ProcurementPage({
         <p className="eyebrow">Procurement</p>
         <h1>Order and Purchasing Workflow</h1>
         <p className="heroSubtitle">Track requisitions, PO progress, receipts, invoices, and payment alongside budget statuses.</p>
+        <p className="helperText">Purchase Orders do not use Expense Claim or receipt-reconciliation fields. Card claims and reimbursements are managed in Credit Cards.</p>
       </header>
 
       <div className="procurementHeaderActions">

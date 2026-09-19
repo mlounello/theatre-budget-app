@@ -68,6 +68,10 @@ export function ContractRowActions({
   const [editContractorEmail, setEditContractorEmail] = useState(contract.contractorEmail ?? "");
   const [editContractorPhone, setEditContractorPhone] = useState(contract.contractorPhone ?? "");
   const [editContractValue, setEditContractValue] = useState(String(contract.contractValue ?? 0));
+  const [editEngagementType, setEditEngagementType] = useState(contract.engagementType);
+  const [editCompensationBasis, setEditCompensationBasis] = useState(contract.compensationBasis);
+  const [editHrOnboardingStatus, setEditHrOnboardingStatus] = useState(contract.hrOnboardingStatus);
+  const [editHrOnboardingReference, setEditHrOnboardingReference] = useState(contract.hrOnboardingReference ?? "");
   const [editInstallmentCount, setEditInstallmentCount] = useState(String(contract.installmentCount ?? 1));
   const [editContractNumber, setEditContractNumber] = useState(contract.contractNumber ?? "");
   const [editContractRole, setEditContractRole] = useState(contract.contractRole ?? "");
@@ -136,6 +140,10 @@ export function ContractRowActions({
     setEditContractorEmail(contract.contractorEmail ?? "");
     setEditContractorPhone(contract.contractorPhone ?? "");
     setEditContractValue(String(contract.contractValue ?? 0));
+    setEditEngagementType(contract.engagementType);
+    setEditCompensationBasis(contract.compensationBasis);
+    setEditHrOnboardingStatus(contract.hrOnboardingStatus);
+    setEditHrOnboardingReference(contract.hrOnboardingReference ?? "");
     setEditInstallmentCount(String(contract.installmentCount ?? 1));
     setEditContractNumber(contract.contractNumber ?? "");
     setEditContractRole(contract.contractRole ?? "");
@@ -189,6 +197,7 @@ export function ContractRowActions({
     setEditVendorAddress2(guestArtist.vendorAddress2 ?? "");
     setEditVendorAddress3(guestArtist.vendorAddress3 ?? "");
     setEditIsUnion(guestArtist.isUnion);
+    setEditEngagementType(guestArtist.isUnion ? "union_freelance_artist" : "independent_contractor");
     setEditUnionAgreementId(guestArtist.defaultUnionAgreementId ?? "");
     setEditUnionDueDates({});
   }
@@ -305,7 +314,7 @@ export function ContractRowActions({
                     />
                   </label>
                   <label>
-                    Contract Value
+                    Planned Compensation
                     <input
                       name="contractValue"
                       type="number"
@@ -315,6 +324,43 @@ export function ContractRowActions({
                       required
                     />
                   </label>
+                  <label>
+                    Hiring Path
+                    <select
+                      name="engagementType"
+                      value={editEngagementType}
+                      onChange={(event) => {
+                        const next = event.target.value as typeof editEngagementType;
+                        setEditEngagementType(next);
+                        setEditIsUnion(next === "union_freelance_artist");
+                      }}
+                    >
+                      <option value="independent_contractor">Independent Contractor Agreement</option>
+                      <option value="union_freelance_artist">Union + Freelance Artist Agreement</option>
+                      <option value="temporary_employee">Temporary Employee through HR</option>
+                    </select>
+                  </label>
+                  <label>
+                    Compensation Basis
+                    <select name="compensationBasis" value={editCompensationBasis} onChange={(event) => setEditCompensationBasis(event.target.value as typeof editCompensationBasis)}>
+                      <option value="flat_fee">Flat Fee</option>
+                      <option value="hourly">Hourly</option>
+                    </select>
+                  </label>
+                  {editEngagementType === "temporary_employee" ? (
+                    <>
+                      <label>
+                        HR Onboarding Status
+                        <select name="hrOnboardingStatus" value={editHrOnboardingStatus} onChange={(event) => setEditHrOnboardingStatus(event.target.value as typeof editHrOnboardingStatus)}>
+                          <option value="not_started">Not Started</option>
+                          <option value="submitted_to_hr">Submitted to HR</option>
+                          <option value="onboarding">Onboarding</option>
+                          <option value="complete">Complete</option>
+                        </select>
+                      </label>
+                      <label>HR Reference<input name="hrOnboardingReference" value={editHrOnboardingReference} onChange={(event) => setEditHrOnboardingReference(event.target.value)} /></label>
+                    </>
+                  ) : null}
                   <label>
                     Payment Installments
                     <select
@@ -372,17 +418,7 @@ export function ContractRowActions({
                       ))}
                     </div>
                   </fieldset>
-                  <input type="hidden" name="isUnion" value="false" />
-                  <label className="checkboxLabel drawerFieldWide unionToggle">
-                    <input
-                      name="isUnion"
-                      value="true"
-                      type="checkbox"
-                      checked={editIsUnion}
-                      onChange={(event) => setEditIsUnion(event.target.checked)}
-                    />
-                    This is a union contract
-                  </label>
+                  <input type="hidden" name="isUnion" value={editIsUnion ? "true" : "false"} />
                 </div>
               </AccordionSection>
 

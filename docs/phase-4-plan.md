@@ -1,6 +1,6 @@
 # Phase 4 — Fiscal-Year Integrity and Application Cleanup
 
-**Status:** Gates 1 through 4 and Gates 5A–5H approved; Gate 5I planning expanded hiring and expense workflows
+**Status:** Gates 1 through 4 and Gates 5A–5H approved; combined Gate 5I Hiring and Expense Claims built on its review branch, additive schema applied, awaiting application review/approval
 **Scope:** All 23 items and all five gates described below  
 **Delivery model:** Incremental, review-gated work in short-lived gate/stage branches that merge to main after approval  
 **Database target:** Production Postgres, `app_theatre_budget` schema
@@ -329,12 +329,31 @@ Refocus the Dashboard on work requiring attention:
 
 Preserve detailed reporting under Reports, including Department Totals, Procurement Tracker for its dedicated role, Project Budget Boards, and Overview.
 
-### 5I — Contracts
+### 5I — Hiring and Expense Claims
 
-- Preserve the existing contract cards, status pills, inline status updates, and edit drawer.
-- Move Add Contract and Bulk Add into drawers.
+Hiring:
+
+- Preserve the existing contract cards, status pills, inline status updates, edit drawer, union calculations, separate union checks, check-request PDFs, and bulk check-request export.
+- Present the workspace as Hiring & Payments while retaining the `/contracts` URL and underlying contract records.
+- Move Add Hire and Bulk Add into drawers.
 - Add search, status/session/production filters, Checks Due, and Needs Attention views.
-- Preserve bulk check-request selection and export.
+- Classify each hire as Independent Contractor, Union Freelance Artist, or Temporary Employee.
+- Independent Contractors use a one-or-two payment schedule and Independent Contractor Agreement path; legacy records retain their existing schedules.
+- Union Freelance Artists retain the Freelance Artist Agreement, union signature workflow, fund calculations, and separate-check requirements.
+- Temporary Employees default to flat-fee compensation but may be hourly, use HR onboarding statuses, and use a payroll schedule rather than check-request PDFs.
+- Continue reporting planned and actual compensation by theatre project and institutional budget month.
+
+Expense Claims:
+
+- Treat Credit Card and Reimbursement spending as Expense Claims, never as POs or requisitions.
+- Store the Siena-assigned `EC######` Expense Claim as a header and one or more Siena-assigned `EX######` Expenses as children.
+- A Card Funding Request creates the authorized maximum as a budget hold.
+- A Monthly Card Reconciliation is a new Expense Claim linked to the original funding request, with one Expense per purchase and receipt.
+- Reconciliation reduces/releases the original unused hold while preserving the original authorization for audit.
+- Spending above authorization is allowed only with a visible overage explanation.
+- A Reimbursement is one Expense Claim with one or more Expenses and receipts.
+- Expense Claims do not expose PO, requisition, receiving, or invoice fields; PO records do not expose Expense Claim fields.
+- The Credit Cards workspace includes an Expense Claims view showing authorization, reconciled amount, remaining hold, claim status, and its child Expenses.
 
 ### 5J — Accessibility, performance, and maintainability
 
