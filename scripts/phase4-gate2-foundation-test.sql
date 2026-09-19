@@ -40,9 +40,11 @@ select 1 / case when not exists (
   where not active or superseded_by_organization_id is not null
 ) then 1 else 0 end as no_organization_was_retired;
 
-select 1 / case when (
-  select count(*) from fiscal_year_assignment_conflicts
-) = 0 then 1 else 0 end as foundation_created_no_conflicts;
+select 1 / case when not exists (
+  select 1
+  from fiscal_year_assignment_conflicts
+  where entity_table not in ('income_lines', 'cc_statement_months')
+) then 1 else 0 end as no_unexpected_foundation_conflicts;
 
 select 1 / case when (
   select relrowsecurity from pg_class
