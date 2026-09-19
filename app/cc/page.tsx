@@ -1,11 +1,21 @@
 import { CcPageClient } from "@/app/cc/cc-page-client";
-import { getAccountCodeOptions, getCcPendingRows, getProductionCategoryOptions, getSettingsProjects } from "@/lib/db";
+import {
+  getAccountCodeOptions,
+  getCcPendingRows,
+  getFiscalYearOptions,
+  getFiscalYearOrganizationOptions,
+  getProductionCategoryOptions,
+  getSettingsProjects
+} from "@/lib/db";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
+import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
 import { redirect } from "next/navigation";
 
 type StatementMonthRow = {
   id: string;
+  fiscalYearId: string;
+  fiscalYearName: string;
   creditCardId: string;
   creditCardName: string;
   statementMonth: string;
@@ -58,7 +68,14 @@ type StatementLineDetailRow = {
   budgetLineLabel: string;
 };
 
-type PendingCcRow = { projectId: string; budgetCode: string; creditCardName: string | null; pendingCcTotal: number };
+type PendingCcRow = {
+  scopeId: string;
+  projectId: string | null;
+  scopeLabel: string;
+  budgetCode: string;
+  creditCardName: string | null;
+  pendingCcTotal: number;
+};
 
 export default async function CreditCardPage({
   searchParams
@@ -70,6 +87,7 @@ export default async function CreditCardPage({
     cc_pending_project?: string;
     cc_pending_card?: string;
     cc_pending_q?: string;
+    fiscalYearId?: string;
   }>;
 }) {
   const access = await getAccessContext();
@@ -77,6 +95,11 @@ export default async function CreditCardPage({
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
 
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const fiscalYearOptions = await getFiscalYearOptions();
+  const selectedFiscalYearId = resolveRequestedFiscalYearId(
+    fiscalYearOptions,
+    (resolvedSearchParams?.fiscalYearId ?? "").trim()
+  );
 
   const supabase = await getSupabaseServerClient();
   const [
@@ -88,35 +111,41 @@ export default async function CreditCardPage({
     pendingPurchasesResponse,
     statementLinesResponse,
     accountCodeOptions,
-    productionCategoryOptions
+    productionCategoryOptions,
+    organizationOptions
   ] = await Promise.all([
-    getCcPendingRows(),
+    getCcPendingRows({ fiscalYearId: selectedFiscalYearId }),
     getSettingsProjects(),
     supabase.from("credit_cards").select("id, nickname, masked_number, active").order("nickname", { ascending: true }),
     supabase
       .from("cc_statement_months")
-      .select("id, credit_card_id, statement_month, posted_at, posted_to_banner_at, credit_cards(nickname)")
+      .select("id, fiscal_year_id, credit_card_id, statement_month, posted_at, posted_to_banner_at, fiscal_years(name), credit_cards(nickname)")
+      .eq("fiscal_year_id", selectedFiscalYearId)
       .order("statement_month", { ascending: false }),
     supabase
       .from("purchase_receipts")
       .select(
-        "id, purchase_id, amount_received, note, created_at, cc_statement_month_id, purchases!inner(id, title, reference_number, requisition_number, pending_cc_amount, cc_statement_month_id, credit_card_id, status, request_type, is_credit_card, projects(name, season), production_categories(name), account_codes(code), project_budget_lines(budget_code))"
+        "id, purchase_id, amount_received, note, created_at, cc_statement_month_id, purchases!inner(id, fiscal_year_id, organization_id, title, reference_number, requisition_number, pending_cc_amount, cc_statement_month_id, credit_card_id, status, request_type, is_credit_card, projects(name, season), organizations(name, org_code), production_categories(name), account_codes(code), project_budget_lines(budget_code))"
       )
+      .eq("purchases.fiscal_year_id", selectedFiscalYearId)
       .order("created_at", { ascending: true }),
     supabase
       .from("purchases")
       .select(
-        "id, title, reference_number, requisition_number, pending_cc_amount, status, request_type, is_credit_card, cc_workflow_status, cc_statement_month_id, credit_card_id, projects(name, season), production_categories(name), account_codes(code), project_budget_lines(budget_code), credit_cards(nickname)"
+        "id, fiscal_year_id, organization_id, title, reference_number, requisition_number, pending_cc_amount, status, request_type, is_credit_card, cc_workflow_status, cc_statement_month_id, credit_card_id, projects(name, season), organizations(name, org_code), production_categories(name), account_codes(code), project_budget_lines(budget_code), credit_cards(nickname)"
       )
+      .eq("fiscal_year_id", selectedFiscalYearId)
       .eq("status", "pending_cc")
       .order("created_at", { ascending: false }),
     supabase
       .from("cc_statement_lines")
       .select(
-        "id, statement_month_id, amount, note, matched_purchase_ids, project_budget_lines(budget_code, account_codes(code), production_categories(name), projects(name, season))"
-      ),
+        "id, fiscal_year_id, organization_id, banner_account_code_id, statement_month_id, amount, note, matched_purchase_ids, organizations(name, org_code), account_codes(code), project_budget_lines(budget_code, account_codes(code), production_categories(name), projects(name, season))"
+      )
+      .eq("fiscal_year_id", selectedFiscalYearId),
     getAccountCodeOptions(),
-    getProductionCategoryOptions()
+    getProductionCategoryOptions(),
+    getFiscalYearOrganizationOptions(selectedFiscalYearId)
   ]);
 
   if (cardsResponse.error) throw cardsResponse.error;
@@ -128,6 +157,7 @@ export default async function CreditCardPage({
   const manageableProjectIds = access.manageableProjectIds;
 
   const manageableProjects = hasGlobalAdmin ? projects : projects.filter((project) => manageableProjectIds.has(project.id));
+  const scopedProjects = manageableProjects.filter((project) => project.fiscalYearId === selectedFiscalYearId);
 
   const cards = (cardsResponse.data ?? []).map((row) => ({
     id: row.id as string,
@@ -138,8 +168,11 @@ export default async function CreditCardPage({
 
   const statementMonths: StatementMonthRow[] = (monthsResponse.data ?? []).map((row) => {
     const card = row.credit_cards as { nickname?: string } | null;
+    const fiscalYear = row.fiscal_years as { name?: string } | null;
     return {
       id: row.id as string,
+      fiscalYearId: row.fiscal_year_id as string,
+      fiscalYearName: fiscalYear?.name ?? "Fiscal Year",
       creditCardId: row.credit_card_id as string,
       creditCardName: card?.nickname ?? "Unknown Card",
       statementMonth: row.statement_month as string,
@@ -176,6 +209,8 @@ export default async function CreditCardPage({
         }
       | null;
     const project = budgetLine?.projects;
+    const directOrganization = row.organizations as { name?: string; org_code?: string } | null;
+    const directAccountCode = row.account_codes as { code?: string } | null;
     const accountCode = budgetLine?.account_codes;
     const productionCategory = budgetLine?.production_categories;
     return {
@@ -186,8 +221,10 @@ export default async function CreditCardPage({
       matchedPurchaseIds: Array.isArray(row.matched_purchase_ids)
         ? row.matched_purchase_ids.map((value) => String(value ?? "").trim()).filter(Boolean)
         : [],
-      projectLabel: `${project?.name ?? "Unknown Project"}${project?.season ? ` (${project.season})` : ""}`,
-      budgetLineLabel: `${accountCode?.code ?? budgetLine?.budget_code ?? "-"} | ${productionCategory?.name ?? "-"}`
+      projectLabel: project
+        ? `${project.name ?? "Unknown Project"}${project.season ? ` (${project.season})` : ""}`
+        : `${directOrganization?.org_code ?? "-"} | ${directOrganization?.name ?? "Organization Budget"}`,
+      budgetLineLabel: `${directAccountCode?.code ?? accountCode?.code ?? budgetLine?.budget_code ?? "-"} | ${productionCategory?.name ?? "-"}`
     };
   });
 
@@ -216,6 +253,7 @@ export default async function CreditCardPage({
           status?: string;
           request_type?: string;
           is_credit_card?: boolean | null;
+          organizations?: { name?: string; org_code?: string } | null;
           projects?: { name?: string; season?: string | null } | null;
           account_codes?: { code?: string } | null;
           production_categories?: { name?: string } | null;
@@ -223,6 +261,7 @@ export default async function CreditCardPage({
         }
       | null;
     const project = purchase?.projects;
+    const organization = purchase?.organizations;
     const accountCode = purchase?.account_codes;
     const productionCategory = purchase?.production_categories;
     const budgetLine = purchase?.project_budget_lines;
@@ -242,7 +281,9 @@ export default async function CreditCardPage({
       purchaseRequestType: (purchase?.request_type as string | undefined) ?? "",
       purchaseIsCreditCard: Boolean(purchase?.is_credit_card as boolean | null | undefined),
       statementMonthId: (row.cc_statement_month_id as string | null) ?? null,
-      projectLabel: `${project?.name ?? "Unknown Project"}${project?.season ? ` (${project.season})` : ""}`,
+      projectLabel: project
+        ? `${project.name ?? "Unknown Project"}${project.season ? ` (${project.season})` : ""}`
+        : `${organization?.org_code ?? "-"} | ${organization?.name ?? "Organization Budget"}`,
       budgetLineLabel: `${accountCode?.code ?? budgetLine?.budget_code ?? "-"} | ${productionCategory?.name ?? "-"}`
     };
   });
@@ -262,6 +303,7 @@ export default async function CreditCardPage({
 
   const pendingPurchaseDetails: PendingPurchaseDetailRow[] = (pendingPurchasesResponse.data ?? []).map((row) => {
     const project = row.projects as { name?: string; season?: string | null } | null;
+    const organization = row.organizations as { name?: string; org_code?: string } | null;
     const accountCode = row.account_codes as { code?: string } | null;
     const productionCategory = row.production_categories as { name?: string } | null;
     const budgetLine = row.project_budget_lines as { budget_code?: string } | null;
@@ -286,7 +328,9 @@ export default async function CreditCardPage({
 
     return {
       id: purchaseId,
-      projectLabel: `${project?.name ?? "Unknown Project"}${project?.season ? ` (${project.season})` : ""}`,
+      projectLabel: project
+        ? `${project.name ?? "Unknown Project"}${project.season ? ` (${project.season})` : ""}`
+        : `${organization?.org_code ?? "-"} | ${organization?.name ?? "Organization Budget"}`,
       budgetLineLabel: `${accountCode?.code ?? budgetLine?.budget_code ?? "-"} | ${productionCategory?.name ?? "-"}`,
       requestType: requestType || "-",
       isCreditCard,
@@ -302,18 +346,15 @@ export default async function CreditCardPage({
     };
   });
 
-  const projectNameById = new Map(
-    projects.map((project) => [project.id, `${project.name}${project.season ? ` (${project.season})` : ""}`])
-  );
   const selectedPendingProject = (resolvedSearchParams?.cc_pending_project ?? "").trim();
   const selectedPendingCard = (resolvedSearchParams?.cc_pending_card ?? "").trim();
   const selectedPendingQuery = (resolvedSearchParams?.cc_pending_q ?? "").trim().toLowerCase();
   const filteredPendingRows: PendingCcRow[] = rows
     .filter((row) => {
-      if (selectedPendingProject && row.projectId !== selectedPendingProject) return false;
+      if (selectedPendingProject && row.scopeId !== selectedPendingProject) return false;
       if (selectedPendingCard && (row.creditCardName ?? "") !== selectedPendingCard) return false;
       if (!selectedPendingQuery) return true;
-      const hay = `${projectNameById.get(row.projectId) ?? row.projectId} ${row.budgetCode} ${row.creditCardName ?? "Unassigned"}`.toLowerCase();
+      const hay = `${row.scopeLabel} ${row.budgetCode} ${row.creditCardName ?? "Unassigned"}`.toLowerCase();
       return hay.includes(selectedPendingQuery);
     })
     .sort((a, b) => b.pendingCcTotal - a.pendingCcTotal);
@@ -325,6 +366,20 @@ export default async function CreditCardPage({
         <h1>Statement Reconciliation</h1>
         <p className="heroSubtitle">Create monthly statements, assign receipts, then submit statement paid.</p>
       </header>
+
+      <article className="panel">
+        <form method="get" className="inlineFilters">
+          <label>
+            Fiscal Year
+            <select name="fiscalYearId" defaultValue={selectedFiscalYearId}>
+              {fiscalYearOptions.map((fiscalYear) => (
+                <option key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</option>
+              ))}
+            </select>
+          </label>
+          <button type="submit" className="buttonLink">Apply</button>
+        </form>
+      </article>
 
       <CcPageClient
         cards={cards}
@@ -340,9 +395,11 @@ export default async function CreditCardPage({
         selectedPendingProject={selectedPendingProject}
         selectedPendingCard={selectedPendingCard}
         selectedPendingQuery={selectedPendingQuery}
-        projectNameById={[...projectNameById.entries()]}
-        manageableProjects={manageableProjects}
+        scopedProjects={scopedProjects}
         hasGlobalAdmin={hasGlobalAdmin}
+        fiscalYearOptions={fiscalYearOptions}
+        selectedFiscalYearId={selectedFiscalYearId}
+        organizationOptions={organizationOptions.filter((organization) => !organization.projectTrackingRequired)}
         accountCodeOptions={accountCodeOptions.filter((account) => !account.isRevenue)}
         productionCategoryOptions={productionCategoryOptions}
       />

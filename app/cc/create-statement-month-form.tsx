@@ -12,7 +12,15 @@ type CardOption = {
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
-export function CreateStatementMonthForm({ cards }: { cards: CardOption[] }) {
+export function CreateStatementMonthForm({
+  cards,
+  fiscalYearOptions,
+  defaultFiscalYearId
+}: {
+  cards: CardOption[];
+  fiscalYearOptions: Array<{ id: string; name: string }>;
+  defaultFiscalYearId: string;
+}) {
   const [state, formAction] = useActionState(createStatementMonthAction, initialState);
   const formRef = useRef<HTMLFormElement | null>(null);
   const [creditCardId, setCreditCardId] = useState("");
@@ -40,6 +48,14 @@ export function CreateStatementMonthForm({ cards }: { cards: CardOption[] }) {
           {state.message}
         </p>
       ) : null}
+      <label>
+        Fiscal Year
+        <select name="fiscalYearId" required defaultValue={defaultFiscalYearId}>
+          {fiscalYearOptions.map((fiscalYear) => (
+            <option key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</option>
+          ))}
+        </select>
+      </label>
       <label>
         Credit Card
         <select name="creditCardId" required value={creditCardId} onChange={(event) => setCreditCardId(event.target.value)}>

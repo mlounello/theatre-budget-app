@@ -23,6 +23,8 @@ type CardRow = {
 
 type StatementMonthRow = {
   id: string;
+  fiscalYearId: string;
+  fiscalYearName: string;
   creditCardId: string;
   creditCardName: string;
   statementMonth: string;
@@ -333,6 +335,7 @@ export function CcAdminTables({
         <div className="bulkActions">
           <form action={bulkMonthUpdateAction} className="inlineEditForm">
             <input type="hidden" name="selectedIdsJson" value={JSON.stringify(selectedMonthIds)} />
+            <input type="hidden" name="fiscalYearId" value={sortedStatementMonths[0]?.fiscalYearId ?? ""} />
             <label className="checkboxLabel">
               <input name="applyCreditCard" type="checkbox" />
               Card
@@ -416,6 +419,7 @@ export function CcAdminTables({
                         </summary>
                         <form action={updateMonthAction} className="inlineEditForm" style={{ marginTop: "0.4rem" }}>
                           <input type="hidden" name="id" value={month.id} />
+                          <input type="hidden" name="fiscalYearId" value={month.fiscalYearId} />
                           <input
                             type="month"
                             name="statementMonth"

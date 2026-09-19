@@ -11,6 +11,7 @@
     "test:auth-boundary": "node --test scripts/auth-access-boundary.test.mjs",
     "test:active-production-team-settings": "node --test scripts/active-production-team-settings.test.mjs",
     "test:phase4-gate2": "node --test scripts/phase4-gate2-application.test.mjs",
+    "test:phase4-gate3": "node --test scripts/phase4-gate3-application.test.mjs",
     "test:phase5a-integrations": "node --test scripts/phase5a-integration-boundaries.test.mjs"
   },
   "dependencies": {

@@ -45,7 +45,8 @@ test("organization selectors use the fiscal-year membership resolver", () => {
   assert.match(institutionalBudgetPage, /getFiscalYearOrganizationOptions\(fiscalYearId\)/);
 });
 
-test("income reads prefer explicit fiscal year but preserve the legacy display fallback", () => {
-  assert.match(dbSource, /const fiscalYearId = explicitFiscalYearId \?\? projectFiscalYearId \?\? fallbackFy\?\.id/);
+test("income reads use the explicit transaction fiscal year after Gate 3 cutover", () => {
+  assert.match(dbSource, /const fiscalYearId = explicitFiscalYearId;/);
+  assert.doesNotMatch(dbSource, /fallbackFy/);
   assert.match(dbSource, /explicitFiscalYearId,/);
 });

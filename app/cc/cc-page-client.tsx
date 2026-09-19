@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import {
   assignReceiptsToStatementAction,
   createCreditCardAction,
@@ -18,6 +18,8 @@ import { formatCurrency } from "@/lib/format";
 
 type StatementMonthRow = {
   id: string;
+  fiscalYearId: string;
+  fiscalYearName: string;
   creditCardId: string;
   creditCardName: string;
   statementMonth: string;
@@ -74,8 +76,17 @@ type ProjectRow = { id: string; name: string; season?: string | null };
 type CardRow = { id: string; nickname: string; maskedNumber: string | null; active: boolean };
 type AccountCodeOption = { id: string; label: string };
 type ProductionCategoryOption = { id: string; name: string };
+type FiscalYearOption = { id: string; name: string };
+type OrganizationOption = { id: string; name: string; orgCode: string };
 
-type PendingCcRow = { projectId: string; budgetCode: string; creditCardName: string | null; pendingCcTotal: number };
+type PendingCcRow = {
+  scopeId: string;
+  projectId: string | null;
+  scopeLabel: string;
+  budgetCode: string;
+  creditCardName: string | null;
+  pendingCcTotal: number;
+};
 
 type Props = {
   cards: CardRow[];
@@ -91,11 +102,13 @@ type Props = {
   selectedPendingProject: string;
   selectedPendingCard: string;
   selectedPendingQuery: string;
-  projectNameById: Array<[string, string]>;
-  manageableProjects: ProjectRow[];
+  scopedProjects: ProjectRow[];
   hasGlobalAdmin: boolean;
   accountCodeOptions: AccountCodeOption[];
   productionCategoryOptions: ProductionCategoryOption[];
+  fiscalYearOptions: FiscalYearOption[];
+  selectedFiscalYearId: string;
+  organizationOptions: OrganizationOption[];
 };
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
@@ -114,11 +127,13 @@ export function CcPageClient({
   selectedPendingProject,
   selectedPendingCard,
   selectedPendingQuery,
-  projectNameById,
-  manageableProjects,
+  scopedProjects,
   hasGlobalAdmin,
   accountCodeOptions,
-  productionCategoryOptions
+  productionCategoryOptions,
+  fiscalYearOptions,
+  selectedFiscalYearId,
+  organizationOptions
 }: Props) {
   const [createCardState, createCardAction] = useActionState(createCreditCardAction, initialState);
   const [reimbursementState, reimbursementAction] = useActionState(createReimbursementRequestAction, initialState);
@@ -128,8 +143,8 @@ export function CcPageClient({
   const [postState, postAction] = useActionState(postStatementMonthToBannerAction, initialState);
   const [reopenState, reopenAction] = useActionState(reopenStatementMonthAction, initialState);
   const [unpostState, unpostAction] = useActionState(unpostStatementMonthFromBannerAction, initialState);
-
-  const projectNameMap = new Map(projectNameById);
+  const [reimbursementProjectId, setReimbursementProjectId] = useState("");
+  const [reimbursementOrganizationId, setReimbursementOrganizationId] = useState("");
 
   return (
     <>
@@ -164,13 +179,17 @@ export function CcPageClient({
 
         <article className="panel">
           <h2>Open Statement Month</h2>
-          <CreateStatementMonthForm cards={cards} />
-          {manageableProjects.length === 0 && !hasGlobalAdmin ? (
+          <CreateStatementMonthForm
+            cards={cards}
+            fiscalYearOptions={fiscalYearOptions}
+            defaultFiscalYearId={selectedFiscalYearId}
+          />
+          {scopedProjects.length === 0 && organizationOptions.length === 0 && !hasGlobalAdmin ? (
             <p className="errorNote">You need Admin or Project Manager access to manage statements.</p>
           ) : null}
         </article>
 
-        {manageableProjects.length > 0 || hasGlobalAdmin ? (
+        {scopedProjects.length > 0 || organizationOptions.length > 0 || hasGlobalAdmin ? (
           <article className="panel">
             <h2>Add Reimbursement</h2>
             <form action={reimbursementAction} className="requestForm">
@@ -179,11 +198,19 @@ export function CcPageClient({
                   {reimbursementState.message}
                 </p>
               ) : null}
+              <input type="hidden" name="fiscalYearId" value={selectedFiscalYearId} />
               <label>
-                Project
-                <select name="projectId" required>
-                  <option value="">Select project</option>
-                  {manageableProjects.map((project) => (
+                Project (theatre budget)
+                <select
+                  name="projectId"
+                  value={reimbursementProjectId}
+                  onChange={(event) => {
+                    setReimbursementProjectId(event.target.value);
+                    if (event.target.value) setReimbursementOrganizationId("");
+                  }}
+                >
+                  <option value="">No project</option>
+                  {scopedProjects.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.name}
                       {project.season ? ` (${project.season})` : ""}
@@ -192,9 +219,27 @@ export function CcPageClient({
                 </select>
               </label>
               <label>
+                Organization budget (no project)
+                <select
+                  name="organizationId"
+                  value={reimbursementOrganizationId}
+                  onChange={(event) => {
+                    setReimbursementOrganizationId(event.target.value);
+                    if (event.target.value) setReimbursementProjectId("");
+                  }}
+                >
+                  <option value="">No organization budget</option>
+                  {organizationOptions.map((organization) => (
+                    <option key={organization.id} value={organization.id}>
+                      {organization.orgCode} | {organization.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
                 Department
-                <select name="productionCategoryId" required>
-                  <option value="">Select department</option>
+                <select name="productionCategoryId" required={Boolean(reimbursementProjectId)}>
+                  <option value="">{reimbursementProjectId ? "Select department" : "Not required"}</option>
                   {productionCategoryOptions.map((category) => (
                     <option key={category.id} value={category.id}>
                       {category.name}
@@ -459,12 +504,12 @@ export function CcPageClient({
         <p className="heroSubtitle">Live pending balances still waiting to be posted.</p>
         <form method="get" className="requestForm inlineFilterForm" style={{ marginTop: "0.6rem" }}>
           <label>
-            Project
+            Project or Organization
             <select name="cc_pending_project" defaultValue={selectedPendingProject}>
-              <option value="">All projects</option>
+              <option value="">All scopes</option>
               {Array.from(
                 new Map(
-                  filteredPendingRows.map((row) => [row.projectId, projectNameMap.get(row.projectId) ?? row.projectId])
+                  filteredPendingRows.map((row) => [row.scopeId, row.scopeLabel])
                 ).entries()
               ).map(([id, label]) => (
                 <option key={id} value={id}>
@@ -498,7 +543,7 @@ export function CcPageClient({
         <table>
           <thead>
             <tr>
-              <th>Project</th>
+              <th>Project / Organization</th>
               <th>Budget Code</th>
               <th>Card</th>
               <th>Pending CC Total</th>
@@ -511,8 +556,8 @@ export function CcPageClient({
               </tr>
             ) : null}
             {filteredPendingRows.map((row, idx) => (
-              <tr key={`${row.projectId}-${row.budgetCode}-${row.creditCardName ?? "na"}-${idx}`}>
-                <td>{projectNameMap.get(row.projectId) ?? row.projectId}</td>
+              <tr key={`${row.scopeId}-${row.budgetCode}-${row.creditCardName ?? "na"}-${idx}`}>
+                <td>{row.scopeLabel}</td>
                 <td>{row.budgetCode}</td>
                 <td>{row.creditCardName ?? "Unassigned"}</td>
                 <td>{formatCurrency(row.pendingCcTotal)}</td>

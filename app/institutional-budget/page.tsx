@@ -30,6 +30,20 @@ type MonthlyBudgetRow = {
   is_revenue?: boolean | null;
 };
 
+type RevenuePerformanceRow = {
+  fiscal_year_id?: string | null;
+  organization_id?: string | null;
+  fiscal_year_name?: string | null;
+  org_code?: string | null;
+  organization_name?: string | null;
+  account_code?: string | null;
+  account_name?: string | null;
+  target_amount?: string | number | null;
+  received_amount?: string | number | null;
+  remaining_to_target?: string | number | null;
+  over_target_amount?: string | number | null;
+};
+
 function asNumber(value: string | number | null | undefined): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -105,6 +119,19 @@ export default async function InstitutionalBudgetPage({
 
   const { data, error } = await query;
   if (error) throw error;
+
+  let revenueQuery = supabase
+    .from("v_institutional_revenue_performance")
+    .select(
+      "fiscal_year_id, organization_id, fiscal_year_name, org_code, organization_name, account_code, account_name, target_amount, received_amount, remaining_to_target, over_target_amount"
+    )
+    .order("org_code", { ascending: true })
+    .order("account_code", { ascending: true });
+  if (fiscalYearId) revenueQuery = revenueQuery.eq("fiscal_year_id", fiscalYearId);
+  if (organizationId) revenueQuery = revenueQuery.eq("organization_id", organizationId);
+  const { data: revenueData, error: revenueError } = await revenueQuery;
+  if (revenueError) throw revenueError;
+  const revenueRows = (revenueData ?? []) as RevenuePerformanceRow[];
 
   const rows = ((data ?? []) as MonthlyBudgetRow[]).filter((row) => {
     if (!queryText) return true;
@@ -207,6 +234,47 @@ export default async function InstitutionalBudgetPage({
             Apply
           </button>
         </form>
+      </article>
+
+      <article className="panel">
+        <div className="sectionHeader compactHeader">
+          <div>
+            <p className="eyebrow">Revenue reporting</p>
+            <h2>Targets and Received Revenue</h2>
+          </div>
+        </div>
+        <p className="heroSubtitle">Revenue offsets its target for reporting but is never available to spend.</p>
+        <div className="tableWrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Fiscal Year</th>
+                <th>Organization</th>
+                <th>Revenue Account</th>
+                <th>Target</th>
+                <th>Received</th>
+                <th>Remaining</th>
+                <th>Over Target</th>
+              </tr>
+            </thead>
+            <tbody>
+              {revenueRows.length === 0 ? (
+                <tr><td colSpan={7}>No institutional revenue targets in this scope.</td></tr>
+              ) : null}
+              {revenueRows.map((row) => (
+                <tr key={`${row.fiscal_year_id}:${row.organization_id}:${row.account_code}`}>
+                  <td>{row.fiscal_year_name ?? "-"}</td>
+                  <td>{row.org_code ?? "-"} | {row.organization_name ?? "Organization"}</td>
+                  <td>{row.account_code ?? "-"} | {row.account_name ?? "Revenue"}</td>
+                  <td>{formatCurrency(asNumber(row.target_amount))}</td>
+                  <td>{formatCurrency(asNumber(row.received_amount))}</td>
+                  <td>{formatCurrency(asNumber(row.remaining_to_target))}</td>
+                  <td>{formatCurrency(asNumber(row.over_target_amount))}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </article>
 
       <article className="panel">

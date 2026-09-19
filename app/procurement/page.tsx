@@ -1,19 +1,28 @@
 import { CreateOrderForm } from "@/app/procurement/create-order-form";
 import { QuickBatchAddForm } from "@/app/procurement/quick-batch-add-form";
 import { ProcurementTable } from "@/app/procurement/procurement-table";
-import { getProcurementData } from "@/lib/db";
+import { getFiscalYearOptions, getProcurementData } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
+import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 export default async function ProcurementPage({
   searchParams
 }: {
-  searchParams?: Promise<{ fiscalYearId?: string }>;
+  searchParams?: Promise<{ fiscalYearId?: string; pr_page?: string }>;
 }) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
 
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const fiscalYearOptions = await getFiscalYearOptions();
+  const selectedFiscalYearId = resolveRequestedFiscalYearId(
+    fiscalYearOptions,
+    (resolvedSearchParams?.fiscalYearId ?? "").trim()
+  );
+  const requestedPage = Math.max(Number.parseInt(resolvedSearchParams?.pr_page ?? "1", 10) || 1, 1);
   const {
     purchases,
     receipts,
@@ -24,13 +33,19 @@ export default async function ProcurementPage({
     vendors,
     accountCodeOptions,
     productionCategoryOptions,
-    canManageProcurement
-  } = await getProcurementData();
-  const resolvedSearchParams = searchParams ? await searchParams : undefined;
-  const requestedFiscalYearId = (resolvedSearchParams?.fiscalYearId ?? "").trim();
-  const defaultFiscalYearId = organizationOptions.some((option) => option.fiscalYearId === requestedFiscalYearId)
-    ? requestedFiscalYearId
-    : "";
+    canManageProcurement,
+    totalCount,
+    page,
+    pageSize
+  } = await getProcurementData({ fiscalYearId: selectedFiscalYearId, page: requestedPage });
+  const defaultFiscalYearId = selectedFiscalYearId;
+  const totalPages = Math.max(Math.ceil(totalCount / pageSize), 1);
+  const pageHref = (nextPage: number) => {
+    const params = new URLSearchParams();
+    params.set("fiscalYearId", selectedFiscalYearId);
+    params.set("pr_page", String(nextPage));
+    return `/procurement?${params.toString()}`;
+  };
 
   return (
     <section>
@@ -39,6 +54,20 @@ export default async function ProcurementPage({
         <h1>Order and Purchasing Workflow</h1>
         <p className="heroSubtitle">Track requisitions, PO progress, receipts, invoices, and payment alongside budget statuses.</p>
       </header>
+
+      <article className="panel">
+        <form method="get" className="inlineFilters">
+          <label>
+            Fiscal Year
+            <select name="fiscalYearId" defaultValue={selectedFiscalYearId}>
+              {fiscalYearOptions.map((fiscalYear) => (
+                <option key={fiscalYear.id} value={fiscalYear.id}>{fiscalYear.name}</option>
+              ))}
+            </select>
+          </label>
+          <button className="buttonLink" type="submit">Apply</button>
+        </form>
+      </article>
 
       {canManageProcurement ? (
         <div className="panelGrid">
@@ -81,6 +110,13 @@ export default async function ProcurementPage({
         productionCategoryOptions={productionCategoryOptions}
         canManageProcurement={canManageProcurement}
       />
+      <nav className="bulkToolbar" aria-label="Procurement pages">
+        <p className="bulkMeta">Page {page} of {totalPages} · {totalCount} orders</p>
+        <div className="bulkActions">
+          {page > 1 ? <Link className="buttonLink" href={pageHref(page - 1)}>Previous</Link> : null}
+          {page < totalPages ? <Link className="buttonLink" href={pageHref(page + 1)}>Next</Link> : null}
+        </div>
+      </nav>
     </section>
   );
 }

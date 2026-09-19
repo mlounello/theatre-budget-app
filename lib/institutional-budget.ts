@@ -36,6 +36,7 @@ type FiscalYearRow = {
 
 type PurchaseForInstitutionalBudget = {
   id: string;
+  fiscal_year_id: string;
   project_id: string | null;
   budget_line_id: string | null;
   organization_id: string | null;
@@ -53,9 +54,6 @@ type PurchaseForInstitutionalBudget = {
   posted_amount: string | number | null;
   projects?: {
     organization_id?: string | null;
-  } | null;
-  organizations?: {
-    fiscal_year_id?: string | null;
   } | null;
   project_budget_lines?: {
     account_code_id?: string | null;
@@ -380,7 +378,7 @@ export async function createInstitutionalCommitmentForPurchase(
   const { data: purchase, error: purchaseError } = await db
     .from("purchases")
     .select(
-      "id, project_id, budget_line_id, organization_id, banner_account_code_id, ordered_on, purchase_date, created_at, status, request_type, title, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, organizations(fiscal_year_id), projects(organization_id), project_budget_lines(account_code_id)"
+      "id, fiscal_year_id, project_id, budget_line_id, organization_id, banner_account_code_id, ordered_on, purchase_date, created_at, status, request_type, title, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, projects(organization_id), project_budget_lines(account_code_id)"
     )
     .eq("id", purchaseId)
     .single();
@@ -404,19 +402,13 @@ export async function createInstitutionalCommitmentForPurchase(
   }
 
   const orderDate = determineInstitutionalOrderDate(purchaseRow);
-  let fiscalYear: FiscalYearRow | null = null;
-  const organizationFiscalYearId = purchaseRow.project_id ? null : purchaseRow.organizations?.fiscal_year_id ?? null;
-  if (organizationFiscalYearId) {
-    const { data: fiscalYearData, error: fiscalYearError } = await db
-      .from("fiscal_years")
-      .select("id, name, start_date, end_date")
-      .eq("id", organizationFiscalYearId)
-      .maybeSingle();
-    if (fiscalYearError) throw new Error(fiscalYearError.message);
-    fiscalYear = (fiscalYearData as FiscalYearRow | null) ?? null;
-  } else {
-    fiscalYear = await determineFiscalYearFromDate(db, orderDate);
-  }
+  const { data: fiscalYearData, error: fiscalYearError } = await db
+    .from("fiscal_years")
+    .select("id, name, start_date, end_date")
+    .eq("id", purchaseRow.fiscal_year_id)
+    .maybeSingle();
+  if (fiscalYearError) throw new Error(fiscalYearError.message);
+  const fiscalYear = (fiscalYearData as FiscalYearRow | null) ?? null;
   if (!fiscalYear) {
     warnInstitutionalSync(purchaseId, "missing_fiscal_year", { orderDate });
     return { ok: true, skippedReason: "missing_fiscal_year", commitmentCount: 0, committedAmount: 0, varianceRequired: false, shortageAmount: 0 };

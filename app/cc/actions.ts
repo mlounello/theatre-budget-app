@@ -64,6 +64,43 @@ async function requireGlobalAdmin(): Promise<void> {
   }
 }
 
+async function requireFiscalYearForDate(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  fiscalYearId: string,
+  date: string
+): Promise<void> {
+  if (!fiscalYearId) throw new Error("Fiscal year is required.");
+  const { data, error } = await supabase
+    .from("fiscal_years")
+    .select("id")
+    .eq("id", fiscalYearId)
+    .lte("start_date", date)
+    .gte("end_date", date)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data?.id) throw new Error("The selected date is outside the selected fiscal year.");
+}
+
+async function requireOrganizationMembership(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  fiscalYearId: string,
+  organizationId: string,
+  options: { projectlessOnly?: boolean } = {}
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("fiscal_year_organizations")
+    .select("id, project_tracking_required")
+    .eq("fiscal_year_id", fiscalYearId)
+    .eq("organization_id", organizationId)
+    .eq("active", true)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data?.id) throw new Error("That organization is not active in the selected fiscal year.");
+  if (options.projectlessOnly && data.project_tracking_required) {
+    throw new Error("That organization requires a project in the selected fiscal year.");
+  }
+}
+
 async function getStatementMonthLinkedPurchaseTotals(
   supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
   statementMonthId: string
@@ -252,10 +289,12 @@ export async function createStatementMonthAction(
 
     const creditCardId = String(formData.get("creditCardId") ?? "").trim();
     const month = String(formData.get("statementMonth") ?? "").trim();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
 
-    if (!creditCardId || !month) return err("Card and statement month are required.");
+    if (!creditCardId || !month || !fiscalYearId) return err("Fiscal year, card, and statement month are required.");
     const statementDate = toStatementDate(month);
     await requireCcManagerRole();
+    await requireFiscalYearForDate(supabase, fiscalYearId, statementDate);
 
     const { data: existingRows, error: existingError } = await supabase
       .from("cc_statement_months")
@@ -272,6 +311,7 @@ export async function createStatementMonthAction(
 
     const { error } = await supabase.from("cc_statement_months").insert({
       project_id: null,
+      fiscal_year_id: fiscalYearId,
       credit_card_id: creditCardId,
       statement_month: statementDate,
       created_by_user_id: user.id
@@ -300,7 +340,8 @@ export async function updateStatementMonthAction(
     const id = String(formData.get("id") ?? "").trim();
     const creditCardId = String(formData.get("creditCardId") ?? "").trim();
     const month = String(formData.get("statementMonth") ?? "").trim();
-    if (!id || !creditCardId || !month) return err("Statement month, id, and card are required.");
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+    if (!id || !creditCardId || !month || !fiscalYearId) return err("Fiscal year, statement month, id, and card are required.");
 
     const { data: existing, error: existingError } = await supabase
       .from("cc_statement_months")
@@ -313,9 +354,10 @@ export async function updateStatementMonthAction(
     await requireCcManagerRole();
 
     const statementDate = toStatementDate(month);
+    await requireFiscalYearForDate(supabase, fiscalYearId, statementDate);
     const { data: updated, error } = await supabase
       .from("cc_statement_months")
-      .update({ credit_card_id: creditCardId, statement_month: statementDate })
+      .update({ fiscal_year_id: fiscalYearId, credit_card_id: creditCardId, statement_month: statementDate })
       .eq("id", id)
       .select("id")
       .maybeSingle();
@@ -482,12 +524,15 @@ export async function bulkUpdateStatementMonthsAction(
     const creditCardId = String(formData.get("creditCardId") ?? "").trim();
     const month = String(formData.get("statementMonth") ?? "").trim();
     const statementDate = applyMonth ? toStatementDate(month) : null;
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     if (applyCreditCard && !creditCardId) return err("Credit card is required when applying credit card.");
     if (applyMonth && !month) return err("Statement month is required when applying month.");
+    if (!fiscalYearId) return err("Fiscal year is required.");
+    if (statementDate) await requireFiscalYearForDate(supabase, fiscalYearId, statementDate);
 
     const { data: months, error: monthsError } = await supabase
       .from("cc_statement_months")
-      .select("id, credit_card_id, statement_month, posted_at, posted_to_banner_at")
+      .select("id, fiscal_year_id, credit_card_id, statement_month, posted_at, posted_to_banner_at")
       .in("id", ids);
     if (monthsError) return err(monthsError.message);
     if (!months || months.length !== ids.length) return err("Some selected statement months were not found.");
@@ -499,7 +544,8 @@ export async function bulkUpdateStatementMonthsAction(
         .from("cc_statement_months")
         .update({
           credit_card_id: applyCreditCard ? creditCardId : (monthRow.credit_card_id as string),
-          statement_month: applyMonth ? (statementDate as string) : (monthRow.statement_month as string)
+          statement_month: applyMonth ? (statementDate as string) : (monthRow.statement_month as string),
+          fiscal_year_id: fiscalYearId
         })
         .eq("id", monthRow.id as string)
         .select("id")
@@ -585,7 +631,7 @@ export async function assignReceiptsToStatementAction(
 
     const { data: statementMonth, error: statementMonthError } = await supabase
       .from("cc_statement_months")
-      .select("id, credit_card_id, posted_at")
+      .select("id, fiscal_year_id, credit_card_id, posted_at")
       .eq("id", statementMonthId)
       .single();
     if (statementMonthError || !statementMonth) return err("Statement month not found.");
@@ -593,16 +639,19 @@ export async function assignReceiptsToStatementAction(
 
     const { data: receipts, error: receiptsError } = await supabase
       .from("purchase_receipts")
-      .select("id, purchase_id, cc_statement_month_id, purchases!inner(id, status, request_type, is_credit_card, credit_card_id)")
+      .select("id, purchase_id, cc_statement_month_id, purchases!inner(id, fiscal_year_id, status, request_type, is_credit_card, credit_card_id)")
       .in("id", receiptIds);
     if (receiptsError) return err(receiptsError.message);
     if (!receipts || receipts.length !== receiptIds.length) return err("One or more receipts were not found.");
 
     for (const receipt of receipts) {
       const purchase = receipt.purchases as
-        | { id?: string; status?: string; request_type?: string; is_credit_card?: boolean | null; credit_card_id?: string | null }
+        | { id?: string; fiscal_year_id?: string; status?: string; request_type?: string; is_credit_card?: boolean | null; credit_card_id?: string | null }
         | null;
       if (!purchase) return err("Receipt purchase link is invalid.");
+      if (purchase.fiscal_year_id !== statementMonth.fiscal_year_id) {
+        return err("Receipts and statement months must belong to the same fiscal year.");
+      }
       if ((purchase.request_type as string) !== "expense" || !Boolean(purchase.is_credit_card as boolean | null)) {
         return err("Only receipts from credit-card expense requests can be assigned.");
       }
@@ -1131,43 +1180,66 @@ export async function createReimbursementRequestAction(
     } = await supabase.auth.getUser();
     if (!user) return err("You must be signed in.");
 
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const projectId = String(formData.get("projectId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
     const title = String(formData.get("title") ?? "").trim();
     const referenceNumber = String(formData.get("referenceNumber") ?? "").trim();
     const amount = parseMoney(formData.get("amount"));
 
-    if (!projectId || !productionCategoryId || !title) {
-      return err("Project, department, and title are required.");
+    if (!fiscalYearId || (!projectId && !organizationId) || (projectId && organizationId) || !title) {
+      return err("Fiscal year, exactly one project or organization budget, and title are required.");
     }
+    if (projectId && !productionCategoryId) return err("Department is required for project reimbursements.");
+    if (organizationId && !bannerAccountCodeId) return err("Banner code is required for organization reimbursements.");
     if (amount === 0) return err("Amount must be non-zero.");
 
-    await requireProjectRole(projectId, ["admin", "project_manager", "buyer"], {
-      productionCategoryId,
-      errorMessage: "You do not have permission to create requests for this project."
-    });
+    let budgetLine: { id: string; account_code_id: string | null } | null = null;
+    let resolvedOrganizationId: string | null = organizationId || null;
+    if (projectId) {
+      await requireProjectRole(projectId, ["admin", "project_manager", "buyer"], {
+        productionCategoryId,
+        errorMessage: "You do not have permission to create requests for this project."
+      });
+      const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .select("id, fiscal_year_id, organization_id")
+        .eq("id", projectId)
+        .single();
+      if (projectError || !project) return err("Project not found.");
+      if (project.fiscal_year_id !== fiscalYearId) return err("Project does not belong to the selected fiscal year.");
+      resolvedOrganizationId = (project.organization_id as string | null) ?? null;
 
-    const { data: budgetLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {
-      p_project_id: projectId,
-      p_production_category_id: productionCategoryId
-    });
-    if (ensureLineError || !budgetLineId) return err(ensureLineError?.message ?? "Unable to resolve reporting line.");
+      const { data: budgetLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {
+        p_project_id: projectId,
+        p_production_category_id: productionCategoryId
+      });
+      if (ensureLineError || !budgetLineId) return err(ensureLineError?.message ?? "Unable to resolve reporting line.");
 
-    const { data: budgetLine, error: budgetLineError } = await supabase
-      .from("project_budget_lines")
-      .select("id, account_code_id")
-      .eq("id", budgetLineId as string)
-      .single();
-    if (budgetLineError || !budgetLine) return err("Reporting line not found.");
+      const { data: line, error: budgetLineError } = await supabase
+        .from("project_budget_lines")
+        .select("id, account_code_id")
+        .eq("id", budgetLineId as string)
+        .single();
+      if (budgetLineError || !line) return err("Reporting line not found.");
+      budgetLine = { id: line.id as string, account_code_id: (line.account_code_id as string | null) ?? null };
+    } else {
+      await requireCcManagerRole();
+      await requireOrganizationMembership(supabase, fiscalYearId, organizationId, { projectlessOnly: true });
+    }
 
     const { data: inserted, error: insertError } = await supabase
       .from("purchases")
       .insert({
-        project_id: projectId,
-        budget_line_id: budgetLine.id,
-        production_category_id: productionCategoryId,
+        fiscal_year_id: fiscalYearId,
+        project_id: projectId || null,
+        organization_id: resolvedOrganizationId,
+        budget_line_id: budgetLine?.id ?? null,
+        production_category_id: productionCategoryId || null,
         banner_account_code_id: bannerAccountCodeId || null,
+        budget_tracked: true,
         entered_by_user_id: user.id,
         title,
         reference_number: referenceNumber || null,
@@ -1187,15 +1259,17 @@ export async function createReimbursementRequestAction(
       .single();
     if (insertError || !inserted) return err(insertError?.message ?? "Could not create reimbursement.");
 
-    const { error: allocationError } = await supabase.from("purchase_allocations").insert({
-      purchase_id: inserted.id as string,
-      reporting_budget_line_id: budgetLine.id as string,
-      account_code_id: bannerAccountCodeId || (budgetLine.account_code_id as string | null) || null,
-      production_category_id: productionCategoryId,
-      amount,
-      reporting_bucket: "direct"
-    });
-    if (allocationError) return err(allocationError.message);
+    if (budgetLine) {
+      const { error: allocationError } = await supabase.from("purchase_allocations").insert({
+        purchase_id: inserted.id as string,
+        reporting_budget_line_id: budgetLine.id,
+        account_code_id: bannerAccountCodeId || budgetLine.account_code_id,
+        production_category_id: productionCategoryId,
+        amount,
+        reporting_bucket: "direct"
+      });
+      if (allocationError) return err(allocationError.message);
+    }
 
     await createInstitutionalCommitmentForPurchase(supabase, inserted.id as string, user.id);
 
@@ -1231,15 +1305,20 @@ export async function addStatementLineAction(
     const supabase = await getSupabaseServerClient();
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
     const projectBudgetLineId = String(formData.get("projectBudgetLineId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
+    const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
     const amount = parseMoney(formData.get("amount"));
     const note = String(formData.get("note") ?? "").trim();
 
-    if (!statementMonthId || !projectBudgetLineId) return err("Statement month and budget line are required.");
+    if (!statementMonthId || (!projectBudgetLineId && (!organizationId || !bannerAccountCodeId))) {
+      return err("Statement month and either a project budget line or organization account are required.");
+    }
+    if (projectBudgetLineId && organizationId) return err("Choose a project budget line or an organization account, not both.");
     if (amount === 0) return err("Amount must be non-zero.");
 
     const { data: statementMonth, error: statementMonthError } = await supabase
       .from("cc_statement_months")
-      .select("id")
+      .select("id, fiscal_year_id")
       .eq("id", statementMonthId)
       .single();
     if (statementMonthError || !statementMonth) return err("Statement month not found.");
@@ -1249,10 +1328,18 @@ export async function addStatementLineAction(
     } = await supabase.auth.getUser();
     if (!user) return err("You must be signed in.");
     await requireCcManagerRole();
+    if (organizationId) {
+      await requireOrganizationMembership(supabase, statementMonth.fiscal_year_id as string, organizationId, {
+        projectlessOnly: true
+      });
+    }
 
     const { error } = await supabase.from("cc_statement_lines").insert({
       statement_month_id: statementMonthId,
-      project_budget_line_id: projectBudgetLineId,
+      fiscal_year_id: statementMonth.fiscal_year_id,
+      project_budget_line_id: projectBudgetLineId || null,
+      organization_id: organizationId || null,
+      banner_account_code_id: bannerAccountCodeId || null,
       amount,
       note: note || null
     });
@@ -1288,14 +1375,14 @@ export async function confirmStatementLineMatchAction(
 
     const { data: statementLine, error: statementLineError } = await supabase
       .from("cc_statement_lines")
-      .select("id, amount, matched_purchase_ids, statement_month_id, project_budget_line_id")
+      .select("id, fiscal_year_id, organization_id, banner_account_code_id, amount, matched_purchase_ids, statement_month_id, project_budget_line_id")
       .eq("id", statementLineId)
       .single();
     if (statementLineError || !statementLine) return err("Statement line not found.");
 
     const { data: statementMonth, error: statementMonthError } = await supabase
       .from("cc_statement_months")
-      .select("id, credit_card_id, statement_month")
+      .select("id, fiscal_year_id, credit_card_id, statement_month")
       .eq("id", statementLine.statement_month_id as string)
       .single();
     if (statementMonthError || !statementMonth) return err("Statement month not found.");
@@ -1303,7 +1390,7 @@ export async function confirmStatementLineMatchAction(
 
     const { data: purchases, error: purchasesError } = await supabase
       .from("purchases")
-      .select("id, project_id, budget_line_id, status, pending_cc_amount, credit_card_id, estimated_amount, requested_amount")
+      .select("id, fiscal_year_id, project_id, organization_id, banner_account_code_id, budget_line_id, status, pending_cc_amount, credit_card_id, estimated_amount, requested_amount")
       .in("id", purchaseIds);
     if (purchasesError) return err(purchasesError.message);
     if (!purchases || purchases.length !== purchaseIds.length) return err("One or more selected purchases were not found.");
@@ -1315,8 +1402,18 @@ export async function confirmStatementLineMatchAction(
     }
 
     for (const purchase of purchases) {
-      if ((purchase.budget_line_id as string) !== (statementLine.project_budget_line_id as string)) {
-        return err("All purchases must match the selected statement budget line.");
+      if (purchase.fiscal_year_id !== statementMonth.fiscal_year_id || purchase.fiscal_year_id !== statementLine.fiscal_year_id) {
+        return err("Statement line and purchases must belong to the same fiscal year.");
+      }
+      if (statementLine.project_budget_line_id) {
+        if ((purchase.budget_line_id as string) !== (statementLine.project_budget_line_id as string)) {
+          return err("All purchases must match the selected statement budget line.");
+        }
+      } else if (
+        purchase.organization_id !== statementLine.organization_id ||
+        purchase.banner_account_code_id !== statementLine.banner_account_code_id
+      ) {
+        return err("All purchases must match the statement organization and Banner account.");
       }
       if ((purchase.status as string) !== "pending_cc") {
         return err("Only pending credit-card purchases can be matched.");
