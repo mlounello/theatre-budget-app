@@ -19,6 +19,7 @@ test("dashboard leads with all seven reviewed attention categories", async () =>
   }
   assert.match(page, /dashboardAttentionGrid/);
   assert.match(page, /What Needs Attention/);
+  assert.match(page, /Open the workspace to review \{count\}/);
 });
 
 test("attention data uses existing workflow records without creating mutation paths", async () => {

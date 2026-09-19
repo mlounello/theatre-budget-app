@@ -133,6 +133,8 @@ function AttentionCard({ title, count, description, href, actionLabel, items = [
             </li>
           ))}
         </ul>
+      ) : count > 0 ? (
+        <p className="dashboardClearMessage">Open the workspace to review {count} {count === 1 ? "item" : "items"}.</p>
       ) : (
         <p className="dashboardClearMessage">Nothing currently needs attention.</p>
       )}
