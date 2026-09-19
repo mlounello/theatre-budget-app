@@ -208,28 +208,47 @@ async function resolveInstitutionalOrganizationId(
   const db = asDb(supabase);
   const { data: organization, error } = await db
     .from("organizations")
-    .select("id, org_code, fiscal_year_id")
+    .select("id, org_code, fiscal_year_id, active, superseded_by_organization_id")
     .eq("id", params.organizationId)
     .maybeSingle();
   if (error) throw new Error(error.message);
 
-  const row = organization as { id?: string; org_code?: string | null; fiscal_year_id?: string | null } | null;
+  const row = organization as {
+    id?: string;
+    org_code?: string | null;
+    fiscal_year_id?: string | null;
+    active?: boolean | null;
+    superseded_by_organization_id?: string | null;
+  } | null;
   if (!row?.id) return params.organizationId;
-  if (row.fiscal_year_id === params.fiscalYearId) return row.id;
 
   const orgCode = row.org_code?.trim();
   if (!orgCode) return row.id;
 
-  const { data: fiscalYearOrg, error: fiscalYearOrgError } = await db
-    .from("organizations")
-    .select("id")
-    .eq("org_code", orgCode)
+  const { data: memberships, error: membershipsError } = await db
+    .from("fiscal_year_organizations")
+    .select("organization_id, organizations!inner(id, org_code, fiscal_year_id, active, superseded_by_organization_id)")
     .eq("fiscal_year_id", params.fiscalYearId)
-    .maybeSingle();
-  if (fiscalYearOrgError) throw new Error(fiscalYearOrgError.message);
+    .eq("active", true)
+    .eq("organizations.org_code", orgCode);
+  if (membershipsError) throw new Error(membershipsError.message);
 
-  const fiscalYearOrgRow = fiscalYearOrg as { id?: string } | null;
-  if (fiscalYearOrgRow?.id) return fiscalYearOrgRow.id;
+  const candidates = ((memberships ?? []) as Array<{
+    organization_id?: string;
+    organizations?: {
+      id?: string;
+      fiscal_year_id?: string | null;
+      active?: boolean | null;
+      superseded_by_organization_id?: string | null;
+    } | null;
+  }>)
+    .map((membership) => membership.organizations)
+    .filter(
+      (candidate): candidate is NonNullable<typeof candidate> =>
+        Boolean(candidate?.id) && candidate?.active !== false && !candidate?.superseded_by_organization_id
+    )
+    .sort((a, b) => Number(a.fiscal_year_id !== null) - Number(b.fiscal_year_id !== null));
+  if (candidates[0]?.id) return candidates[0].id;
 
   return row.id;
 }

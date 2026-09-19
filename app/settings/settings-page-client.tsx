@@ -315,11 +315,12 @@ export function SettingsPageClient({
   const productionCategoryLookup = useMemo(() => new Map(allProductionCategories.map((row) => [row.id, row] as const)), [allProductionCategories]);
   const editingProductionCategory = editType === "production_category" && editId ? productionCategoryLookup.get(editId) : null;
 
-  const projectCountByOrganization = useMemo(() => {
+  const projectCountByOrganizationFiscalYear = useMemo(() => {
     const counts = new Map<string, number>();
     for (const project of projects) {
-      if (!project.organizationId) continue;
-      counts.set(project.organizationId, (counts.get(project.organizationId) ?? 0) + 1);
+      if (!project.organizationId || !project.fiscalYearId) continue;
+      const key = `${project.organizationId}:${project.fiscalYearId}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     return counts;
   }, [projects]);
@@ -772,7 +773,7 @@ export function SettingsPageClient({
           <article className="panel panelFull">
             <h2>Current Organizations</h2>
             <p className="heroSubtitle">
-              Fiscal-year rows are the active planning orgs. Legacy rows have no fiscal year and are kept only for older closed-book data.
+              Each row is an active fiscal-year membership for a shared organization. Archiving an organization preserves its historical records.
             </p>
             {deleteOrganizationInlineState.message ? (
               <p className={deleteOrganizationInlineState.ok ? "successNote" : "errorNote"} key={deleteOrganizationInlineState.timestamp}>
@@ -788,16 +789,20 @@ export function SettingsPageClient({
                     <th>Fiscal Year</th>
                     <th>Projects</th>
                     <th>Edit</th>
-                    <th>Trash</th>
+                    <th>Archive</th>
                   </tr>
                 </thead>
                 <tbody>
                   {organizations.map((orgOption) => (
-                    <tr key={orgOption.id}>
+                    <tr key={`${orgOption.id}:${orgOption.fiscalYearId ?? "no-fy"}`}>
                       <td>{orgOption.orgCode}</td>
                       <td>{orgOption.name}</td>
                       <td>{orgOption.fiscalYearName ?? "Legacy / no FY"}</td>
-                      <td>{projectCountByOrganization.get(orgOption.id) ?? 0}</td>
+                      <td>
+                        {projectCountByOrganizationFiscalYear.get(
+                          `${orgOption.id}:${orgOption.fiscalYearId ?? "no-fy"}`
+                        ) ?? 0}
+                      </td>
                       <td>
                         <a className="tinyButton" href={`/settings?editType=org&editId=${orgOption.id}`}>
                           Edit
@@ -810,7 +815,7 @@ export function SettingsPageClient({
                         >
                           <input type="hidden" name="id" value={orgOption.id} />
                           <button type="submit" className="tinyButton dangerButton">
-                            Trash
+                            Archive
                           </button>
                         </form>
                       </td>

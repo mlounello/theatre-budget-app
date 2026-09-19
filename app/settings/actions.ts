@@ -140,41 +140,15 @@ async function validateProjectOrganizationFiscalYear(
 ): Promise<void> {
   if (!params.fiscalYearId || !params.organizationId) return;
 
-  const { data: organization, error } = await supabase
-    .from("organizations")
-    .select("id, name, org_code, fiscal_year_id")
-    .eq("id", params.organizationId)
+  const { data: membership, error } = await supabase
+    .from("fiscal_year_organizations")
+    .select("id")
+    .eq("fiscal_year_id", params.fiscalYearId)
+    .eq("organization_id", params.organizationId)
+    .eq("active", true)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  if (!organization?.id) throw new Error("Selected organization was not found.");
-
-  const orgFiscalYearId = (organization.fiscal_year_id as string | null) ?? null;
-  if (orgFiscalYearId === params.fiscalYearId) return;
-
-  const orgCode = String(organization.org_code ?? "").trim();
-  if (!orgFiscalYearId && orgCode) {
-    const { count, error: matchError } = await supabase
-      .from("organizations")
-      .select("id", { count: "exact", head: true })
-      .eq("fiscal_year_id", params.fiscalYearId)
-      .eq("org_code", orgCode);
-    if (matchError) throw new Error(matchError.message);
-    if ((count ?? 0) > 0) {
-      throw new Error(
-        `Selected organization ${orgCode} is a legacy/global row. Choose the organization row for the selected fiscal year.`
-      );
-    }
-  }
-
-  const { count: yearOrgCount, error: yearOrgError } = await supabase
-    .from("organizations")
-    .select("id", { count: "exact", head: true })
-    .eq("fiscal_year_id", params.fiscalYearId);
-  if (yearOrgError) throw new Error(yearOrgError.message);
-
-  if ((yearOrgCount ?? 0) > 0) {
-    throw new Error("Selected organization does not belong to the selected project fiscal year.");
-  }
+  if (!membership?.id) throw new Error("Selected organization is not active in the selected project fiscal year.");
 }
 
 function settingsSuccess(message: string): ActionState {
@@ -363,6 +337,15 @@ export async function createOrganizationAction(_prevState: ActionState = emptySt
     const projectTrackingRequired = formData.get("projectTrackingRequired") === "on";
 
     if (!name || !orgCode) throw new Error("Organization name and org code are required.");
+    if (fiscalYearIds.length === 0) throw new Error("Select at least one fiscal year for this organization.");
+
+    const { count: existingCodeCount, error: existingCodeError } = await supabase
+      .from("organizations")
+      .select("id", { count: "exact", head: true })
+      .ilike("org_code", orgCode)
+      .is("superseded_by_organization_id", null);
+    if (existingCodeError) throw new Error(existingCodeError.message);
+    if ((existingCodeCount ?? 0) > 0) throw new Error("An active organization already uses this org code.");
 
     const { data: maxSortRows, error: maxSortError } = await supabase
       .from("organizations")
@@ -372,15 +355,29 @@ export async function createOrganizationAction(_prevState: ActionState = emptySt
     if (maxSortError) throw new Error(maxSortError.message);
     const nextSort = ((maxSortRows?.[0]?.sort_order as number | null) ?? -1) + 1;
 
-    const organizationRows = (fiscalYearIds.length > 0 ? fiscalYearIds : [null]).map((fiscalYearId, index) => ({
+    const { data: organization, error } = await supabase
+      .from("organizations")
+      .insert({
       name,
       org_code: orgCode,
-      fiscal_year_id: fiscalYearId,
+      fiscal_year_id: null,
       project_tracking_required: projectTrackingRequired,
-      sort_order: nextSort + index
-    }));
-    const { error } = await supabase.from("organizations").insert(organizationRows);
+      sort_order: nextSort
+      })
+      .select("id")
+      .single();
     if (error) throw new Error(error.message);
+
+    const { error: membershipError } = await supabase.from("fiscal_year_organizations").insert(
+      fiscalYearIds.map((fiscalYearId) => ({
+        fiscal_year_id: fiscalYearId,
+        organization_id: organization.id as string,
+        active: true,
+        sort_order: nextSort,
+        project_tracking_required: projectTrackingRequired
+      }))
+    );
+    if (membershipError) throw new Error(membershipError.message);
 
     revalidatePath("/settings");
     revalidatePath("/overview");
@@ -742,55 +739,63 @@ export async function updateOrganizationAction(_prevState: ActionState = emptySt
 
     if (!id || !name || !orgCode) throw new Error("Organization id, name, and org code are required.");
 
+    if (fiscalYearIds.length === 0) throw new Error("Select at least one fiscal year for this organization.");
+
     const { data: currentOrganization, error: currentOrganizationError } = await supabase
       .from("organizations")
-      .select("org_code")
+      .select("org_code, sort_order, superseded_by_organization_id")
       .eq("id", id)
       .maybeSingle();
     if (currentOrganizationError) throw new Error(currentOrganizationError.message);
     if (!currentOrganization?.org_code) throw new Error("Organization was not found.");
-    const currentOrgCode = String(currentOrganization.org_code);
+    if (currentOrganization.superseded_by_organization_id) throw new Error("Superseded organizations cannot be edited.");
 
-    const { data: familyRows, error: familyRowsError } = await supabase
+    const { count: conflictingCodeCount, error: conflictingCodeError } = await supabase
       .from("organizations")
-      .select("id, fiscal_year_id, sort_order")
-      .eq("org_code", currentOrgCode);
-    if (familyRowsError) throw new Error(familyRowsError.message);
+      .select("id", { count: "exact", head: true })
+      .ilike("org_code", orgCode)
+      .is("superseded_by_organization_id", null)
+      .neq("id", id);
+    if (conflictingCodeError) throw new Error(conflictingCodeError.message);
+    if ((conflictingCodeCount ?? 0) > 0) throw new Error("Another active organization already uses this org code.");
 
     const { data: updated, error } = await supabase
       .from("organizations")
-      .update({ name, org_code: orgCode })
-      .eq("org_code", currentOrgCode)
+      .update({ name, org_code: orgCode, project_tracking_required: projectTrackingRequired, active: true })
+      .eq("id", id)
       .select("id");
     if (error) throw new Error(error.message);
     if (!updated?.length) throw new Error("Organization update was not applied.");
 
-    const { data: updatedBudgetType, error: budgetTypeError } = await supabase
-      .from("organizations")
-      .update({ project_tracking_required: projectTrackingRequired })
-      .eq("id", id)
-      .select("id")
-      .maybeSingle();
-    if (budgetTypeError) throw new Error(budgetTypeError.message);
-    if (!updatedBudgetType?.id) throw new Error("Organization budget type update was not applied.");
-
-    const existingFiscalYearIds = new Set(
-      (familyRows ?? []).map((row) => (row.fiscal_year_id as string | null) ?? "").filter(Boolean)
+    const { data: existingMemberships, error: membershipsError } = await supabase
+      .from("fiscal_year_organizations")
+      .select("fiscal_year_id, sort_order")
+      .eq("organization_id", id);
+    if (membershipsError) throw new Error(membershipsError.message);
+    const sortByFiscalYear = new Map(
+      (existingMemberships ?? []).map((membership) => [
+        membership.fiscal_year_id as string,
+        (membership.sort_order as number | null) ?? (currentOrganization.sort_order as number | null) ?? 0
+      ])
     );
-    const missingFiscalYearIds = fiscalYearIds.filter((fiscalYearId) => !existingFiscalYearIds.has(fiscalYearId));
-    if (missingFiscalYearIds.length > 0) {
-      const maxSortOrder = Math.max(-1, ...(familyRows ?? []).map((row) => (row.sort_order as number | null) ?? -1));
-      const { error: insertError } = await supabase.from("organizations").insert(
-        missingFiscalYearIds.map((fiscalYearId, index) => ({
-          name,
-          org_code: orgCode,
-          fiscal_year_id: fiscalYearId,
-          project_tracking_required: projectTrackingRequired,
-          sort_order: maxSortOrder + index + 1
-        }))
-      );
-      if (insertError) throw new Error(insertError.message);
-    }
+
+    const { error: deactivateMembershipsError } = await supabase
+      .from("fiscal_year_organizations")
+      .update({ active: false })
+      .eq("organization_id", id);
+    if (deactivateMembershipsError) throw new Error(deactivateMembershipsError.message);
+
+    const { error: upsertMembershipsError } = await supabase.from("fiscal_year_organizations").upsert(
+      fiscalYearIds.map((fiscalYearId) => ({
+        fiscal_year_id: fiscalYearId,
+        organization_id: id,
+        active: true,
+        sort_order: sortByFiscalYear.get(fiscalYearId) ?? (currentOrganization.sort_order as number | null) ?? 0,
+        project_tracking_required: projectTrackingRequired
+      })),
+      { onConflict: "fiscal_year_id,organization_id" }
+    );
+    if (upsertMembershipsError) throw new Error(upsertMembershipsError.message);
 
     revalidatePath("/settings");
     revalidatePath("/overview");
@@ -829,7 +834,13 @@ export async function deleteOrganizationAction(_prevState: ActionState = emptySt
       if (clearAssignmentsError) throw new Error(clearAssignmentsError.message);
     }
 
-    const { error } = await supabase.from("organizations").delete().eq("id", id);
+    const { error: membershipError } = await supabase
+      .from("fiscal_year_organizations")
+      .update({ active: false })
+      .eq("organization_id", id);
+    if (membershipError) throw new Error(membershipError.message);
+
+    const { error } = await supabase.from("organizations").update({ active: false }).eq("id", id);
     if (error) throw new Error(error.message);
 
     revalidatePath("/settings");
@@ -837,7 +848,7 @@ export async function deleteOrganizationAction(_prevState: ActionState = emptySt
     revalidatePath("/requests");
     revalidatePath("/procurement");
     revalidatePath("/");
-    return settingsSuccess("Organization deleted.");
+    return settingsSuccess("Organization archived.");
   } catch (error) {
     return settingsError(getErrorMessage(error, "Could not delete organization."));
   }
@@ -1253,7 +1264,9 @@ export async function reorderOrganizationsAction(_prevState: ActionState = empty
   try {
     await requireSettingsAdmin();
     const supabase = await getSupabaseServerClient();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const orderedIdsRaw = String(formData.get("orderedOrganizationIds") ?? "").trim();
+    if (!fiscalYearId) throw new Error("Fiscal year is required to reorder organizations.");
     if (!orderedIdsRaw) throw new Error("No organization ordering payload provided.");
 
     let orderedIds: string[] = [];
@@ -1265,7 +1278,11 @@ export async function reorderOrganizationsAction(_prevState: ActionState = empty
     if (orderedIds.length === 0) throw new Error("No organizations provided for reorder.");
 
     for (let idx = 0; idx < orderedIds.length; idx += 1) {
-      const { error } = await supabase.from("organizations").update({ sort_order: idx }).eq("id", orderedIds[idx]);
+      const { error } = await supabase
+        .from("fiscal_year_organizations")
+        .update({ sort_order: idx })
+        .eq("fiscal_year_id", fiscalYearId)
+        .eq("organization_id", orderedIds[idx]);
       if (error) throw new Error(error.message);
     }
 
@@ -1390,8 +1407,9 @@ export async function importHierarchyCsvAction(_prevState: ActionState = emptySt
         const { data: orgMatches, error: orgLookupError } = await supabase
           .from("organizations")
           .select("id, name")
-          .eq("fiscal_year_id", fiscalYearId)
-          .eq("org_code", orgCode)
+          .ilike("org_code", orgCode)
+          .eq("active", true)
+          .is("superseded_by_organization_id", null)
           .limit(1);
         if (orgLookupError) throw new Error(orgLookupError.message);
 
@@ -1411,12 +1429,25 @@ export async function importHierarchyCsvAction(_prevState: ActionState = emptySt
             .insert({
               name: organizationName,
               org_code: orgCode,
-              fiscal_year_id: fiscalYearId
+              fiscal_year_id: null
             })
             .select("id")
             .single();
           if (orgError) throw new Error(orgError.message);
           organizationId = orgData.id as string;
+        }
+
+        if (fiscalYearId && organizationId) {
+          const { error: membershipError } = await supabase.from("fiscal_year_organizations").upsert(
+            {
+              fiscal_year_id: fiscalYearId,
+              organization_id: organizationId,
+              active: true,
+              project_tracking_required: true
+            },
+            { onConflict: "fiscal_year_id,organization_id" }
+          );
+          if (membershipError) throw new Error(membershipError.message);
         }
       }
 
