@@ -670,6 +670,20 @@ export type IncomeRow = {
   createdAt: string;
 };
 
+export type RevenuePerformanceRow = {
+  fiscalYearId: string;
+  fiscalYearName: string;
+  organizationId: string;
+  organizationLabel: string;
+  accountCodeId: string;
+  accountCode: string;
+  accountName: string;
+  targetAmount: number;
+  receivedAmount: number;
+  remainingToTarget: number;
+  overTargetAmount: number;
+};
+
 export type HierarchyRow = {
   fiscalYearId: string | null;
   fiscalYearName: string | null;
@@ -3540,6 +3554,42 @@ export async function getIncomeRows(): Promise<IncomeRow[]> {
       createdAt
     };
   });
+}
+
+export async function getRevenuePerformanceRows(options?: {
+  fiscalYearId?: string;
+  organizationId?: string;
+}): Promise<RevenuePerformanceRow[]> {
+  const supabase = await getSupabaseServerClient();
+  let query = supabase
+    .from("v_institutional_revenue_performance")
+    .select(
+      "fiscal_year_id, fiscal_year_name, organization_id, org_code, organization_name, account_code_id, account_code, account_name, target_amount, received_amount, remaining_to_target, over_target_amount"
+    )
+    .order("org_code", { ascending: true })
+    .order("account_code", { ascending: true });
+
+  if (options?.fiscalYearId && options.fiscalYearId !== "all") {
+    query = query.eq("fiscal_year_id", options.fiscalYearId);
+  }
+  if (options?.organizationId) query = query.eq("organization_id", options.organizationId);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    fiscalYearId: String(row.fiscal_year_id ?? ""),
+    fiscalYearName: String(row.fiscal_year_name ?? "Fiscal Year"),
+    organizationId: String(row.organization_id ?? ""),
+    organizationLabel: `${String(row.org_code ?? "-")} | ${String(row.organization_name ?? "Organization")}`,
+    accountCodeId: String(row.account_code_id ?? ""),
+    accountCode: String(row.account_code ?? "-"),
+    accountName: String(row.account_name ?? "Revenue"),
+    targetAmount: asNumber(row.target_amount as string | number | null),
+    receivedAmount: asNumber(row.received_amount as string | number | null),
+    remainingToTarget: asNumber(row.remaining_to_target as string | number | null),
+    overTargetAmount: asNumber(row.over_target_amount as string | number | null)
+  }));
 }
 
 function resolvedPurchaseAmount(row: {

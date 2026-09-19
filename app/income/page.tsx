@@ -6,7 +6,8 @@ import {
   getFiscalYearOptions,
   getFiscalYearOrganizationOptions,
   getIncomeRows,
-  getProductionCategoryOptions
+  getProductionCategoryOptions,
+  getRevenuePerformanceRows
 } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
 import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
@@ -34,10 +35,15 @@ export default async function IncomePage({
   ]);
   const selectedFiscalYearId = resolveRequestedFiscalYearId(fiscalYearOptions, requestedFiscalYearId, { allowAll: true });
   const showAllFiscalYears = selectedFiscalYearId === "all";
+  const allRevenuePerformance = await getRevenuePerformanceRows();
+  const revenuePerformance = allRevenuePerformance.filter((row) => {
+    if (!showAllFiscalYears && selectedFiscalYearId && row.fiscalYearId !== selectedFiscalYearId) return false;
+    if (selectedOrganizationId && row.organizationId !== selectedOrganizationId) return false;
+    return true;
+  });
 
   const organizationById = new Map(organizations.map((organization) => [organization.id, organization]));
   const revenueAccountCodes = accountCodeOptions.filter((accountCode) => accountCode.isRevenue);
-  const otherAccountCodes = accountCodeOptions.filter((accountCode) => !accountCode.isRevenue);
   const orgIdsInSelectedFy = new Set(
     rows
       .filter((row) => showAllFiscalYears || !selectedFiscalYearId || row.fiscalYearId === selectedFiscalYearId)
@@ -56,9 +62,8 @@ export default async function IncomePage({
     {
       fiscalYearName: string;
       organizationLabel: string;
-      startingBudget: number;
-      additionalIncome: number;
-      total: number;
+      legacyStartingBudget: number;
+      receivedRevenue: number;
     }
   >();
 
@@ -70,13 +75,11 @@ export default async function IncomePage({
     const bucket = scopeBuckets.get(bucketKey) ?? {
       fiscalYearName,
       organizationLabel,
-      startingBudget: 0,
-      additionalIncome: 0,
-      total: 0
+      legacyStartingBudget: 0,
+      receivedRevenue: 0
     };
-    if (row.incomeType === "starting_budget") bucket.startingBudget += row.amount;
-    else bucket.additionalIncome += row.amount;
-    bucket.total += row.amount;
+    if (row.incomeType === "starting_budget") bucket.legacyStartingBudget += row.amount;
+    else bucket.receivedRevenue += row.amount;
     scopeBuckets.set(bucketKey, bucket);
   }
 
@@ -85,27 +88,41 @@ export default async function IncomePage({
   );
 
   const totals = {
-    overall: 0,
-    startingBudget: 0,
+    received: 0,
+    legacyStartingBudget: 0,
     donations: 0,
     ticketSales: 0,
     other: 0
   };
 
   for (const row of filteredRows) {
-    totals.overall += row.amount;
-    if (row.incomeType === "starting_budget") totals.startingBudget += row.amount;
-    else if (row.incomeType === "donation") totals.donations += row.amount;
+    if (row.incomeType === "starting_budget") totals.legacyStartingBudget += row.amount;
+    else if (row.incomeType === "donation") {
+      totals.received += row.amount;
+      totals.donations += row.amount;
+    }
     else if (row.incomeType === "ticket_sales") totals.ticketSales += row.amount;
     else totals.other += row.amount;
+    if (row.incomeType === "ticket_sales" || row.incomeType === "other") totals.received += row.amount;
   }
+  const performanceTotals = revenuePerformance.reduce(
+    (summary, row) => {
+      summary.target += row.targetAmount;
+      summary.received += row.receivedAmount;
+      summary.remaining += row.remainingToTarget;
+      summary.over += row.overTargetAmount;
+      return summary;
+    },
+    { target: 0, received: 0, remaining: 0, over: 0 }
+  );
+  const unlinkedRevenue = Math.max(totals.received - performanceTotals.received, 0);
 
   return (
     <section>
       <header className="sectionHeader">
-        <p className="eyebrow">Income</p>
-        <h1>Income and Starting Budget</h1>
-        <p className="heroSubtitle">Track initial budget allocations plus incoming ticket and donation revenue by fiscal year and organization.</p>
+        <p className="eyebrow">Revenue</p>
+        <h1>Revenue</h1>
+        <p className="heroSubtitle">Post received revenue against institutional targets. Revenue offsets the target for reporting and never becomes available to spend.</p>
       </header>
 
       <article className="panel requestFormPanel">
@@ -141,69 +158,109 @@ export default async function IncomePage({
         </form>
       </article>
 
-      <article className="panel requestFormPanel">
-        <h2>Add Income Entry</h2>
-        <AddIncomeForm
-          organizations={organizations}
-          fiscalYears={fiscalYearOptions}
-          defaultFiscalYearId={showAllFiscalYears ? fiscalYearOptions[0]?.id ?? "" : selectedFiscalYearId}
-          revenueAccountCodes={revenueAccountCodes}
-          otherAccountCodes={otherAccountCodes}
-          productionCategoryOptions={productionCategoryOptions}
-        />
-      </article>
-
-      <div className="gridCards">
+      <div className="institutionalSummaryGrid" aria-label="Revenue summary">
         <article className="projectCard">
-          <h2>Total Income</h2>
-          <p className="heroTitle">{formatCurrency(totals.overall)}</p>
+          <h2>Target</h2>
+          <p className="heroTitle">{formatCurrency(performanceTotals.target)}</p>
         </article>
         <article className="projectCard">
-          <h2>Starting Budget</h2>
-          <p className="heroTitle">{formatCurrency(totals.startingBudget)}</p>
+          <h2>Received</h2>
+          <p className="heroTitle">{formatCurrency(performanceTotals.received)}</p>
         </article>
         <article className="projectCard">
-          <h2>Donations</h2>
-          <p className="heroTitle">{formatCurrency(totals.donations)}</p>
+          <h2>Remaining</h2>
+          <p className="heroTitle">{formatCurrency(performanceTotals.remaining)}</p>
         </article>
         <article className="projectCard">
-          <h2>Ticket Sales</h2>
-          <p className="heroTitle">{formatCurrency(totals.ticketSales)}</p>
+          <h2>Over target</h2>
+          <p className="heroTitle">{formatCurrency(performanceTotals.over)}</p>
         </article>
       </div>
+      {unlinkedRevenue > 0.005 ? (
+        <p className="warningNote">
+          {formatCurrency(unlinkedRevenue)} in received revenue is not linked to an institutional target in this scope. Assign a matching revenue account or create the target in Budget Planning.
+        </p>
+      ) : null}
 
       <article className="panel">
-        <h2>Income by Fiscal Year and Organization</h2>
+        <div className="sectionHeader compactHeader">
+          <div>
+            <p className="eyebrow">Institutional targets</p>
+            <h2>Revenue Performance</h2>
+          </div>
+          <a className="buttonLink" href="/budget-planning">Manage targets</a>
+        </div>
         <div className="tableWrap">
           <table>
             <thead>
               <tr>
                 <th>Fiscal Year</th>
                 <th>Organization</th>
-                <th>Starting Budget</th>
-                <th>Additional Income</th>
-                <th>Total Income</th>
+                <th>Revenue Account</th>
+                <th>Target</th>
+                <th>Received</th>
+                <th>Remaining</th>
+                <th>Over Target</th>
               </tr>
             </thead>
             <tbody>
-              {scopedTotals.length === 0 ? (
+              {revenuePerformance.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>No income entries for the selected scope.</td>
+                  <td colSpan={7}>No institutional revenue targets for the selected scope.</td>
                 </tr>
               ) : null}
-              {scopedTotals.map((scopeRow) => (
-                <tr key={`${scopeRow.fiscalYearName}-${scopeRow.organizationLabel}`}>
-                  <td>{scopeRow.fiscalYearName}</td>
-                  <td>{scopeRow.organizationLabel}</td>
-                  <td>{formatCurrency(scopeRow.startingBudget)}</td>
-                  <td>{formatCurrency(scopeRow.additionalIncome)}</td>
-                  <td>{formatCurrency(scopeRow.total)}</td>
+              {revenuePerformance.map((row) => (
+                <tr key={`${row.fiscalYearId}-${row.organizationId}-${row.accountCodeId}`}>
+                  <td>{row.fiscalYearName}</td>
+                  <td>{row.organizationLabel}</td>
+                  <td>{row.accountCode} | {row.accountName}</td>
+                  <td>{formatCurrency(row.targetAmount)}</td>
+                  <td><strong>{formatCurrency(row.receivedAmount)}</strong></td>
+                  <td>{formatCurrency(row.remainingToTarget)}</td>
+                  <td>{formatCurrency(row.overTargetAmount)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </article>
+
+      <details className="panel revenueEntryPanel">
+        <summary>
+          <span><strong>Add Revenue Entry</strong><small>Post a receipt to a revenue account and its institutional target.</small></span>
+        </summary>
+        <AddIncomeForm
+          organizations={organizations}
+          fiscalYears={fiscalYearOptions}
+          defaultFiscalYearId={showAllFiscalYears ? fiscalYearOptions[0]?.id ?? "" : selectedFiscalYearId}
+          revenueAccountCodes={revenueAccountCodes}
+          revenueTargets={allRevenuePerformance}
+          productionCategoryOptions={productionCategoryOptions}
+        />
+      </details>
+
+      {totals.legacyStartingBudget !== 0 ? (
+        <details className="panel legacyBudgetPanel">
+          <summary>
+            <span><strong>Historical Starting-Budget Records</strong><small>{formatCurrency(totals.legacyStartingBudget)} retained for history; new allocations belong in Budget Planning.</small></span>
+          </summary>
+          <div className="tableWrap">
+            <table>
+              <thead><tr><th>Fiscal Year</th><th>Organization</th><th>Historical starting budget</th><th>Received revenue</th></tr></thead>
+              <tbody>
+                {scopedTotals.map((scopeRow) => (
+                  <tr key={`${scopeRow.fiscalYearName}-${scopeRow.organizationLabel}`}>
+                    <td>{scopeRow.fiscalYearName}</td>
+                    <td>{scopeRow.organizationLabel}</td>
+                    <td>{formatCurrency(scopeRow.legacyStartingBudget)}</td>
+                    <td>{formatCurrency(scopeRow.receivedRevenue)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      ) : null}
 
       <IncomeTable
         rows={filteredRows}

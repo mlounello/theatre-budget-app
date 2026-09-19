@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { createIncomeEntryAction, type ActionState } from "@/app/income/actions";
-import type { AccountCodeOption, FiscalYearOption, OrganizationOption, ProductionCategoryOption } from "@/lib/db";
+import type { AccountCodeOption, FiscalYearOption, OrganizationOption, ProductionCategoryOption, RevenuePerformanceRow } from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
@@ -11,19 +11,21 @@ export function AddIncomeForm({
   fiscalYears,
   defaultFiscalYearId,
   revenueAccountCodes,
-  otherAccountCodes,
+  revenueTargets,
   productionCategoryOptions
 }: {
   organizations: OrganizationOption[];
   fiscalYears: FiscalYearOption[];
   defaultFiscalYearId: string;
   revenueAccountCodes: AccountCodeOption[];
-  otherAccountCodes: AccountCodeOption[];
+  revenueTargets: RevenuePerformanceRow[];
   productionCategoryOptions: ProductionCategoryOption[];
 }) {
   const [state, formAction] = useActionState(createIncomeEntryAction, initialState);
   const formRef = useRef<HTMLFormElement | null>(null);
   const [fiscalYearId, setFiscalYearId] = useState(defaultFiscalYearId);
+  const [organizationId, setOrganizationId] = useState("");
+  const [accountCodeId, setAccountCodeId] = useState("");
   const filteredOrganizations = useMemo(() => {
     const preferred = new Map<string, OrganizationOption>();
     for (const organization of organizations) {
@@ -35,10 +37,24 @@ export function AddIncomeForm({
       (a, b) => a.sortOrder - b.sortOrder || a.orgCode.localeCompare(b.orgCode) || a.name.localeCompare(b.name)
     );
   }, [fiscalYearId, organizations]);
+  const targetAccountIds = useMemo(
+    () => new Set(
+      revenueTargets
+        .filter((target) => target.fiscalYearId === fiscalYearId && target.organizationId === organizationId)
+        .map((target) => target.accountCodeId)
+    ),
+    [fiscalYearId, organizationId, revenueTargets]
+  );
+  const targetAccountCodes = useMemo(
+    () => revenueAccountCodes.filter((accountCode) => targetAccountIds.has(accountCode.id)),
+    [revenueAccountCodes, targetAccountIds]
+  );
 
   useEffect(() => {
     if (state.ok && state.message && formRef.current) {
       formRef.current.reset();
+      setOrganizationId("");
+      setAccountCodeId("");
     }
   }, [state]);
 
@@ -51,7 +67,11 @@ export function AddIncomeForm({
       ) : null}
       <label>
         Fiscal Year
-        <select name="fiscalYearId" value={fiscalYearId} onChange={(event) => setFiscalYearId(event.target.value)} required>
+        <select name="fiscalYearId" value={fiscalYearId} onChange={(event) => {
+          setFiscalYearId(event.target.value);
+          setOrganizationId("");
+          setAccountCodeId("");
+        }} required>
           <option value="">Select fiscal year</option>
           {fiscalYears.map((fiscalYear) => (
             <option key={fiscalYear.id} value={fiscalYear.id}>
@@ -62,7 +82,10 @@ export function AddIncomeForm({
       </label>
       <label>
         Organization
-        <select name="organizationId" required>
+        <select name="organizationId" value={organizationId} onChange={(event) => {
+          setOrganizationId(event.target.value);
+          setAccountCodeId("");
+        }} required>
           <option value="">Select organization</option>
           {filteredOrganizations.map((organization) => (
             <option key={organization.id} value={organization.id}>
@@ -73,12 +96,11 @@ export function AddIncomeForm({
       </label>
 
       <label>
-        Income Type
-        <select name="incomeType" defaultValue="starting_budget" required>
-          <option value="starting_budget">Starting Budget</option>
-          <option value="donation">Donation</option>
+        Revenue Type
+        <select name="incomeType" defaultValue="ticket_sales" required>
           <option value="ticket_sales">Ticket Sales</option>
-          <option value="other">Other</option>
+          <option value="donation">Donation</option>
+          <option value="other">Other Revenue</option>
         </select>
       </label>
       <label>
@@ -93,28 +115,18 @@ export function AddIncomeForm({
         </select>
       </label>
       <label>
-        Banner Account Code (optional)
-        <select name="bannerAccountCodeId" defaultValue="">
-          <option value="">Unassigned</option>
-          {revenueAccountCodes.length > 0 ? (
-            <optgroup label="Revenue Accounts">
-              {revenueAccountCodes.map((accountCode) => (
-                <option key={accountCode.id} value={accountCode.id}>
-                  {accountCode.label}
-                </option>
-              ))}
-            </optgroup>
-          ) : null}
-          {otherAccountCodes.length > 0 ? (
-            <optgroup label="Other Accounts">
-              {otherAccountCodes.map((accountCode) => (
-                <option key={accountCode.id} value={accountCode.id}>
-                  {accountCode.label}
-                </option>
-              ))}
-            </optgroup>
-          ) : null}
+        Revenue Account
+        <select name="bannerAccountCodeId" value={accountCodeId} onChange={(event) => setAccountCodeId(event.target.value)} required>
+          <option value="">{organizationId ? "Select targeted revenue account" : "Select fiscal year and organization first"}</option>
+          {targetAccountCodes.map((accountCode) => (
+            <option key={accountCode.id} value={accountCode.id}>
+              {accountCode.label}
+            </option>
+          ))}
         </select>
+        {organizationId && targetAccountCodes.length === 0 ? (
+          <small>No revenue targets exist for this organization and fiscal year. Add one in Budget Planning first.</small>
+        ) : null}
       </label>
 
       <label>
@@ -138,7 +150,7 @@ export function AddIncomeForm({
       </label>
 
       <button type="submit" className="buttonLink buttonPrimary">
-        Save Income
+        Post Revenue
       </button>
     </form>
   );

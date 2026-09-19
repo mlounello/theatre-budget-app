@@ -72,6 +72,38 @@ async function requireFiscalYearOrganizationMembership(
   if (error || !data) throw new Error("The selected organization is not active in the selected fiscal year.");
 }
 
+async function requireRevenueAccount(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  accountCodeId: string
+): Promise<void> {
+  if (!accountCodeId) throw new Error("Revenue account is required.");
+  const { data, error } = await supabase
+    .from("account_codes")
+    .select("id")
+    .eq("id", accountCodeId)
+    .eq("is_revenue", true)
+    .maybeSingle();
+  if (error || !data) throw new Error("Select an active revenue account.");
+}
+
+async function requireRevenueTarget(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  fiscalYearId: string,
+  organizationId: string,
+  accountCodeId: string
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("budget_plans")
+    .select("id")
+    .eq("fiscal_year_id", fiscalYearId)
+    .eq("organization_id", organizationId)
+    .eq("account_code_id", accountCodeId)
+    .maybeSingle();
+  if (error || !data) {
+    throw new Error("Create an institutional revenue target for this fiscal year, organization, and account before posting revenue.");
+  }
+}
+
 export async function createIncomeEntryAction(
   prevState: ActionState = emptyState,
   formData: FormData
@@ -97,8 +129,11 @@ export async function createIncomeEntryAction(
 
     if (!fiscalYearId) return err("Fiscal year is required.");
     if (!organizationId) return err("Organization is required.");
+    if (incomeType === "starting_budget") return err("New starting-budget entries are managed in Budget Planning.");
     if (amount === 0) return err("Amount must be non-zero.");
     await requireFiscalYearOrganizationMembership(supabase, fiscalYearId, organizationId);
+    await requireRevenueAccount(supabase, bannerAccountCodeId);
+    await requireRevenueTarget(supabase, fiscalYearId, organizationId, bannerAccountCodeId);
 
     const lineName = lineNameInput || defaultLineName(incomeType);
 
@@ -135,9 +170,10 @@ export async function createIncomeEntryAction(
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath("/income");
-    return ok("Income entry saved.");
+    revalidatePath("/institutional-budget");
+    return ok("Revenue entry posted.");
   } catch (error) {
-    return err(getErrorMessage(error, "Could not save income entry."));
+    return err(getErrorMessage(error, "Could not post revenue entry."));
   }
 }
 
@@ -165,7 +201,7 @@ export async function updateIncomeEntryAction(
     const amount = parseMoney(formData.get("amount"));
     const receivedOn = String(formData.get("receivedOn") ?? "").trim();
 
-    if (!id) return err("Income entry id is required.");
+    if (!id) return err("Revenue entry id is required.");
     if (!fiscalYearId) return err("Fiscal year is required.");
     if (!organizationId) return err("Organization is required.");
     if (amount === 0) return err("Amount must be non-zero.");
@@ -218,9 +254,10 @@ export async function updateIncomeEntryAction(
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath("/income");
-    return ok("Income entry updated.");
+    revalidatePath("/institutional-budget");
+    return ok("Revenue entry updated.");
   } catch (error) {
-    return err(getErrorMessage(error, "Could not update income entry."));
+    return err(getErrorMessage(error, "Could not update revenue entry."));
   }
 }
 
@@ -238,7 +275,7 @@ export async function deleteIncomeEntryAction(
     if (!user) return err("You must be signed in.");
 
     const id = String(formData.get("id") ?? "").trim();
-    if (!id) return err("Income entry id is required.");
+    if (!id) return err("Revenue entry id is required.");
 
     const { error } = await supabase.from("income_lines").delete().eq("id", id);
     if (error) return err(error.message);
@@ -246,9 +283,9 @@ export async function deleteIncomeEntryAction(
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath("/income");
-    return ok("Income entry deleted.");
+    return ok("Revenue entry deleted.");
   } catch (error) {
-    return err(getErrorMessage(error, "Could not delete income entry."));
+    return err(getErrorMessage(error, "Could not delete revenue entry."));
   }
 }
 
@@ -266,7 +303,7 @@ export async function bulkUpdateIncomeEntriesAction(
     if (!user) return err("You must be signed in.");
 
     const ids = parseIdsJson(formData.get("selectedIdsJson"));
-    if (ids.length === 0) return err("Select at least one income entry.");
+    if (ids.length === 0) return err("Select at least one revenue entry.");
 
     const applyOrganization = formData.get("applyOrganization") === "on";
     const applyType = formData.get("applyIncomeType") === "on";
@@ -291,6 +328,7 @@ export async function bulkUpdateIncomeEntriesAction(
     const targetReceivedOn = String(formData.get("receivedOn") ?? "").trim();
 
     if (applyOrganization && !targetOrganizationId) return err("Organization is required when applying organization.");
+    if (applyType && targetIncomeType === "starting_budget") return err("New starting-budget entries are managed in Budget Planning.");
     if (applyAmount && targetAmount === 0) return err("Amount must be non-zero when applying amount.");
 
     const { data: existingRows, error: existingError } = await supabase
@@ -372,9 +410,9 @@ export async function bulkUpdateIncomeEntriesAction(
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath("/income");
-    return ok("Bulk income update saved.");
+    return ok("Bulk revenue update saved.");
   } catch (error) {
-    return err(getErrorMessage(error, "Could not bulk update income entries."));
+    return err(getErrorMessage(error, "Could not bulk update revenue entries."));
   }
 }
 
@@ -392,7 +430,7 @@ export async function bulkDeleteIncomeEntriesAction(
     if (!user) return err("You must be signed in.");
 
     const ids = parseIdsJson(formData.get("selectedIdsJson"));
-    if (ids.length === 0) return err("Select at least one income entry.");
+    if (ids.length === 0) return err("Select at least one revenue entry.");
 
     const { error } = await supabase.from("income_lines").delete().in("id", ids);
     if (error) return err(error.message);
@@ -400,9 +438,9 @@ export async function bulkDeleteIncomeEntriesAction(
     revalidatePath("/");
     revalidatePath("/overview");
     revalidatePath("/income");
-    return ok("Selected income entries deleted.");
+    return ok("Selected revenue entries deleted.");
   } catch (error) {
-    return err(getErrorMessage(error, "Could not delete selected income entries."));
+    return err(getErrorMessage(error, "Could not delete selected revenue entries."));
   }
 }
 
