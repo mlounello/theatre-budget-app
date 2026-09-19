@@ -13,14 +13,25 @@ type FundingClaim = {
   claimNumber: string;
   authorizedAmount: number;
   settledAmount: number;
-  projectId: string | null;
-  organizationId: string;
   creditCardId: string | null;
 };
-type DraftLine = { expenseNumber: string; title: string; amount: string; expenseDate: string; note: string };
+type DraftLine = {
+  expenseNumber: string;
+  title: string;
+  amount: string;
+  expenseDate: string;
+  note: string;
+  projectId: string;
+  organizationId: string;
+  productionCategoryId: string;
+  bannerAccountCodeId: string;
+};
 
 const initialState: ExpenseClaimActionState = { ok: true, message: "", timestamp: 0 };
-const blankLine = (): DraftLine => ({ expenseNumber: "", title: "", amount: "", expenseDate: "", note: "" });
+const blankLine = (): DraftLine => ({
+  expenseNumber: "", title: "", amount: "", expenseDate: "", note: "",
+  projectId: "", organizationId: "", productionCategoryId: "", bannerAccountCodeId: ""
+});
 
 export function ExpenseClaimForm({
   fiscalYearId,
@@ -43,8 +54,6 @@ export function ExpenseClaimForm({
 }) {
   const [state, action] = useActionState(createExpenseClaimAction, initialState);
   const [type, setType] = useState<"funding_request" | "monthly_reconciliation" | "reimbursement">("funding_request");
-  const [projectId, setProjectId] = useState("");
-  const [organizationId, setOrganizationId] = useState("");
   const [creditCardId, setCreditCardId] = useState("");
   const [authorizationClaimId, setAuthorizationClaimId] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([blankLine()]);
@@ -52,11 +61,9 @@ export function ExpenseClaimForm({
   const selectedAuthorization = fundingClaims.find((claim) => claim.id === authorizationClaimId);
   const availableAuthorizations = useMemo(
     () => fundingClaims.filter((claim) =>
-      (!projectId || claim.projectId === projectId) &&
-      (!organizationId || claim.organizationId === organizationId) &&
       (!creditCardId || claim.creditCardId === creditCardId)
     ),
-    [fundingClaims, projectId, organizationId, creditCardId]
+    [fundingClaims, creditCardId]
   );
   const overage = selectedAuthorization ? Math.max(total - selectedAuthorization.authorizedAmount, 0) : 0;
 
@@ -105,40 +112,6 @@ export function ExpenseClaimForm({
           Claim Month
           <input name="claimMonth" type="month" required={type === "monthly_reconciliation"} />
         </label>
-        <label>
-          Theatre Project
-          <select name="projectId" value={projectId} onChange={(event) => {
-            setProjectId(event.target.value);
-            if (event.target.value) setOrganizationId("");
-          }}>
-            <option value="">No theatre project</option>
-            {projects.map((project) => <option key={project.id} value={project.id}>{project.name}{project.season ? ` (${project.season})` : ""}</option>)}
-          </select>
-        </label>
-        <label>
-          Organization Budget
-          <select name="organizationId" value={organizationId} onChange={(event) => {
-            setOrganizationId(event.target.value);
-            if (event.target.value) setProjectId("");
-          }}>
-            <option value="">No organization budget</option>
-            {organizations.map((organization) => <option key={organization.id} value={organization.id}>{organization.orgCode} | {organization.name}</option>)}
-          </select>
-        </label>
-        <label>
-          Department
-          <select name="productionCategoryId" required={Boolean(projectId)}>
-            <option value="">{projectId ? "Select department" : "Not required"}</option>
-            {productionCategories.map((option) => <option key={option.id} value={option.id}>{option.name ?? option.label}</option>)}
-          </select>
-        </label>
-        <label>
-          Banner Account
-          <select name="bannerAccountCodeId" required>
-            <option value="">Select account</option>
-            {accountCodes.map((option) => <option key={option.id} value={option.id}>{option.label ?? option.name}</option>)}
-          </select>
-        </label>
       </div>
 
       {type === "monthly_reconciliation" ? (
@@ -159,7 +132,7 @@ export function ExpenseClaimForm({
         <div className="contractsPanelHeader">
           <div>
             <h3>Expenses</h3>
-            <p className="helperText">Each purchase or receipt is its own EX###### Expense inside this EC###### claim.</p>
+            <p className="helperText">Each EX###### Expense selects its own budget destination. The EC###### claim is only the collection.</p>
           </div>
           <button type="button" className="tinyButton" onClick={() => setLines((current) => [...current, blankLine()])}>Add Expense</button>
         </div>
@@ -171,6 +144,43 @@ export function ExpenseClaimForm({
               <label>Purchase / Expense<input value={line.title} onChange={(event) => updateLine(index, { title: event.target.value })} required /></label>
               <label>Amount<input type="number" min="0.01" step="0.01" value={line.amount} onChange={(event) => updateLine(index, { amount: event.target.value })} required /></label>
               <label>Date<input type="date" value={line.expenseDate} onChange={(event) => updateLine(index, { expenseDate: event.target.value })} /></label>
+              <label>
+                Charge To
+                <select
+                  value={line.projectId ? `project:${line.projectId}` : line.organizationId ? `organization:${line.organizationId}` : ""}
+                  onChange={(event) => {
+                    const [scopeType, scopeId] = event.target.value.split(":");
+                    updateLine(index, {
+                      projectId: scopeType === "project" ? scopeId : "",
+                      organizationId: scopeType === "organization" ? scopeId : "",
+                      productionCategoryId: ""
+                    });
+                  }}
+                  required
+                >
+                  <option value="">Select project or organization budget</option>
+                  <optgroup label="Theatre Projects">
+                    {projects.map((project) => <option key={project.id} value={`project:${project.id}`}>{project.name}{project.season ? ` (${project.season})` : ""}</option>)}
+                  </optgroup>
+                  <optgroup label="Organization Budgets">
+                    {organizations.map((organization) => <option key={organization.id} value={`organization:${organization.id}`}>{organization.orgCode} | {organization.name}</option>)}
+                  </optgroup>
+                </select>
+              </label>
+              <label>
+                Production Category
+                <select value={line.productionCategoryId} onChange={(event) => updateLine(index, { productionCategoryId: event.target.value })} required={Boolean(line.projectId)} disabled={!line.projectId}>
+                  <option value="">{line.projectId ? "Select category" : "Not used for organization budgets"}</option>
+                  {productionCategories.map((option) => <option key={option.id} value={option.id}>{option.name ?? option.label}</option>)}
+                </select>
+              </label>
+              <label>
+                Banner Account / FOAP Charge
+                <select value={line.bannerAccountCodeId} onChange={(event) => updateLine(index, { bannerAccountCodeId: event.target.value })} required>
+                  <option value="">Select account</option>
+                  {accountCodes.map((option) => <option key={option.id} value={option.id}>{option.label ?? option.name}</option>)}
+                </select>
+              </label>
               {type !== "funding_request" ? <label>Receipt<input name={`receiptFile_${index}`} type="file" accept="application/pdf,image/png,image/jpeg,image/webp,image/heic,image/heif" required /></label> : null}
               <label className="drawerFieldWide">Notes<input value={line.note} onChange={(event) => updateLine(index, { note: event.target.value })} /></label>
             </div>

@@ -16,7 +16,7 @@ export type ExpenseClaimView = {
   overageExplanation: string | null;
   projectLabel: string;
   cardLabel: string | null;
-  expenses: Array<{ id: string; expenseNumber: string | null; title: string; amount: number; stage: string | null }>;
+  expenses: Array<{ id: string; expenseNumber: string | null; title: string; amount: number; stage: string | null; budgetLabel: string; accountCode: string | null }>;
 };
 
 export function ExpenseClaimsPanel({
@@ -66,6 +66,8 @@ export function ExpenseClaimsPanel({
                     columns={[
                       { key: "number", label: "Expense", render: (expense) => expense.expenseNumber ?? "-" },
                       { key: "purchase", label: "Purchase", render: (expense) => expense.title },
+                      { key: "budget", label: "Budget / Category", render: (expense) => expense.budgetLabel },
+                      { key: "account", label: "Account", render: (expense) => expense.accountCode ?? "-" },
                       { key: "stage", label: "Stage", render: (expense) => expense.stage?.replaceAll("_", " ") ?? "-" },
                       { key: "amount", label: "Amount", numeric: true, render: (expense) => formatCurrency(expense.amount) }
                     ]}

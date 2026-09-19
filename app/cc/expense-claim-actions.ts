@@ -15,6 +15,10 @@ type ExpenseLineInput = {
   amount: number;
   expenseDate: string | null;
   note: string | null;
+  projectId: string | null;
+  organizationId: string | null;
+  productionCategoryId: string | null;
+  bannerAccountCodeId: string;
 };
 
 const RECEIPT_STORAGE_BUCKET = "purchase-receipts";
@@ -56,7 +60,11 @@ function parseExpenseLines(value: FormDataEntryValue | null): ExpenseLineInput[]
     title: String(row.title ?? "").trim(),
     amount: money(row.amount),
     expenseDate: /^\d{4}-\d{2}-\d{2}$/.test(String(row.expenseDate ?? "")) ? String(row.expenseDate) : null,
-    note: String(row.note ?? "").trim() || null
+    note: String(row.note ?? "").trim() || null,
+    projectId: String(row.projectId ?? "").trim() || null,
+    organizationId: String(row.organizationId ?? "").trim() || null,
+    productionCategoryId: String(row.productionCategoryId ?? "").trim() || null,
+    bannerAccountCodeId: String(row.bannerAccountCodeId ?? "").trim()
   }));
 }
 
@@ -95,14 +103,10 @@ export async function createExpenseClaimAction(
     const parsedInput = expenseClaimInputSchema.safeParse({
       claimType: claimType(formData.get("claimType")),
       fiscalYearId: String(formData.get("fiscalYearId") ?? "").trim(),
-      projectId: String(formData.get("projectId") ?? "").trim(),
-      organizationId: String(formData.get("organizationId") ?? "").trim(),
       creditCardId: String(formData.get("creditCardId") ?? "").trim(),
       claimNumber: String(formData.get("claimNumber") ?? "").trim().toUpperCase(),
       claimMonth: String(formData.get("claimMonth") ?? "").trim(),
       authorizationClaimId: String(formData.get("authorizationClaimId") ?? "").trim(),
-      productionCategoryId: String(formData.get("productionCategoryId") ?? "").trim(),
-      bannerAccountCodeId: String(formData.get("bannerAccountCodeId") ?? "").trim(),
       overageExplanation: String(formData.get("overageExplanation") ?? "").trim(),
       notes: String(formData.get("notes") ?? "").trim(),
       lines: parseExpenseLines(formData.get("linesJson"))
@@ -111,14 +115,10 @@ export async function createExpenseClaimAction(
     const {
       claimType: type,
       fiscalYearId,
-      projectId,
-      organizationId: selectedOrganizationId,
       creditCardId,
       claimNumber,
       claimMonth: claimMonthRaw,
       authorizationClaimId,
-      productionCategoryId,
-      bannerAccountCodeId,
       overageExplanation,
       notes,
       lines
@@ -129,41 +129,43 @@ export async function createExpenseClaimAction(
     })) {
       return err("Upload a receipt for every reconciled or reimbursed Expense.");
     }
-    let organizationId = selectedOrganizationId ?? "";
-    let budgetLineId: string | null = null;
-    if (projectId) {
-      await requireProjectRole(projectId, ["admin", "project_manager"], {
-        productionCategoryId,
-        errorMessage: "You do not have permission to create an Expense Claim for this project."
-      });
-      const { data: project, error } = await supabase
-        .from("projects").select("organization_id, fiscal_year_id").eq("id", projectId).single();
-      if (error || !project) return err("Project not found.");
-      if (project.fiscal_year_id !== fiscalYearId) return err("The project is not in the selected fiscal year.");
-      organizationId = String(project.organization_id ?? "");
-      const { data: resolvedLine, error: lineError } = await supabase.rpc("ensure_project_category_line", {
-        p_project_id: projectId,
-        p_production_category_id: productionCategoryId
-      });
-      if (lineError || !resolvedLine) return err(lineError?.message ?? "Could not resolve the project budget line.");
-      budgetLineId = resolvedLine as string;
-    } else {
-      const { data: membership, error } = await supabase.from("fiscal_year_organizations")
-        .select("id, project_tracking_required").eq("fiscal_year_id", fiscalYearId)
-        .eq("organization_id", organizationId).eq("active", true).maybeSingle();
-      if (error || !membership?.id) return err("That organization is not active in the selected fiscal year.");
-      if (membership.project_tracking_required) return err("That organization requires a theatre project.");
+    const resolvedLines: Array<ExpenseLineInput & { organizationId: string; budgetLineId: string | null }> = [];
+    for (const line of lines) {
+      if (line.projectId) {
+        await requireProjectRole(line.projectId, ["admin", "project_manager"], {
+          productionCategoryId: line.productionCategoryId,
+          errorMessage: `You do not have permission to charge ${line.expenseNumber} to that project or category.`
+        });
+        const { data: project, error } = await supabase
+          .from("projects").select("organization_id, fiscal_year_id").eq("id", line.projectId).single();
+        if (error || !project?.organization_id) return err(`The project for ${line.expenseNumber} could not be found.`);
+        if (project.fiscal_year_id !== fiscalYearId) return err(`${line.expenseNumber} uses a project outside the selected fiscal year.`);
+        const { data: resolvedLine, error: lineError } = await supabase.rpc("ensure_project_category_line", {
+          p_project_id: line.projectId,
+          p_production_category_id: line.productionCategoryId
+        });
+        if (lineError || !resolvedLine) return err(lineError?.message ?? `Could not resolve the project budget line for ${line.expenseNumber}.`);
+        resolvedLines.push({ ...line, organizationId: String(project.organization_id), budgetLineId: resolvedLine as string });
+      } else {
+        const organizationId = line.organizationId as string;
+        const { data: membership, error } = await supabase.from("fiscal_year_organizations")
+          .select("id, project_tracking_required").eq("fiscal_year_id", fiscalYearId)
+          .eq("organization_id", organizationId).eq("active", true).maybeSingle();
+        if (error || !membership?.id) return err(`The organization for ${line.expenseNumber} is not active in the selected fiscal year.`);
+        if (membership.project_tracking_required) return err(`${line.expenseNumber} must be charged through a theatre project.`);
+        resolvedLines.push({ ...line, organizationId, budgetLineId: null });
+      }
     }
 
     let authorization: {
       id: string;
       fiscal_year_id: string;
       project_id: string | null;
-      organization_id: string;
+      organization_id: string | null;
       credit_card_id: string | null;
       authorized_amount: number | string | null;
     } | null = null;
-    let authorizationPurchaseId: string | null = null;
+    let authorizationPurchaseIds: string[] = [];
     if (type === "monthly_reconciliation") {
       const requiredAuthorizationClaimId = authorizationClaimId as string;
       const { data, error } = await supabase.from("expense_claims")
@@ -171,13 +173,12 @@ export async function createExpenseClaimAction(
         .eq("id", requiredAuthorizationClaimId).eq("claim_type", "funding_request").single();
       if (error || !data) return err("The original funding request could not be found.");
       authorization = data;
-      if (data.fiscal_year_id !== fiscalYearId || (data.project_id ?? "") !== (projectId || "") ||
-          data.organization_id !== organizationId || data.credit_card_id !== creditCardId) {
-        return err("The reconciliation must use the same fiscal year, budget, and card as its funding request.");
+      if (data.fiscal_year_id !== fiscalYearId || data.credit_card_id !== creditCardId) {
+        return err("The reconciliation must use the same fiscal year and card as its funding request.");
       }
-      const { data: authorizationPurchase } = await supabase.from("purchases").select("id")
-        .eq("expense_claim_id", requiredAuthorizationClaimId).eq("expense_stage", "authorization").limit(1).maybeSingle();
-      authorizationPurchaseId = (authorizationPurchase?.id as string | undefined) ?? null;
+      const { data: authorizationPurchases } = await supabase.from("purchases").select("id")
+        .eq("expense_claim_id", requiredAuthorizationClaimId).eq("expense_stage", "authorization");
+      authorizationPurchaseIds = (authorizationPurchases ?? []).map((purchase) => purchase.id as string);
     }
 
     const total = Math.round(lines.reduce((sum, line) => sum + line.amount, 0) * 100) / 100;
@@ -189,12 +190,12 @@ export async function createExpenseClaimAction(
     const uploadedPaths: string[] = [];
     const expensePayload: Array<Record<string, unknown>> = [];
     try {
-      for (let index = 0; index < lines.length; index += 1) {
-        const line = lines[index];
+      for (let index = 0; index < resolvedLines.length; index += 1) {
+        const line = resolvedLines[index];
         const purchaseId = crypto.randomUUID();
         const upload = type === "funding_request"
           ? null
-          : await uploadReceipt(supabase, formData.get(`receiptFile_${index}`), projectId || organizationId, purchaseId);
+          : await uploadReceipt(supabase, formData.get(`receiptFile_${index}`), line.projectId || line.organizationId, purchaseId);
         if (upload) uploadedPaths.push(upload.path);
         const status = type === "monthly_reconciliation" ? "pending_cc" : "requested";
         expensePayload.push({
@@ -210,7 +211,12 @@ export async function createExpenseClaimAction(
           cc_workflow_status: type === "monthly_reconciliation" ? "receipts_uploaded" : type === "funding_request" ? "requested" : null,
           procurement_status: type === "monthly_reconciliation" ? "receipts_uploaded" : "requested",
           expense_stage: type === "funding_request" ? "authorization" : type === "reimbursement" ? "reimbursement" : "actual",
-          attachment_url: upload?.url ?? null
+          attachment_url: upload?.url ?? null,
+          project_id: line.projectId,
+          organization_id: line.organizationId,
+          budget_line_id: line.budgetLineId,
+          production_category_id: line.productionCategoryId,
+          banner_account_code_id: line.bannerAccountCodeId
         });
       }
 
@@ -218,8 +224,8 @@ export async function createExpenseClaimAction(
         p_claim: {
           id: crypto.randomUUID(),
           fiscal_year_id: fiscalYearId,
-          project_id: projectId,
-          organization_id: organizationId,
+          project_id: null,
+          organization_id: null,
           credit_card_id: creditCardId,
           claim_number: claimNumber,
           claim_type: type,
@@ -228,13 +234,13 @@ export async function createExpenseClaimAction(
           authorized_amount: authorizedAmount,
           settled_amount: type === "funding_request" ? null : total,
           authorization_claim_id: authorizationClaimId,
-          authorization_purchase_id: authorizationPurchaseId,
+          authorization_purchase_id: null,
           overage_explanation: overageExplanation,
           notes,
           entered_by_user_id: user.id,
-          budget_line_id: budgetLineId,
-          production_category_id: productionCategoryId,
-          banner_account_code_id: bannerAccountCodeId
+          budget_line_id: null,
+          production_category_id: null,
+          banner_account_code_id: null
         },
         p_expenses: expensePayload
       });
@@ -251,19 +257,23 @@ export async function createExpenseClaimAction(
           console.error("Expense Claim commitment sync failed", { claimNumber, purchaseId, syncError });
         }
       }
-      if (type === "monthly_reconciliation" && authorizationPurchaseId) {
-        try {
-          await createInstitutionalCommitmentForPurchase(supabase, authorizationPurchaseId, user.id);
-        } catch (syncError) {
-          commitmentWarning = true;
-          console.error("Expense Claim authorization commitment sync failed", { claimNumber, authorizationPurchaseId, syncError });
+      if (type === "monthly_reconciliation") {
+        for (const authorizationPurchaseId of authorizationPurchaseIds) {
+          try {
+            await createInstitutionalCommitmentForPurchase(supabase, authorizationPurchaseId, user.id);
+          } catch (syncError) {
+            commitmentWarning = true;
+            console.error("Expense Claim authorization commitment sync failed", { claimNumber, authorizationPurchaseId, syncError });
+          }
         }
       }
 
       revalidatePath("/cc");
       revalidatePath("/procurement");
       revalidatePath("/");
-      if (projectId) revalidatePath(`/projects/${projectId}`);
+      for (const projectId of new Set(resolvedLines.map((line) => line.projectId).filter(Boolean))) {
+        revalidatePath(`/projects/${projectId}`);
+      }
       return ok(
         `${claimNumber} saved with ${lines.length} Expense${lines.length === 1 ? "" : "s"}.` +
           (commitmentWarning ? " The claim is saved, but a budget-sync item needs administrator review." : "")

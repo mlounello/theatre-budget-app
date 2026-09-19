@@ -83,8 +83,6 @@ type FundingClaimRow = {
   claimNumber: string;
   authorizedAmount: number;
   settledAmount: number;
-  projectId: string | null;
-  organizationId: string;
   creditCardId: string | null;
 };
 
@@ -100,7 +98,7 @@ type ExpenseClaimRow = {
   overageExplanation: string | null;
   projectLabel: string;
   cardLabel: string | null;
-  expenses: Array<{ id: string; expenseNumber: string | null; title: string; amount: number; stage: string | null }>;
+  expenses: Array<{ id: string; expenseNumber: string | null; title: string; amount: number; stage: string | null; budgetLabel: string; accountCode: string | null }>;
 };
 
 const EXPENSE_CLAIM_PAGE_SIZE = 25;
@@ -185,13 +183,13 @@ export default async function CreditCardPage({
       .eq("fiscal_year_id", selectedFiscalYearId),
     supabase
       .from("expense_claims")
-      .select("id, claim_number, claim_type, claim_month, status, authorized_amount, settled_amount, authorization_claim_id, overage_explanation, project_id, organization_id, credit_card_id, projects(name, season), organizations(name, org_code), credit_cards(nickname), purchases!purchases_expense_claim_id_fkey(id, expense_number, title, estimated_amount, expense_stage)", { count: "exact" })
+      .select("id, claim_number, claim_type, claim_month, status, authorized_amount, settled_amount, authorization_claim_id, overage_explanation, project_id, organization_id, credit_card_id, projects(name, season), organizations(name, org_code), credit_cards(nickname), purchases!purchases_expense_claim_id_fkey(id, expense_number, title, estimated_amount, expense_stage, projects(name, season), organizations(name, org_code), production_categories(name), account_codes(code))", { count: "exact" })
       .eq("fiscal_year_id", selectedFiscalYearId)
       .order("created_at", { ascending: false })
       .range(expenseClaimRangeFrom, expenseClaimRangeTo),
     supabase
       .from("expense_claims")
-      .select("id, claim_number, claim_type, status, authorized_amount, settled_amount, authorization_claim_id, project_id, organization_id, credit_card_id")
+      .select("id, claim_number, claim_type, status, authorized_amount, settled_amount, authorization_claim_id, credit_card_id")
       .eq("fiscal_year_id", selectedFiscalYearId)
       .or("claim_type.eq.funding_request,authorization_claim_id.not.is.null")
       .limit(500),
@@ -223,7 +221,10 @@ export default async function CreditCardPage({
     const project = row.projects as { name?: string; season?: string | null } | null;
     const organization = row.organizations as { name?: string; org_code?: string } | null;
     const card = row.credit_cards as { nickname?: string } | null;
-    const claimExpenses = (row.purchases as Array<{ id?: string; expense_number?: string | null; title?: string; estimated_amount?: number | string; expense_stage?: string | null }> | null) ?? [];
+    const claimExpenses = (row.purchases as Array<{ id?: string; expense_number?: string | null; title?: string; estimated_amount?: number | string; expense_stage?: string | null; projects?: { name?: string; season?: string | null } | null; organizations?: { name?: string; org_code?: string } | null; production_categories?: { name?: string } | null; account_codes?: { code?: string } | null }> | null) ?? [];
+    const expenseScopeLabels = new Set(claimExpenses.map((expense) => expense.projects
+      ? `${expense.projects.name ?? "Project"}${expense.projects.season ? ` (${expense.projects.season})` : ""}`
+      : `${expense.organizations?.org_code ?? "-"} | ${expense.organizations?.name ?? "Organization Budget"}`));
     return {
       id: row.id as string,
       claimNumber: row.claim_number as string,
@@ -234,16 +235,22 @@ export default async function CreditCardPage({
       settledAmount: Number(row.settled_amount ?? 0),
       authorizationClaimId: (row.authorization_claim_id as string | null) ?? null,
       overageExplanation: (row.overage_explanation as string | null) ?? null,
-      projectLabel: project
+      projectLabel: expenseScopeLabels.size > 1
+        ? `${expenseScopeLabels.size} budget destinations`
+        : expenseScopeLabels.values().next().value ?? (project
         ? `${project.name ?? "Unknown Project"}${project.season ? ` (${project.season})` : ""}`
-        : `${organization?.org_code ?? "-"} | ${organization?.name ?? "Organization Budget"}`,
+        : organization ? `${organization.org_code ?? "-"} | ${organization.name ?? "Organization Budget"}` : "Expense-level budgets"),
       cardLabel: card?.nickname ?? null,
       expenses: claimExpenses.map((expense) => ({
         id: expense.id as string,
         expenseNumber: expense.expense_number ?? null,
         title: expense.title ?? "Expense",
         amount: Number(expense.estimated_amount ?? 0),
-        stage: expense.expense_stage ?? null
+        stage: expense.expense_stage ?? null,
+        budgetLabel: expense.projects
+          ? `${expense.projects.name ?? "Project"}${expense.production_categories?.name ? ` · ${expense.production_categories.name}` : ""}`
+          : `${expense.organizations?.org_code ?? "Organization"}`,
+        accountCode: expense.account_codes?.code ?? null
       }))
     };
   });
@@ -262,8 +269,6 @@ export default async function CreditCardPage({
       claimNumber: row.claim_number as string,
       authorizedAmount: Number(row.authorized_amount ?? 0),
       settledAmount: reconciledByAuthorization.get(row.id as string) ?? 0,
-      projectId: (row.project_id as string | null) ?? null,
-      organizationId: row.organization_id as string,
       creditCardId: (row.credit_card_id as string | null) ?? null
     }));
 

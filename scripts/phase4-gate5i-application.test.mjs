@@ -97,6 +97,21 @@ test("Credit Cards exposes focused funding, reconciliation, and reimbursement cl
   assert.match(form, /createExpenseClaimAction/);
 });
 
+test("Expense Claims are collections while every Expense owns its budget assignment", async () => {
+  const form = await read("app/cc/expense-claim-form.tsx");
+  const actions = await read("app/cc/expense-claim-actions.ts");
+  const migration = await read("supabase/migrations/20260919233000_expense_level_budget_assignments.sql");
+  assert.match(form, /Each EX###### Expense selects its own budget destination/);
+  assert.match(form, /Charge To/);
+  assert.match(form, /Production Category/);
+  assert.match(form, /Banner Account \/ FOAP Charge/);
+  assert.match(actions, /project_id: line\.projectId/);
+  assert.match(actions, /banner_account_code_id: line\.bannerAccountCodeId/);
+  assert.match(migration, /alter column organization_id drop not null/);
+  assert.match(migration, /nullif\(v_expense->>'production_category_id'/);
+  assert.match(migration, /v_expense->>'banner_account_code_id'/);
+});
+
 test("Procurement explicitly separates PO work from Expense Claims", async () => {
   const page = await read("app/procurement/page.tsx");
   const table = await read("app/procurement/procurement-table.tsx");

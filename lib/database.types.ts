@@ -700,7 +700,7 @@ export type Database = {
           "id": string;
           "fiscal_year_id": string;
           "project_id": string | null;
-          "organization_id": string;
+          "organization_id": string | null;
           "credit_card_id": string | null;
           "claim_number": string;
           "claim_type": string;
@@ -719,7 +719,7 @@ export type Database = {
           "id"?: string;
           "fiscal_year_id"?: string;
           "project_id"?: string | null;
-          "organization_id"?: string;
+          "organization_id"?: string | null;
           "credit_card_id"?: string | null;
           "claim_number"?: string;
           "claim_type"?: string;
@@ -738,7 +738,7 @@ export type Database = {
           "id"?: string;
           "fiscal_year_id"?: string;
           "project_id"?: string | null;
-          "organization_id"?: string;
+          "organization_id"?: string | null;
           "credit_card_id"?: string | null;
           "claim_number"?: string;
           "claim_type"?: string;

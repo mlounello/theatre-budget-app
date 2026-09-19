@@ -68,7 +68,7 @@ test("projectless organization reimbursements remain supported", async () => {
   const actions = await read("app/cc/expense-claim-actions.ts");
   assert.match(page, /organizationOptions\.filter\(\(organization\) => !organization\.projectTrackingRequired\)/);
   assert.match(form, /Organization Budget/);
-  assert.match(form, /name="organizationId"/);
+  assert.match(form, /organizationId/);
   assert.match(form, /name="fiscalYearId" value=\{fiscalYearId\}/);
   assert.match(actions, /organizationId/);
 });

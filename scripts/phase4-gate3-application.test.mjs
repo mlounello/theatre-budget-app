@@ -27,8 +27,8 @@ test("Credit Card writers require explicit fiscal-year scope", () => {
 
 test("Credit Card UI includes projectless organization reimbursements", () => {
   assert.match(ccClient, /ExpenseClaimForm/);
-  assert.match(expenseClaimForm, /name="organizationId"/);
-  assert.match(expenseClaimForm, /No organization budget/);
+  assert.match(expenseClaimForm, /organizationId/);
+  assert.match(expenseClaimForm, /Organization Budgets/);
   assert.match(ccPage, /getFiscalYearOrganizationOptions\(selectedFiscalYearId\)/);
   assert.match(ccPage, /organizations\(name, org_code\)/);
 });

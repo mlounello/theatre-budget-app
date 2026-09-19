@@ -102,8 +102,6 @@ type FundingClaim = {
   claimNumber: string;
   authorizedAmount: number;
   settledAmount: number;
-  projectId: string | null;
-  organizationId: string;
   creditCardId: string | null;
 };
 
