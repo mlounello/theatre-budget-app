@@ -57,6 +57,21 @@ function err(message: string): ActionState {
   return { ok: false, message, timestamp: Date.now() };
 }
 
+async function requireFiscalYearOrganizationMembership(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  fiscalYearId: string,
+  organizationId: string
+): Promise<void> {
+  const { data, error } = await supabase
+    .from("fiscal_year_organizations")
+    .select("id")
+    .eq("fiscal_year_id", fiscalYearId)
+    .eq("organization_id", organizationId)
+    .eq("active", true)
+    .maybeSingle();
+  if (error || !data) throw new Error("The selected organization is not active in the selected fiscal year.");
+}
+
 export async function createIncomeEntryAction(
   prevState: ActionState = emptyState,
   formData: FormData
@@ -70,6 +85,7 @@ export async function createIncomeEntryAction(
 
     if (!user) return err("You must be signed in.");
 
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
@@ -79,13 +95,16 @@ export async function createIncomeEntryAction(
     const amount = parseMoney(formData.get("amount"));
     const receivedOn = String(formData.get("receivedOn") ?? "").trim();
 
+    if (!fiscalYearId) return err("Fiscal year is required.");
     if (!organizationId) return err("Organization is required.");
     if (amount === 0) return err("Amount must be non-zero.");
+    await requireFiscalYearOrganizationMembership(supabase, fiscalYearId, organizationId);
 
     const lineName = lineNameInput || defaultLineName(incomeType);
 
     const withType = await supabase.from("income_lines").insert({
       organization_id: organizationId,
+      fiscal_year_id: fiscalYearId,
       project_id: null,
       production_category_id: productionCategoryId || null,
       banner_account_code_id: bannerAccountCodeId || null,
@@ -100,6 +119,7 @@ export async function createIncomeEntryAction(
     if (withType.error) {
       const fallback = await supabase.from("income_lines").insert({
         organization_id: organizationId,
+        fiscal_year_id: fiscalYearId,
         project_id: null,
         production_category_id: productionCategoryId || null,
         banner_account_code_id: bannerAccountCodeId || null,
@@ -135,6 +155,7 @@ export async function updateIncomeEntryAction(
     if (!user) return err("You must be signed in.");
 
     const id = String(formData.get("id") ?? "").trim();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
@@ -145,8 +166,10 @@ export async function updateIncomeEntryAction(
     const receivedOn = String(formData.get("receivedOn") ?? "").trim();
 
     if (!id) return err("Income entry id is required.");
+    if (!fiscalYearId) return err("Fiscal year is required.");
     if (!organizationId) return err("Organization is required.");
     if (amount === 0) return err("Amount must be non-zero.");
+    await requireFiscalYearOrganizationMembership(supabase, fiscalYearId, organizationId);
 
     const lineName = lineNameInput || defaultLineName(incomeType);
 
@@ -154,6 +177,7 @@ export async function updateIncomeEntryAction(
       .from("income_lines")
       .update({
         organization_id: organizationId,
+        fiscal_year_id: fiscalYearId,
         project_id: null,
         production_category_id: productionCategoryId || null,
         banner_account_code_id: bannerAccountCodeId || null,
@@ -172,6 +196,7 @@ export async function updateIncomeEntryAction(
         .from("income_lines")
         .update({
           organization_id: organizationId,
+          fiscal_year_id: fiscalYearId,
           project_id: null,
           production_category_id: productionCategoryId || null,
           banner_account_code_id: bannerAccountCodeId || null,

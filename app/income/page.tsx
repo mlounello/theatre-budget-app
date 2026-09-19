@@ -1,7 +1,13 @@
 import { AddIncomeForm } from "@/app/income/add-income-form";
 import { IncomeTable } from "@/app/income/income-table";
 import { formatCurrency } from "@/lib/format";
-import { getAccountCodeOptions, getFiscalYearOptions, getIncomeRows, getOrganizationOptions, getProductionCategoryOptions } from "@/lib/db";
+import {
+  getAccountCodeOptions,
+  getFiscalYearOptions,
+  getFiscalYearOrganizationOptions,
+  getIncomeRows,
+  getProductionCategoryOptions
+} from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
 import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
 import { redirect } from "next/navigation";
@@ -20,7 +26,7 @@ export default async function IncomePage({
   const selectedOrganizationId = (resolvedSearchParams?.org ?? "").trim();
 
   const [organizations, rows, accountCodeOptions, productionCategoryOptions, fiscalYearOptions] = await Promise.all([
-    getOrganizationOptions(),
+    getFiscalYearOrganizationOptions(),
     getIncomeRows(),
     getAccountCodeOptions(),
     getProductionCategoryOptions(),
@@ -139,6 +145,8 @@ export default async function IncomePage({
         <h2>Add Income Entry</h2>
         <AddIncomeForm
           organizations={organizations}
+          fiscalYears={fiscalYearOptions}
+          defaultFiscalYearId={showAllFiscalYears ? fiscalYearOptions[0]?.id ?? "" : selectedFiscalYearId}
           revenueAccountCodes={revenueAccountCodes}
           otherAccountCodes={otherAccountCodes}
           productionCategoryOptions={productionCategoryOptions}
@@ -200,6 +208,7 @@ export default async function IncomePage({
       <IncomeTable
         rows={filteredRows}
         organizations={organizations}
+        fiscalYears={fiscalYearOptions}
         accountCodeOptions={accountCodeOptions}
         productionCategoryOptions={productionCategoryOptions}
       />

@@ -204,11 +204,41 @@ function isExternalProcurementProjectName(name: string | null | undefined): bool
 async function getProjectMeta(
   supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
   projectId: string
-): Promise<{ id: string; name: string; isExternal: boolean }> {
-  const { data, error } = await supabase.from("projects").select("id, name").eq("id", projectId).single();
+): Promise<{ id: string; name: string; fiscalYearId: string; organizationId: string | null; isExternal: boolean }> {
+  const { data, error } = await supabase
+    .from("projects")
+    .select("id, name, fiscal_year_id, organization_id")
+    .eq("id", projectId)
+    .single();
   if (error || !data) throw new Error("Project not found.");
   const name = data.name as string;
-  return { id: data.id as string, name, isExternal: isExternalProcurementProjectName(name) };
+  return {
+    id: data.id as string,
+    name,
+    fiscalYearId: data.fiscal_year_id as string,
+    organizationId: (data.organization_id as string | null) ?? null,
+    isExternal: isExternalProcurementProjectName(name)
+  };
+}
+
+async function validateOrganizationFiscalYear(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  organizationId: string,
+  fiscalYearId: string
+): Promise<{ projectTrackingRequired: boolean }> {
+  const { data: membership, error: membershipError } = await supabase
+    .from("fiscal_year_organizations")
+    .select("organization_id, project_tracking_required")
+    .eq("fiscal_year_id", fiscalYearId)
+    .eq("organization_id", organizationId)
+    .eq("active", true)
+    .maybeSingle();
+  if (membershipError || !membership) {
+    throw new Error("The selected organization is not active in the selected fiscal year.");
+  }
+  return {
+    projectTrackingRequired: (membership.project_tracking_required as boolean | null) ?? true
+  };
 }
 
 async function ensureProjectCreateAccess(
@@ -357,6 +387,7 @@ export async function createProcurementOrderAction(
     if (!user) return err("You must be signed in.");
 
     const projectId = String(formData.get("projectId") ?? "").trim();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
     const budgetLineId = String(formData.get("budgetLineId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
@@ -373,15 +404,17 @@ export async function createProcurementOrderAction(
     const requestType = parseProcurementRequestType(formData.get("requestType"));
     const isCreditCard = requestType === "expense" ? formData.get("isCreditCard") === "on" : false;
 
+    if (!fiscalYearId) return err("Fiscal year is required.");
     if (!title) return err("Title is required.");
     if (orderValueRaw === "" || orderValue === 0) return err("Order value must be non-zero.");
     let budgetTracked = true;
     let explicitOrganizationId: string | null = null;
-    let projectMeta: { id: string; name: string; isExternal: boolean } | null = null;
+    let projectMeta: Awaited<ReturnType<typeof getProjectMeta>> | null = null;
 
     if (projectId) {
       await ensureProjectCreateAccess(supabase, user.id, projectId);
       projectMeta = await getProjectMeta(supabase, projectId);
+      if (projectMeta.fiscalYearId !== fiscalYearId) return err("Project must belong to the selected fiscal year.");
       budgetTracked = !projectMeta.isExternal;
       explicitOrganizationId = projectMeta.isExternal ? organizationId || null : null;
       if (projectMeta.isExternal && !explicitOrganizationId) return err("Organization is required for External Procurement.");
@@ -389,13 +422,8 @@ export async function createProcurementOrderAction(
     } else {
       if (!organizationId) return err("Organization is required when no project is selected.");
       await ensureOrganizationPmOrAdminAccess(organizationId);
-      const { data: organization, error: organizationError } = await supabase
-        .from("organizations")
-        .select("id, project_tracking_required")
-        .eq("id", organizationId)
-        .single();
-      if (organizationError || !organization) return err("Organization not found.");
-      if ((organization.project_tracking_required as boolean | null) ?? true) {
+      const membership = await validateOrganizationFiscalYear(supabase, organizationId, fiscalYearId);
+      if (membership.projectTrackingRequired) {
         return err("This organization requires a project for purchases.");
       }
       if (!bannerAccountCodeId) return err("Banner account code is required for a projectless purchase.");
@@ -446,6 +474,7 @@ export async function createProcurementOrderAction(
       .from("purchases")
       .insert({
         project_id: projectId || null,
+        fiscal_year_id: fiscalYearId,
         organization_id: explicitOrganizationId,
         budget_line_id: line?.id ?? null,
         production_category_id: productionCategoryId || null,
@@ -558,12 +587,14 @@ export async function createProcurementBatchAction(
     if (!user) return err("You must be signed in.");
 
     const projectId = String(formData.get("projectId") ?? "").trim();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
     const organizationId = String(formData.get("organizationId") ?? "").trim();
     const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
     const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
     const orderDate = parseDateInput(formData.get("orderDate"));
     const lines = parseBatchLinesJson(formData.get("linesJson"));
 
+    if (!fiscalYearId) return err("Fiscal year is required.");
     if (lines.length === 0) return err("Add at least one valid line (title + non-zero amount).");
 
     let budgetTracked = true;
@@ -571,6 +602,7 @@ export async function createProcurementBatchAction(
     if (projectId) {
       await ensureProjectCreateAccess(supabase, user.id, projectId);
       const projectMeta = await getProjectMeta(supabase, projectId);
+      if (projectMeta.fiscalYearId !== fiscalYearId) return err("Project must belong to the selected fiscal year.");
       budgetTracked = !projectMeta.isExternal;
       explicitOrganizationId = projectMeta.isExternal ? organizationId || null : null;
       if (projectMeta.isExternal && !explicitOrganizationId) return err("Organization is required for External Procurement.");
@@ -578,13 +610,8 @@ export async function createProcurementBatchAction(
     } else {
       if (!organizationId) return err("Organization is required when no project is selected.");
       await ensureOrganizationPmOrAdminAccess(organizationId);
-      const { data: organization, error: organizationError } = await supabase
-        .from("organizations")
-        .select("id, project_tracking_required")
-        .eq("id", organizationId)
-        .single();
-      if (organizationError || !organization) return err("Organization not found.");
-      if ((organization.project_tracking_required as boolean | null) ?? true) {
+      const membership = await validateOrganizationFiscalYear(supabase, organizationId, fiscalYearId);
+      if (membership.projectTrackingRequired) {
         return err("This organization requires a project for purchases.");
       }
       if (!bannerAccountCodeId) return err("Banner account code is required for projectless batch purchases.");
@@ -629,6 +656,7 @@ export async function createProcurementBatchAction(
         .from("purchases")
         .insert({
           project_id: projectId || null,
+          fiscal_year_id: fiscalYearId,
           organization_id: explicitOrganizationId,
           budget_line_id: line?.id ?? null,
           production_category_id: productionCategoryId || null,
@@ -736,7 +764,7 @@ export async function updateProcurementAction(
     const { data: existing, error: existingError } = await supabase
       .from("purchases")
       .select(
-        "id, project_id, organization_id, status, procurement_status, request_type, is_credit_card, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, budget_tracked, budget_line_id, ordered_on, received_on, paid_on"
+        "id, fiscal_year_id, project_id, organization_id, status, procurement_status, request_type, is_credit_card, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, budget_tracked, budget_line_id, ordered_on, received_on, paid_on"
       )
       .eq("id", id)
       .single();
@@ -748,22 +776,20 @@ export async function updateProcurementAction(
     }
     let budgetTracked = true;
     let explicitOrganizationId: string | null = null;
+    let nextFiscalYearId = (existing.fiscal_year_id as string | null) ?? null;
     if (nextProjectId) {
       const nextProjectMeta = await getProjectMeta(supabase, nextProjectId);
+      nextFiscalYearId = nextProjectMeta.fiscalYearId;
       budgetTracked = nextProjectMeta.isExternal ? false : requestedBudgetTracked;
       explicitOrganizationId = nextProjectMeta.isExternal ? organizationId || null : null;
       if (nextProjectMeta.isExternal && !explicitOrganizationId) return err("Organization is required for External Procurement.");
     } else {
       explicitOrganizationId = organizationId || ((existing.organization_id as string | null) ?? null);
       if (!explicitOrganizationId) return err("Organization is required when no project is selected.");
+      if (!nextFiscalYearId) return err("Fiscal year is required for a projectless purchase.");
       await ensureOrganizationPmOrAdminAccess(explicitOrganizationId);
-      const { data: organization, error: organizationError } = await supabase
-        .from("organizations")
-        .select("project_tracking_required")
-        .eq("id", explicitOrganizationId)
-        .single();
-      if (organizationError || !organization) return err("Organization not found.");
-      if (((organization.project_tracking_required as boolean | null) ?? true) && existing.project_id) {
+      const membership = await validateOrganizationFiscalYear(supabase, explicitOrganizationId, nextFiscalYearId);
+      if (membership.projectTrackingRequired) {
         return err("This organization requires a project.");
       }
       if (!bannerAccountCodeId) return err("Banner account code is required for a projectless purchase.");
@@ -848,6 +874,7 @@ export async function updateProcurementAction(
       .from("purchases")
       .update({
         project_id: nextProjectId || null,
+        fiscal_year_id: nextFiscalYearId,
         organization_id: explicitOrganizationId,
         budget_tracked: budgetTracked,
         budget_line_id: budgetTracked && nextProjectId ? verifiedBudgetLine?.id ?? (budgetLineId || null) : null,

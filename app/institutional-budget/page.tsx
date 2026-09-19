@@ -4,6 +4,7 @@ import { createBulkVarianceFromBucketsAction, createVarianceFromBucketAction } f
 import { getAccessContext } from "@/lib/access";
 import { formatCurrency } from "@/lib/format";
 import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
+import { getFiscalYearOrganizationOptions } from "@/lib/db";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 
 type MonthlyBudgetRow = {
@@ -62,20 +63,12 @@ export default async function InstitutionalBudgetPage({
   const negativeOnly = resolvedSearchParams?.negativeOnly === "1";
 
   const supabase = await getSupabaseServerClient();
-  const [{ data: fiscalYearData, error: fiscalYearError }, { data: organizationData, error: organizationError }] = await Promise.all([
-    supabase
-      .from("fiscal_years")
-      .select("id, name, start_date, end_date, sort_order")
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true }),
-    supabase
-      .from("organizations")
-      .select("id, org_code, name, fiscal_year_id")
-      .order("org_code", { ascending: true })
-      .order("name", { ascending: true })
-  ]);
+  const { data: fiscalYearData, error: fiscalYearError } = await supabase
+    .from("fiscal_years")
+    .select("id, name, start_date, end_date, sort_order")
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
   if (fiscalYearError) throw fiscalYearError;
-  if (organizationError) throw organizationError;
 
   const fiscalYearOptions = ((fiscalYearData ?? []) as Array<{
     id?: string;
@@ -95,6 +88,7 @@ export default async function InstitutionalBudgetPage({
       sortOrder: fy.sort_order ?? 0
     }));
   const fiscalYearId = resolveRequestedFiscalYearId(fiscalYearOptions, requestedFiscalYearId);
+  const organizationOptions = await getFiscalYearOrganizationOptions(fiscalYearId);
 
   let query = supabase
     .from("v_institutional_monthly_budget_availability")
@@ -124,12 +118,6 @@ export default async function InstitutionalBudgetPage({
     return asNumber(row.official_available_amount) < 0 || asNumber(row.projected_available_amount) < 0;
   });
 
-  const organizationOptions = ((organizationData ?? []) as Array<{
-    id?: string;
-    org_code?: string | null;
-    name?: string | null;
-    fiscal_year_id?: string | null;
-  }>).filter((org) => org.id && (!fiscalYearId || org.fiscal_year_id === fiscalYearId || org.fiscal_year_id === null));
   const monthColumns = Array.from(
     new Map(
       rows
@@ -202,7 +190,7 @@ export default async function InstitutionalBudgetPage({
               <option value="">All organizations</option>
               {organizationOptions.map((org) => (
                 <option key={org.id} value={org.id}>
-                  {[org.org_code, org.name].filter(Boolean).join(" | ")}
+                  {[org.orgCode, org.name].filter(Boolean).join(" | ")}
                 </option>
               ))}
             </select>

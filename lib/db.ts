@@ -652,6 +652,7 @@ export type IncomeRow = {
   id: string;
   organizationId: string | null;
   organizationLabel: string;
+  explicitFiscalYearId: string | null;
   fiscalYearId: string | null;
   fiscalYearName: string | null;
   projectId: string | null;
@@ -1421,7 +1422,7 @@ export async function getProcurementData(): Promise<{
     receiptsResponse,
     receivingDocsResponse,
     projectsResponse,
-    organizationsResponse,
+    organizationOptionsResponse,
     accountCodeResponse,
     categoryResponse
   ] =
@@ -1453,11 +1454,7 @@ export async function getProcurementData(): Promise<{
       .select("id, name, season, organization_id, fiscal_year_id")
       .not("name", "ilike", "external procurement")
       .order("name", { ascending: true }),
-    supabase
-      .from("organizations")
-      .select("id, name, org_code, fiscal_year_id, sort_order, project_tracking_required, fiscal_years(name)")
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true }),
+    getFiscalYearOrganizationOptions(),
     supabase
       .from("account_codes")
       .select("id, code, category, name, is_revenue")
@@ -1478,7 +1475,6 @@ export async function getProcurementData(): Promise<{
   if (receiptsResponse.error) throw receiptsResponse.error;
   if (receivingDocsResponse.error) throw receivingDocsResponse.error;
   if (projectsResponse.error) throw projectsResponse.error;
-  if (organizationsResponse.error) throw organizationsResponse.error;
   if (accountCodeResponse.error) throw accountCodeResponse.error;
   if (categoryResponse.error) throw categoryResponse.error;
 
@@ -1636,21 +1632,7 @@ export async function getProcurementData(): Promise<{
     };
   });
 
-  const organizationOptionsRaw: OrganizationOption[] = (organizationsResponse.data ?? []).map((row) => {
-    const fy = row.fiscal_years as { name?: string } | null;
-    const fiscalYearName = fy?.name ?? null;
-    return {
-      id: row.id as string,
-      name: row.name as string,
-      orgCode: row.org_code as string,
-      fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
-      fiscalYearName,
-      sortOrder: (row.sort_order as number | null) ?? 0,
-      projectTrackingRequired: (row.project_tracking_required as boolean | null) ?? true,
-      label: `${row.org_code as string} | ${row.name as string}${fiscalYearName ? ` (${fiscalYearName})` : ""}`
-    };
-  });
-  const organizationOptions = organizationOptionsRaw;
+  const organizationOptions = organizationOptionsResponse;
 
   const vendors: VendorOption[] = (vendorsResponse.data ?? []).map((row) => ({
     id: row.id as string,
@@ -1824,7 +1806,7 @@ export async function getContractsData(): Promise<{
 
   const [fiscalYears, organizations, projects, accountCodes, foapalOptions, guestArtistOptions, unionAgreementOptions] = await Promise.all([
     getFiscalYearOptions(),
-    getOrganizationOptions(),
+    getFiscalYearOrganizationOptions(),
     getSettingsProjects(),
     getAccountCodeOptions(),
     getFoapalOptions(),
@@ -2640,6 +2622,63 @@ export async function getOrganizationOptions(): Promise<OrganizationOption[]> {
   });
 }
 
+export async function getFiscalYearOrganizationOptions(fiscalYearId?: string | null): Promise<OrganizationOption[]> {
+  const supabase = await getSupabaseServerClient();
+  let query = supabase
+    .from("fiscal_year_organizations")
+    .select(
+      "id, fiscal_year_id, sort_order, project_tracking_required, fiscal_years(name), organizations(id, name, org_code, active, superseded_by_organization_id)"
+    )
+    .eq("active", true)
+    .order("sort_order", { ascending: true });
+  if (fiscalYearId) query = query.eq("fiscal_year_id", fiscalYearId);
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const options = (data ?? [])
+    .map((row): OrganizationOption | null => {
+      const organization = row.organizations as
+        | {
+            id?: string;
+            name?: string;
+            org_code?: string;
+            active?: boolean;
+            superseded_by_organization_id?: string | null;
+          }
+        | null;
+      if (!organization?.id || organization.active === false || organization.superseded_by_organization_id) return null;
+      const fy = row.fiscal_years as { name?: string } | null;
+      const fiscalYearName = fy?.name ?? null;
+      return {
+        id: organization.id,
+        name: organization.name ?? "Organization",
+        orgCode: organization.org_code ?? "",
+        fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
+        fiscalYearName,
+        sortOrder: (row.sort_order as number | null) ?? 0,
+        projectTrackingRequired: (row.project_tracking_required as boolean | null) ?? true,
+        label: `${organization.org_code ?? ""} | ${organization.name ?? "Organization"}${
+          fiscalYearName ? ` (${fiscalYearName})` : ""
+        }`
+      };
+    })
+    .filter((option): option is OrganizationOption => option !== null);
+
+  const onePerFiscalYearAndCode = new Map<string, OrganizationOption>();
+  for (const option of options) {
+    const key = `${option.fiscalYearId ?? "global"}:${option.orgCode.trim().toLowerCase()}`;
+    if (!onePerFiscalYearAndCode.has(key)) onePerFiscalYearAndCode.set(key, option);
+  }
+
+  return Array.from(onePerFiscalYearAndCode.values()).sort(
+      (a, b) =>
+        a.sortOrder - b.sortOrder ||
+        (a.fiscalYearName ?? "").localeCompare(b.fiscalYearName ?? "") ||
+        a.orgCode.localeCompare(b.orgCode) ||
+        a.name.localeCompare(b.name)
+  );
+}
+
 export async function getFundOptions(): Promise<FundOption[]> {
   const supabase = await getSupabaseServerClient();
   const { data, error } = await supabase
@@ -2825,7 +2864,7 @@ export async function getBudgetPlanningOptions(): Promise<{
 }> {
   const [fiscalYears, organizations, accountCodes] = await Promise.all([
     getFiscalYearOptions(),
-    getOrganizationOptions(),
+    getFiscalYearOrganizationOptions(),
     getAccountCodeOptions()
   ]);
 
@@ -3404,7 +3443,7 @@ export async function getIncomeRows(): Promise<IncomeRow[]> {
   const withType = await supabase
     .from("income_lines")
     .select(
-      "id, project_id, organization_id, production_category_id, banner_account_code_id, line_name, reference_number, amount, received_on, created_at, income_type, projects(name, fiscal_year_id, fiscal_years(name)), organizations(name, org_code), production_categories(name), account_codes(code)"
+      "id, fiscal_year_id, project_id, organization_id, production_category_id, banner_account_code_id, line_name, reference_number, amount, received_on, created_at, income_type, income_fiscal_year:fiscal_years!income_lines_fiscal_year_id_fkey(name), projects(name, fiscal_year_id, fiscal_years(name)), organizations(name, org_code), production_categories(name), account_codes(code)"
     )
     .order("created_at", { ascending: false })
     .limit(500);
@@ -3424,6 +3463,7 @@ export async function getIncomeRows(): Promise<IncomeRow[]> {
         id: row.id as string,
         organizationId: (row.organization_id as string | null) ?? null,
         organizationLabel,
+        explicitFiscalYearId: null,
         fiscalYearId: null,
         fiscalYearName: null,
         projectId: (row.project_id as string | null) ?? null,
@@ -3447,6 +3487,7 @@ export async function getIncomeRows(): Promise<IncomeRow[]> {
     const org = row.organizations as { name?: string; org_code?: string } | null;
     const productionCategory = row.production_categories as { name?: string } | null;
     const accountCode = row.account_codes as { code?: string } | null;
+    const explicitFiscalYear = row.income_fiscal_year as { name?: string } | null;
     const orgLabel = org ? `${org.org_code ?? ""} | ${org.name ?? "Organization"}` : "Unassigned Organization";
     const receivedOn = (row.received_on as string | null) ?? null;
     const createdAt = row.created_at as string;
@@ -3454,8 +3495,9 @@ export async function getIncomeRows(): Promise<IncomeRow[]> {
     const projectFiscalYearId = (project?.fiscal_year_id as string | null) ?? null;
     const projectFiscalYearName = (project?.fiscal_years?.name as string | undefined) ?? null;
     const fallbackFy = resolveFiscalYearByDate(receivedOn ?? createdYmd);
-    const fiscalYearId = projectFiscalYearId ?? fallbackFy?.id ?? null;
-    const fiscalYearName = projectFiscalYearName ?? fallbackFy?.name ?? null;
+    const explicitFiscalYearId = (row.fiscal_year_id as string | null) ?? null;
+    const fiscalYearId = explicitFiscalYearId ?? projectFiscalYearId ?? fallbackFy?.id ?? null;
+    const fiscalYearName = explicitFiscalYear?.name ?? projectFiscalYearName ?? fallbackFy?.name ?? null;
     const incomeTypeRaw = (row.income_type as string | null) ?? "other";
     const incomeType =
       incomeTypeRaw === "starting_budget" ||
@@ -3469,6 +3511,7 @@ export async function getIncomeRows(): Promise<IncomeRow[]> {
       id: row.id as string,
       organizationId: (row.organization_id as string | null) ?? null,
       organizationLabel: orgLabel,
+      explicitFiscalYearId,
       fiscalYearId,
       fiscalYearName,
       projectId: (row.project_id as string | null) ?? null,

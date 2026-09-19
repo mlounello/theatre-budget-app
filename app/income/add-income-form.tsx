@@ -1,24 +1,40 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import { createIncomeEntryAction, type ActionState } from "@/app/income/actions";
-import type { AccountCodeOption, OrganizationOption, ProductionCategoryOption } from "@/lib/db";
+import type { AccountCodeOption, FiscalYearOption, OrganizationOption, ProductionCategoryOption } from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
 export function AddIncomeForm({
   organizations,
+  fiscalYears,
+  defaultFiscalYearId,
   revenueAccountCodes,
   otherAccountCodes,
   productionCategoryOptions
 }: {
   organizations: OrganizationOption[];
+  fiscalYears: FiscalYearOption[];
+  defaultFiscalYearId: string;
   revenueAccountCodes: AccountCodeOption[];
   otherAccountCodes: AccountCodeOption[];
   productionCategoryOptions: ProductionCategoryOption[];
 }) {
   const [state, formAction] = useActionState(createIncomeEntryAction, initialState);
   const formRef = useRef<HTMLFormElement | null>(null);
+  const [fiscalYearId, setFiscalYearId] = useState(defaultFiscalYearId);
+  const filteredOrganizations = useMemo(() => {
+    const preferred = new Map<string, OrganizationOption>();
+    for (const organization of organizations) {
+      if (organization.fiscalYearId !== fiscalYearId && organization.fiscalYearId !== null) continue;
+      const existing = preferred.get(organization.orgCode);
+      if (!existing || organization.fiscalYearId === fiscalYearId) preferred.set(organization.orgCode, organization);
+    }
+    return Array.from(preferred.values()).sort(
+      (a, b) => a.sortOrder - b.sortOrder || a.orgCode.localeCompare(b.orgCode) || a.name.localeCompare(b.name)
+    );
+  }, [fiscalYearId, organizations]);
 
   useEffect(() => {
     if (state.ok && state.message && formRef.current) {
@@ -34,10 +50,21 @@ export function AddIncomeForm({
         </p>
       ) : null}
       <label>
+        Fiscal Year
+        <select name="fiscalYearId" value={fiscalYearId} onChange={(event) => setFiscalYearId(event.target.value)} required>
+          <option value="">Select fiscal year</option>
+          {fiscalYears.map((fiscalYear) => (
+            <option key={fiscalYear.id} value={fiscalYear.id}>
+              {fiscalYear.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
         Organization
         <select name="organizationId" required>
           <option value="">Select organization</option>
-          {organizations.map((organization) => (
+          {filteredOrganizations.map((organization) => (
             <option key={organization.id} value={organization.id}>
               {organization.label}
             </option>

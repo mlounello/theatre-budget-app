@@ -150,6 +150,7 @@ export function CreateOrderForm({
       <label>
         Fiscal Year
         <select
+          name="fiscalYearId"
           value={fiscalYearId}
           onChange={(event) => {
             setFiscalYearId(event.target.value);

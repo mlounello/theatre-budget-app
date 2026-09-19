@@ -10,7 +10,13 @@ import {
   type ActionState
 } from "@/app/income/actions";
 import { formatCurrency } from "@/lib/format";
-import type { AccountCodeOption, IncomeRow, OrganizationOption, ProductionCategoryOption } from "@/lib/db";
+import type {
+  AccountCodeOption,
+  FiscalYearOption,
+  IncomeRow,
+  OrganizationOption,
+  ProductionCategoryOption
+} from "@/lib/db";
 
 function typeLabel(type: IncomeRow["incomeType"]): string {
   if (type === "starting_budget") return "Starting Budget";
@@ -84,11 +90,13 @@ function SortTh({
 export function IncomeTable({
   rows,
   organizations,
+  fiscalYears,
   accountCodeOptions,
   productionCategoryOptions
 }: {
   rows: IncomeRow[];
   organizations: OrganizationOption[];
+  fiscalYears: FiscalYearOption[];
   accountCodeOptions: AccountCodeOption[];
   productionCategoryOptions: ProductionCategoryOption[];
 }) {
@@ -108,6 +116,7 @@ export function IncomeTable({
   const [queryFilter, setQueryFilter] = useState(searchParams.get("inc_f_q") ?? "");
   const editingRow = rows.find((row) => row.id === editingId) ?? null;
   const [editOrganizationId, setEditOrganizationId] = useState("");
+  const [editFiscalYearId, setEditFiscalYearId] = useState("");
   const [editIncomeType, setEditIncomeType] = useState<IncomeRow["incomeType"]>("other");
   const [editProductionCategoryId, setEditProductionCategoryId] = useState("");
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState("");
@@ -139,6 +148,10 @@ export function IncomeTable({
     () => accountCodeOptions.filter((accountCode) => !accountCode.isRevenue),
     [accountCodeOptions]
   );
+  const editOrganizations = useMemo(
+    () => organizations.filter((organization) => organization.fiscalYearId === editFiscalYearId),
+    [editFiscalYearId, organizations]
+  );
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedVisibleCount = useMemo(() => sortedRows.filter((row) => selectedSet.has(row.id)).length, [selectedSet, sortedRows]);
   const allVisibleSelected = sortedRows.length > 0 && selectedVisibleCount === sortedRows.length;
@@ -162,6 +175,7 @@ export function IncomeTable({
     }
     if (lastEditIdRef.current === editingRow.id) return;
     lastEditIdRef.current = editingRow.id;
+    setEditFiscalYearId(editingRow.explicitFiscalYearId ?? "");
     setEditOrganizationId(editingRow.organizationId ?? "");
     setEditIncomeType(editingRow.incomeType);
     setEditProductionCategoryId(editingRow.productionCategoryId ?? "");
@@ -410,6 +424,25 @@ export function IncomeTable({
             <form action={updateAction} className="requestForm">
               <input type="hidden" name="id" value={editingRow.id} />
               <label>
+                Fiscal Year
+                <select
+                  name="fiscalYearId"
+                  value={editFiscalYearId}
+                  onChange={(event) => {
+                    setEditFiscalYearId(event.target.value);
+                    setEditOrganizationId("");
+                  }}
+                  required
+                >
+                  <option value="">Select fiscal year</option>
+                  {fiscalYears.map((fiscalYear) => (
+                    <option key={fiscalYear.id} value={fiscalYear.id}>
+                      {fiscalYear.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
                 Organization
                 <select
                   name="organizationId"
@@ -418,7 +451,7 @@ export function IncomeTable({
                   required
                 >
                   <option value="">Select organization</option>
-                  {organizations.map((organization) => (
+                  {editOrganizations.map((organization) => (
                     <option key={organization.id} value={organization.id}>
                       {organization.label}
                     </option>
