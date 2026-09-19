@@ -343,7 +343,7 @@ export default async function CreditCardPage({
         projectNameById={[...projectNameById.entries()]}
         manageableProjects={manageableProjects}
         hasGlobalAdmin={hasGlobalAdmin}
-        accountCodeOptions={accountCodeOptions}
+        accountCodeOptions={accountCodeOptions.filter((account) => !account.isRevenue)}
         productionCategoryOptions={productionCategoryOptions}
       />
     </section>

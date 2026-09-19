@@ -133,7 +133,6 @@ export async function addVarianceSourceLineAction(
     const requestedToBudgetPlanMonthId = String(formData.get("toBudgetPlanMonthId") ?? "").trim();
     const transferAmount = parseMoney(formData.get("transferAmount"));
     const narrative = String(formData.get("narrative") ?? "").trim();
-    const crossOrgOverride = formData.get("crossOrgOverride") === "on";
 
     if (!varianceRequestId || !fromBudgetPlanMonthId) return err("Variance and source bucket are required.");
     if (transferAmount <= 0) return err("Transfer amount must be greater than zero.");
@@ -181,7 +180,7 @@ export async function addVarianceSourceLineAction(
 
     const { data: targetBucket, error: targetBucketError } = await supabase
       .from("v_institutional_monthly_budget_availability")
-      .select("budget_plan_month_id, organization_id, account_code_id, month_start")
+      .select("budget_plan_month_id, fiscal_year_id, organization_id, account_code_id, month_start")
       .eq("budget_plan_month_id", targetBudgetPlanMonthId)
       .maybeSingle();
     if (targetBucketError) return err(targetBucketError.message);
@@ -189,7 +188,7 @@ export async function addVarianceSourceLineAction(
 
     const { data: sourceBucket, error: sourceError } = await supabase
       .from("v_institutional_monthly_budget_availability")
-      .select("budget_plan_month_id, organization_id, account_code_id, month_start, official_available_amount, projected_available_amount")
+      .select("budget_plan_month_id, fiscal_year_id, organization_id, account_code_id, month_start, official_available_amount, projected_available_amount, is_revenue")
       .eq("budget_plan_month_id", fromBudgetPlanMonthId)
       .maybeSingle();
     if (sourceError) return err(sourceError.message);
@@ -197,9 +196,11 @@ export async function addVarianceSourceLineAction(
 
     const sourceOrgId = sourceBucket.organization_id as string;
     const targetOrgId = targetBucket.organization_id as string;
-    if (sourceOrgId !== targetOrgId && !crossOrgOverride) {
-      return err("Cross-org variance requires the manual override checkbox.");
+    const isCrossOrganization = sourceOrgId !== targetOrgId;
+    if ((sourceBucket.fiscal_year_id as string) !== (targetBucket.fiscal_year_id as string)) {
+      return err("Variance sources and targets must belong to the same fiscal year.");
     }
+    if (Boolean(sourceBucket.is_revenue)) return err("Revenue targets cannot fund a variance.");
 
     const officialAvailable = asNumber(sourceBucket.official_available_amount as string | number | null);
     const projectedAvailable = asNumber(sourceBucket.projected_available_amount as string | number | null);
@@ -230,7 +231,7 @@ export async function addVarianceSourceLineAction(
       to_month_start: (targetBucket.month_start as string | null) ?? "",
       transfer_amount: transferAmount,
       narrative: narrative || null,
-      cross_org_override: crossOrgOverride
+      cross_org_override: isCrossOrganization
     });
     if (insertError) return err(insertError.message);
 
@@ -241,7 +242,7 @@ export async function addVarianceSourceLineAction(
       from_status: variance.status as string,
       to_status: variance.status as string,
       changed_by_user_id: userId,
-      note: "Source bucket line added"
+      note: isCrossOrganization ? "Cross-organization source bucket line added" : "Source bucket line added"
     });
     if (eventError) return err(eventError.message);
 

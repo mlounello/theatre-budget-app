@@ -16,7 +16,6 @@ export default async function VariancePage({
   searchParams?: Promise<{
     fiscalYearId?: string;
     sourceSearch?: string;
-    allowCrossOrg?: string;
   }>;
 }) {
   const access = await getAccessContext();
@@ -26,7 +25,6 @@ export default async function VariancePage({
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const requestedFiscalYearId = (resolvedSearchParams?.fiscalYearId ?? "").trim();
   const sourceSearch = (resolvedSearchParams?.sourceSearch ?? "").trim();
-  const allowCrossOrg = resolvedSearchParams?.allowCrossOrg === "1";
 
   const fiscalYearOptions = await getFiscalYearOptions();
   const fiscalYearId = resolveRequestedFiscalYearId(fiscalYearOptions, requestedFiscalYearId, { allowAll: true });
@@ -184,7 +182,7 @@ export default async function VariancePage({
   const { data: sourceData, error: sourceError } = await supabase.rpc("get_institutional_source_candidates", {
     p_fiscal_year_id: fiscalYearId && fiscalYearId !== "all" ? fiscalYearId : null,
     p_search: sourceSearch || null,
-    p_allow_cross_org: allowCrossOrg
+    p_allow_cross_org: true
   });
   if (sourceError) throw sourceError;
 
@@ -285,7 +283,7 @@ export default async function VariancePage({
         <p className="eyebrow">Institutional Budget</p>
         <h1>Variance Center</h1>
         <p className="heroSubtitle">
-          Review shortage-triggered variance drafts, choose source buckets manually, and move requests through review, approval, and posting.
+          Move available expense budget between any organizations, accounts, and months in the same fiscal year, then route each variance through review, approval, and posting.
         </p>
       </header>
 
@@ -306,10 +304,6 @@ export default async function VariancePage({
           <label>
             Search
             <input name="sourceSearch" defaultValue={sourceSearch} placeholder="FY, org, account, or month" />
-          </label>
-          <label className="checkboxLabel">
-            <input name="allowCrossOrg" type="checkbox" value="1" defaultChecked={allowCrossOrg} />
-            Include cross-org sources
           </label>
           <button className="buttonLink" type="submit">
             Search Sources

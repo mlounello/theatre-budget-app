@@ -40,7 +40,7 @@ export function DashboardRequisitionTable({ openRequisitions }: DashboardRequisi
         <table>
           <thead>
             <tr>
-              <th>Project</th>
+              <th>Budget</th>
               <th>Title</th>
               <th>Req #</th>
               <th>PO #</th>

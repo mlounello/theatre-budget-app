@@ -118,6 +118,29 @@ async function ensureProjectPmOrAdminAccess(
   }
 }
 
+async function ensureOrganizationPmOrAdminAccess(
+  db: Awaited<ReturnType<typeof createSupabaseServerClient>>["schema"] extends (schema: string) => infer T ? T : never,
+  organizationId: string
+): Promise<void> {
+  const access = await getAccessContext();
+  if (access.role === "admin") return;
+  const { data: organization, error } = await db
+    .from("organizations")
+    .select("id, fiscal_year_id")
+    .eq("id", organizationId)
+    .single();
+  if (error || !organization) throw new Error("Organization not found.");
+  const fiscalYearId = (organization.fiscal_year_id as string | null) ?? null;
+  const allowed = access.scopes.some(
+    (scope) =>
+      (scope.scopeRole === "admin" || scope.scopeRole === "project_manager") &&
+      !scope.projectId &&
+      (!scope.organizationId || scope.organizationId === organizationId) &&
+      (!scope.fiscalYearId || scope.fiscalYearId === fiscalYearId)
+  );
+  if (!allowed) throw new Error("Only Admin or Project Manager can update this organization requisition.");
+}
+
 export async function updateDashboardRequisitionStatusAction(
   _prevState: ActionState = emptyState,
   formData: FormData
@@ -138,7 +161,7 @@ export async function updateDashboardRequisitionStatusAction(
     const { data: existing, error: existingError } = await db
       .from("purchases")
       .select(
-        "id, project_id, request_type, is_credit_card, status, procurement_status, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, budget_tracked, production_category_id, banner_account_code_id"
+        "id, project_id, organization_id, request_type, is_credit_card, status, procurement_status, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, budget_tracked, production_category_id, banner_account_code_id"
       )
       .eq("id", purchaseId)
       .single();
@@ -148,8 +171,11 @@ export async function updateDashboardRequisitionStatusAction(
       throw new Error("Only requisition rows can be updated from the dashboard.");
     }
 
-    const projectId = existing.project_id as string;
-    await ensureProjectPmOrAdminAccess(db, user.id, projectId);
+    const projectId = (existing.project_id as string | null) ?? null;
+    const organizationId = (existing.organization_id as string | null) ?? null;
+    if (projectId) await ensureProjectPmOrAdminAccess(db, user.id, projectId);
+    else if (organizationId) await ensureOrganizationPmOrAdminAccess(db, organizationId);
+    else throw new Error("Purchase has no budget scope.");
 
     const currentValue = getStatusAmount(existing.status as string, {
       estimated: asNumber(existing.estimated_amount as string | number | null),

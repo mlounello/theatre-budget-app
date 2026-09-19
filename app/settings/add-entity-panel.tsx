@@ -139,6 +139,23 @@ export function AddEntityPanel({ fiscalYears, organizations, templates, projects
             Org Code
             <input name="orgCode" required placeholder="Ex: ORG-THR" />
           </label>
+          <fieldset className="drawerChoiceGroup">
+            <legend>Available Fiscal Years</legend>
+            <div className="drawerChoiceGrid">
+              {fiscalYears.map((fy) => (
+                <label className="checkboxLabel" key={fy.id}>
+                  <input name="fiscalYearIds" type="checkbox" value={fy.id} />
+                  {fy.name}
+                </label>
+              ))}
+            </div>
+            <span className="helperText">Choose every fiscal year that should offer this organization.</span>
+          </fieldset>
+          <label className="checkboxLabel">
+            <input name="projectTrackingRequired" type="checkbox" defaultChecked />
+            Require a project for purchases
+          </label>
+          <span className="helperText">Uncheck for a non-theatre budget that should track purchases directly by organization and account.</span>
           <button type="submit" className="buttonLink buttonPrimary">
             Add Organization
           </button>

@@ -33,8 +33,8 @@ export default async function ProcurementTrackerPage({
     <section>
       <header className="sectionHeader">
         <p className="eyebrow">Procurement Tracker</p>
-        <h1>External Procurement Status</h1>
-        <p className="heroSubtitle">Read-only external procurement orders for your assigned organization scope.</p>
+        <h1>Organization Procurement Status</h1>
+        <p className="heroSubtitle">Read-only procurement orders for your assigned organization scope.</p>
       </header>
 
       <article className="panel">
@@ -81,7 +81,7 @@ export default async function ProcurementTrackerPage({
             <tbody>
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={13}>No external procurement rows in your scope.</td>
+                  <td colSpan={13}>No organization procurement rows in your scope.</td>
                 </tr>
               ) : null}
               {filteredRows.map((row) => (

@@ -165,7 +165,6 @@ function SourcePicker({
 }) {
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState("");
-  const [crossOrgOverride, setCrossOrgOverride] = useState(false);
   const normalizedSearch = search.trim().toLowerCase();
   const sortedCandidates = useMemo(() => {
     const existingSourceIds = new Set(
@@ -175,7 +174,7 @@ function SourcePicker({
     );
     return sourceCandidates
       .filter((candidate) => !existingSourceIds.has(candidate.budgetPlanMonthId))
-      .filter((candidate) => crossOrgOverride || !targetLine.organizationId || candidate.organizationId === targetLine.organizationId)
+      .filter((candidate) => !targetLine.fiscalYearId || candidate.fiscalYearId === targetLine.fiscalYearId)
       .filter((candidate) => {
         if (!normalizedSearch) return true;
         return [candidate.fiscalYearName, candidate.orgCode, candidate.organizationName, candidate.accountCode, candidate.accountName, candidate.monthStart]
@@ -194,7 +193,7 @@ function SourcePicker({
         return aSameFy - bSameFy || aSameOrg - bSameOrg || aEnough - bEnough || b.projectedAvailable - a.projectedAvailable || a.label.localeCompare(b.label);
       })
       .slice(0, 24);
-  }, [crossOrgOverride, normalizedSearch, remaining, sourceCandidates, targetLine, variance.sourceLines]);
+  }, [normalizedSearch, remaining, sourceCandidates, targetLine, variance.sourceLines]);
 
   const selected = sortedCandidates.find((candidate) => candidate.budgetPlanMonthId === selectedId);
 
@@ -204,12 +203,7 @@ function SourcePicker({
         Search source buckets
         <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Org, account, month, or FY" />
       </label>
-      <label className="checkboxLabel">
-        <input checked={crossOrgOverride} onChange={(event) => setCrossOrgOverride(event.target.checked)} type="checkbox" />
-        Cross-org override
-      </label>
       <input type="hidden" name="fromBudgetPlanMonthId" value={selectedId} />
-      <input type="hidden" name="crossOrgOverride" value={crossOrgOverride ? "on" : ""} />
       <div className="sourceCandidateList">
         {sortedCandidates.map((candidate) => {
           const sameOrg = targetLine.organizationId && candidate.organizationId === targetLine.organizationId;
@@ -260,7 +254,7 @@ function SourceLineList({ variance }: { variance: VarianceRow }) {
             <p className="helperText">
               {money(line.amount)}
               {line.targetLabel ? ` | To ${line.targetLabel}` : ""}
-              {line.crossOrgOverride ? " | Cross-org override" : ""}
+              {line.crossOrgOverride ? " | Cross-organization transfer" : ""}
               {line.narrative ? ` | ${line.narrative}` : ""}
             </p>
           </div>

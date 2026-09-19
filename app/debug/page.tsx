@@ -133,7 +133,7 @@ export default async function DebugPage() {
                 <tr>
                   <td>Procurement Tracker</td>
                   <td>Procurement Tracker</td>
-                  <td>Read-only External Procurement rows for scoped organizations</td>
+                  <td>Read-only procurement rows for scoped organizations</td>
                 </tr>
               </tbody>
             </table>

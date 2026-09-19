@@ -267,13 +267,63 @@ async function ensureProjectAdminAccess(
   });
 }
 
-async function getPurchaseProjectId(
+async function ensureOrganizationPmOrAdminAccess(organizationId: string): Promise<void> {
+  const access = await getAccessContext();
+  if (!access.userId) throw new Error("You must be signed in.");
+  if (access.role === "admin") return;
+
+  const supabase = await getSupabaseServerClient();
+  const { data: organization, error } = await supabase
+    .from("organizations")
+    .select("id, fiscal_year_id")
+    .eq("id", organizationId)
+    .single();
+  if (error || !organization) throw new Error("Organization not found.");
+
+  const fiscalYearId = (organization.fiscal_year_id as string | null) ?? null;
+  const allowed = access.scopes.some(
+    (scope) =>
+      (scope.scopeRole === "admin" || scope.scopeRole === "project_manager") &&
+      !scope.projectId &&
+      (!scope.organizationId || scope.organizationId === organizationId) &&
+      (!scope.fiscalYearId || scope.fiscalYearId === fiscalYearId)
+  );
+  if (!allowed) throw new Error("You do not have permission to manage purchases for this organization budget.");
+}
+
+async function getPurchaseScope(
   supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
   purchaseId: string
-): Promise<string> {
-  const { data, error } = await supabase.from("purchases").select("id, project_id").eq("id", purchaseId).single();
+): Promise<{ projectId: string | null; organizationId: string | null }> {
+  const { data, error } = await supabase.from("purchases").select("id, project_id, organization_id").eq("id", purchaseId).single();
   if (error || !data) throw new Error("Purchase not found.");
-  return data.project_id as string;
+  return {
+    projectId: (data.project_id as string | null) ?? null,
+    organizationId: (data.organization_id as string | null) ?? null
+  };
+}
+
+async function ensurePurchasePmOrAdminAccess(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  userId: string,
+  purchaseId: string
+): Promise<void> {
+  const scope = await getPurchaseScope(supabase, purchaseId);
+  if (scope.projectId) return ensureProjectPmOrAdminAccess(supabase, userId, scope.projectId);
+  if (scope.organizationId) return ensureOrganizationPmOrAdminAccess(scope.organizationId);
+  throw new Error("Purchase has no budget scope.");
+}
+
+async function ensurePurchaseAdminAccess(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  userId: string,
+  purchaseId: string
+): Promise<void> {
+  const scope = await getPurchaseScope(supabase, purchaseId);
+  if (scope.projectId) return ensureProjectAdminAccess(supabase, userId, scope.projectId);
+  const access = await getAccessContext();
+  if (scope.organizationId && access.role === "admin") return;
+  throw new Error("Only Admin can delete procurement rows.");
 }
 
 async function getPurchaseIdForReceivingDoc(
@@ -323,18 +373,38 @@ export async function createProcurementOrderAction(
     const requestType = parseProcurementRequestType(formData.get("requestType"));
     const isCreditCard = requestType === "expense" ? formData.get("isCreditCard") === "on" : false;
 
-    if (!projectId || !title) return err("Project and title are required.");
+    if (!title) return err("Title is required.");
     if (orderValueRaw === "" || orderValue === 0) return err("Order value must be non-zero.");
-    await ensureProjectCreateAccess(supabase, user.id, projectId);
-    const projectMeta = await getProjectMeta(supabase, projectId);
-    const budgetTracked = !projectMeta.isExternal;
-    const explicitOrganizationId = projectMeta.isExternal ? organizationId || null : null;
-    if (projectMeta.isExternal && !explicitOrganizationId) return err("Organization is required for External Procurement.");
-    if (budgetTracked && !productionCategoryId) return err("Department is required.");
+    let budgetTracked = true;
+    let explicitOrganizationId: string | null = null;
+    let projectMeta: { id: string; name: string; isExternal: boolean } | null = null;
+
+    if (projectId) {
+      await ensureProjectCreateAccess(supabase, user.id, projectId);
+      projectMeta = await getProjectMeta(supabase, projectId);
+      budgetTracked = !projectMeta.isExternal;
+      explicitOrganizationId = projectMeta.isExternal ? organizationId || null : null;
+      if (projectMeta.isExternal && !explicitOrganizationId) return err("Organization is required for External Procurement.");
+      if (budgetTracked && !productionCategoryId) return err("Department is required.");
+    } else {
+      if (!organizationId) return err("Organization is required when no project is selected.");
+      await ensureOrganizationPmOrAdminAccess(organizationId);
+      const { data: organization, error: organizationError } = await supabase
+        .from("organizations")
+        .select("id, project_tracking_required")
+        .eq("id", organizationId)
+        .single();
+      if (organizationError || !organization) return err("Organization not found.");
+      if ((organization.project_tracking_required as boolean | null) ?? true) {
+        return err("This organization requires a project for purchases.");
+      }
+      if (!bannerAccountCodeId) return err("Banner account code is required for a projectless purchase.");
+      explicitOrganizationId = organizationId;
+    }
     const computed = computeInitialByRequestType(requestType, orderValue, isCreditCard);
 
     let line: { id: string; project_id: string; account_code_id: string | null } | null = null;
-    if (budgetTracked) {
+    if (budgetTracked && projectId) {
       let resolvedBudgetLineId = budgetLineId;
       if (!resolvedBudgetLineId) {
         const { data: ensuredLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {
@@ -375,7 +445,7 @@ export async function createProcurementOrderAction(
     const { data: purchase, error: insertError } = await supabase
       .from("purchases")
       .insert({
-        project_id: projectId,
+        project_id: projectId || null,
         organization_id: explicitOrganizationId,
         budget_line_id: line?.id ?? null,
         production_category_id: productionCategoryId || null,
@@ -439,7 +509,7 @@ export async function createProcurementOrderAction(
     revalidatePath("/procurement");
     revalidatePath("/requests");
     revalidatePath("/");
-    revalidatePath(`/projects/${purchase.project_id as string}`);
+    if (purchase.project_id) revalidatePath(`/projects/${purchase.project_id as string}`);
     return ok("Procurement order created.");
   } catch (error) {
     return err(getErrorMessage(error, "Could not create procurement order."));
@@ -494,18 +564,35 @@ export async function createProcurementBatchAction(
     const orderDate = parseDateInput(formData.get("orderDate"));
     const lines = parseBatchLinesJson(formData.get("linesJson"));
 
-    if (!projectId) return err("Project is required.");
     if (lines.length === 0) return err("Add at least one valid line (title + non-zero amount).");
 
-    await ensureProjectCreateAccess(supabase, user.id, projectId);
-    const projectMeta = await getProjectMeta(supabase, projectId);
-    const budgetTracked = !projectMeta.isExternal;
-    const explicitOrganizationId = projectMeta.isExternal ? organizationId || null : null;
-    if (projectMeta.isExternal && !explicitOrganizationId) return err("Organization is required for External Procurement.");
-    if (budgetTracked && !productionCategoryId) return err("Department is required.");
+    let budgetTracked = true;
+    let explicitOrganizationId: string | null = null;
+    if (projectId) {
+      await ensureProjectCreateAccess(supabase, user.id, projectId);
+      const projectMeta = await getProjectMeta(supabase, projectId);
+      budgetTracked = !projectMeta.isExternal;
+      explicitOrganizationId = projectMeta.isExternal ? organizationId || null : null;
+      if (projectMeta.isExternal && !explicitOrganizationId) return err("Organization is required for External Procurement.");
+      if (budgetTracked && !productionCategoryId) return err("Department is required.");
+    } else {
+      if (!organizationId) return err("Organization is required when no project is selected.");
+      await ensureOrganizationPmOrAdminAccess(organizationId);
+      const { data: organization, error: organizationError } = await supabase
+        .from("organizations")
+        .select("id, project_tracking_required")
+        .eq("id", organizationId)
+        .single();
+      if (organizationError || !organization) return err("Organization not found.");
+      if ((organization.project_tracking_required as boolean | null) ?? true) {
+        return err("This organization requires a project for purchases.");
+      }
+      if (!bannerAccountCodeId) return err("Banner account code is required for projectless batch purchases.");
+      explicitOrganizationId = organizationId;
+    }
 
     let line: { id: string; account_code_id: string | null } | null = null;
-    if (budgetTracked) {
+    if (budgetTracked && projectId) {
       const { data: ensuredLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {
         p_project_id: projectId,
         p_production_category_id: productionCategoryId
@@ -541,7 +628,7 @@ export async function createProcurementBatchAction(
       const { data: purchase, error: insertError } = await supabase
         .from("purchases")
         .insert({
-          project_id: projectId,
+          project_id: projectId || null,
           organization_id: explicitOrganizationId,
           budget_line_id: line?.id ?? null,
           production_category_id: productionCategoryId || null,
@@ -606,7 +693,7 @@ export async function createProcurementBatchAction(
     revalidatePath("/procurement");
     revalidatePath("/requests");
     revalidatePath("/");
-    revalidatePath(`/projects/${projectId}`);
+    if (projectId) revalidatePath(`/projects/${projectId}`);
     return ok(`Batch added (${createdPurchaseIds.length} rows).`);
   } catch (error) {
     return err(getErrorMessage(error, "Could not create batch orders."));
@@ -649,20 +736,38 @@ export async function updateProcurementAction(
     const { data: existing, error: existingError } = await supabase
       .from("purchases")
       .select(
-        "id, project_id, status, procurement_status, request_type, is_credit_card, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, budget_tracked, budget_line_id, ordered_on, received_on, paid_on"
+        "id, project_id, organization_id, status, procurement_status, request_type, is_credit_card, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, budget_tracked, budget_line_id, ordered_on, received_on, paid_on"
       )
       .eq("id", id)
       .single();
     if (existingError || !existing) return err("Purchase not found.");
-    await ensureProjectPmOrAdminAccess(supabase, user.id, existing.project_id as string);
-    const nextProjectId = projectId || (existing.project_id as string);
-    if (nextProjectId && nextProjectId !== (existing.project_id as string)) {
+    await ensurePurchasePmOrAdminAccess(supabase, user.id, id);
+    const nextProjectId = projectId;
+    if (nextProjectId && nextProjectId !== ((existing.project_id as string | null) ?? "")) {
       await ensureProjectPmOrAdminAccess(supabase, user.id, nextProjectId);
     }
-    const nextProjectMeta = await getProjectMeta(supabase, nextProjectId);
-    const budgetTracked = nextProjectMeta.isExternal ? false : requestedBudgetTracked;
-    const explicitOrganizationId = nextProjectMeta.isExternal ? organizationId || null : null;
-    if (nextProjectMeta.isExternal && !explicitOrganizationId) return err("Organization is required for External Procurement.");
+    let budgetTracked = true;
+    let explicitOrganizationId: string | null = null;
+    if (nextProjectId) {
+      const nextProjectMeta = await getProjectMeta(supabase, nextProjectId);
+      budgetTracked = nextProjectMeta.isExternal ? false : requestedBudgetTracked;
+      explicitOrganizationId = nextProjectMeta.isExternal ? organizationId || null : null;
+      if (nextProjectMeta.isExternal && !explicitOrganizationId) return err("Organization is required for External Procurement.");
+    } else {
+      explicitOrganizationId = organizationId || ((existing.organization_id as string | null) ?? null);
+      if (!explicitOrganizationId) return err("Organization is required when no project is selected.");
+      await ensureOrganizationPmOrAdminAccess(explicitOrganizationId);
+      const { data: organization, error: organizationError } = await supabase
+        .from("organizations")
+        .select("project_tracking_required")
+        .eq("id", explicitOrganizationId)
+        .single();
+      if (organizationError || !organization) return err("Organization not found.");
+      if (((organization.project_tracking_required as boolean | null) ?? true) && existing.project_id) {
+        return err("This organization requires a project.");
+      }
+      if (!bannerAccountCodeId) return err("Banner account code is required for a projectless purchase.");
+    }
 
     const isCreditCardPurchase =
       (existing.request_type as string | null) === "expense" && Boolean(existing.is_credit_card as boolean | null);
@@ -702,10 +807,10 @@ export async function updateProcurementAction(
       (procurementStatusChanged && procurementStatus === "fully_received" && !existingReceivedOn ? autoDate : existingReceivedOn);
     const nextPaidOn = paidOn || (procurementStatusChanged && procurementStatus === "paid" && !existingPaidOn ? autoDate : existingPaidOn);
 
-    if (budgetTracked && !productionCategoryId) return err("Department is required.");
+    if (budgetTracked && nextProjectId && !productionCategoryId) return err("Department is required.");
 
     let verifiedBudgetLine: { id: string; account_code_id: string | null } | null = null;
-    if (budgetTracked) {
+    if (budgetTracked && nextProjectId) {
       let resolvedBudgetLineId = budgetLineId;
       if (!resolvedBudgetLineId) {
         const { data: ensuredLineId, error: ensureLineError } = await supabase.rpc("ensure_project_category_line", {
@@ -742,10 +847,10 @@ export async function updateProcurementAction(
     const { data: updated, error } = await supabase
       .from("purchases")
       .update({
-        project_id: nextProjectId,
+        project_id: nextProjectId || null,
         organization_id: explicitOrganizationId,
         budget_tracked: budgetTracked,
-        budget_line_id: budgetTracked ? verifiedBudgetLine?.id ?? budgetLineId : null,
+        budget_line_id: budgetTracked && nextProjectId ? verifiedBudgetLine?.id ?? (budgetLineId || null) : null,
         production_category_id: productionCategoryId || null,
         banner_account_code_id: bannerAccountCodeId || null,
         procurement_status: procurementStatus,
@@ -806,8 +911,8 @@ export async function updateProcurementAction(
     revalidatePath("/procurement");
     revalidatePath("/requests");
     revalidatePath("/");
-    revalidatePath(`/projects/${existing.project_id as string}`);
-    revalidatePath(`/projects/${nextProjectId}`);
+    if (existing.project_id) revalidatePath(`/projects/${existing.project_id as string}`);
+    if (nextProjectId) revalidatePath(`/projects/${nextProjectId}`);
     return ok("Procurement details updated.");
   } catch (error) {
     return err(getErrorMessage(error, "Could not update procurement details."));
@@ -833,8 +938,7 @@ export async function addProcurementReceiptAction(
     const fullyReceived = formData.get("fullyReceived") === "on";
 
     if (!purchaseId) return err("Purchase is required.");
-    const projectId = await getPurchaseProjectId(supabase, purchaseId);
-    await ensureProjectPmOrAdminAccess(supabase, user.id, projectId);
+    await ensurePurchasePmOrAdminAccess(supabase, user.id, purchaseId);
 
     const { error } = await supabase.from("purchase_receipts").insert({
       purchase_id: purchaseId,
@@ -871,8 +975,7 @@ export async function addProcurementReceivingDocAction(
     const note = String(formData.get("note") ?? "").trim();
 
     if (!purchaseId) return err("Purchase is required.");
-    const projectId = await getPurchaseProjectId(supabase, purchaseId);
-    await ensureProjectPmOrAdminAccess(supabase, user.id, projectId);
+    await ensurePurchasePmOrAdminAccess(supabase, user.id, purchaseId);
     if (!docCode) return err("Receiving document code is required.");
 
     const { error } = await supabase.from("purchase_receiving_docs").insert({
@@ -906,8 +1009,7 @@ export async function deleteProcurementReceivingDocAction(
     const id = String(formData.get("id") ?? "").trim();
     if (!id) return err("Receiving doc id is required.");
     const purchaseId = await getPurchaseIdForReceivingDoc(supabase, id);
-    const projectId = await getPurchaseProjectId(supabase, purchaseId);
-    await ensureProjectPmOrAdminAccess(supabase, user.id, projectId);
+    await ensurePurchasePmOrAdminAccess(supabase, user.id, purchaseId);
 
     const { error } = await supabase.from("purchase_receiving_docs").delete().eq("id", id);
     if (error) return err(error.message);
@@ -934,8 +1036,7 @@ export async function deleteProcurementReceiptAction(
     const id = String(formData.get("id") ?? "").trim();
     if (!id) return err("Receipt id is required.");
     const purchaseId = await getPurchaseIdForReceipt(supabase, id);
-    const projectId = await getPurchaseProjectId(supabase, purchaseId);
-    await ensureProjectPmOrAdminAccess(supabase, user.id, projectId);
+    await ensurePurchasePmOrAdminAccess(supabase, user.id, purchaseId);
 
     const { error } = await supabase.from("purchase_receipts").delete().eq("id", id);
     if (error) return err(error.message);
@@ -964,7 +1065,7 @@ export async function deleteProcurementAction(
 
     const { data: row, error: rowError } = await supabase.from("purchases").select("id, project_id").eq("id", id).single();
     if (rowError || !row) return err("Purchase not found.");
-    await ensureProjectAdminAccess(supabase, user.id, row.project_id as string);
+    await ensurePurchaseAdminAccess(supabase, user.id, id);
 
     const { error } = await supabase.from("purchases").delete().eq("id", id);
     if (error) return err(error.message);
@@ -972,7 +1073,7 @@ export async function deleteProcurementAction(
     revalidatePath("/procurement");
     revalidatePath("/requests");
     revalidatePath("/");
-    revalidatePath(`/projects/${row.project_id as string}`);
+    if (row.project_id) revalidatePath(`/projects/${row.project_id as string}`);
     return ok("Procurement row deleted.");
   } catch (error) {
     return err(getErrorMessage(error, "Could not delete procurement row."));

@@ -257,9 +257,14 @@ export function ProcurementTable({
   const [queryFilter, setQueryFilter] = useState(searchParams.get("pr_f_q") ?? "");
   const editingPurchase = useMemo(() => purchases.find((purchase) => purchase.id === editingId) ?? null, [purchases, editingId]);
   const [editProjectId, setEditProjectId] = useState("");
+  const [editOrganizationId, setEditOrganizationId] = useState("");
   const editingProject = useMemo(() => projectOptions.find((project) => project.id === editProjectId) ?? null, [projectOptions, editProjectId]);
   const editIsExternalProject = Boolean(editingProject?.isExternal);
-  const [editOrganizationId, setEditOrganizationId] = useState("");
+  const editingOrganization = useMemo(
+    () => organizationOptions.find((organization) => organization.id === editOrganizationId) ?? null,
+    [organizationOptions, editOrganizationId]
+  );
+  const editAllowsProjectless = Boolean(editingOrganization && !editingOrganization.projectTrackingRequired);
   const [editProductionCategoryId, setEditProductionCategoryId] = useState("");
   const [editBannerAccountCodeId, setEditBannerAccountCodeId] = useState("");
   const [editVendorId, setEditVendorId] = useState("");
@@ -287,7 +292,7 @@ export function ProcurementTable({
   const filteredPurchases = useMemo(() => {
     const q = queryFilter.trim().toLowerCase();
     return purchases.filter((purchase) => {
-      if (projectFilter && purchase.projectId !== projectFilter) return false;
+      if (projectFilter && (purchase.projectId ?? "__organization_budget__") !== projectFilter) return false;
       if (procurementStatusFilter && purchase.procurementStatus !== procurementStatusFilter) return false;
       if (budgetStatusFilter && purchase.budgetStatus !== budgetStatusFilter) return false;
       if (typeFilter && purchase.requestType !== typeFilter) return false;
@@ -373,7 +378,7 @@ export function ProcurementTable({
             : editingPurchase.pendingCcAmount !== 0
               ? editingPurchase.pendingCcAmount
               : editingPurchase.postedAmount;
-    setEditProjectId(editingPurchase.projectId);
+    setEditProjectId(editingPurchase.projectId ?? "");
     setEditOrganizationId(editingPurchase.organizationId ?? "");
     setEditProductionCategoryId(editingPurchase.productionCategoryId ?? "");
     setEditBannerAccountCodeId(editingPurchase.bannerAccountCodeId ?? "");
@@ -486,7 +491,7 @@ export function ProcurementTable({
           Project
           <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}>
             <option value="">All</option>
-            {Array.from(new Map(purchases.map((p) => [p.projectId, p.projectName])).entries()).map(([id, label]) => (
+            {Array.from(new Map(purchases.map((p) => [p.projectId ?? "__organization_budget__", p.projectName])).entries()).map(([id, label]) => (
               <option key={id} value={id}>
                 {label}
               </option>
@@ -690,8 +695,9 @@ export function ProcurementTable({
                   onChange={(event) => {
                     setEditProjectId(event.target.value);
                   }}
-                  required
+                  required={!editAllowsProjectless}
                 >
+                  <option value="">{editAllowsProjectless ? "No project — organization budget" : "Select project"}</option>
                   {projectOptions.map((project) => (
                     <option key={project.id} value={project.id}>
                       {project.label}
@@ -700,13 +706,13 @@ export function ProcurementTable({
                 </select>
               </label>
               <label>
-                Organization (External Procurement only)
+                Organization
                 <select
                   name="organizationId"
                   value={editOrganizationId}
                   onChange={(event) => setEditOrganizationId(event.target.value)}
-                  disabled={!editIsExternalProject}
-                  required={editIsExternalProject}
+                  disabled={Boolean(editProjectId) && !editIsExternalProject}
+                  required={editIsExternalProject || !editProjectId}
                 >
                   <option value="">Select organization</option>
                   {organizationOptions.map((organization) => (
@@ -715,8 +721,10 @@ export function ProcurementTable({
                     </option>
                   ))}
                 </select>
-                {!editIsExternalProject ? (
+                {editProjectId && !editIsExternalProject ? (
                   <span className="helperText">For budget-tracked projects, organization comes from the project.</span>
+                ) : !editProjectId ? (
+                  <span className="helperText">Projectless purchases are allowed only for organizations marked as non-theatre budgets.</span>
                 ) : null}
               </label>
               <input type="hidden" name="budgetLineId" value="" />
@@ -726,7 +734,7 @@ export function ProcurementTable({
                   name="productionCategoryId"
                   value={editProductionCategoryId}
                   onChange={(event) => setEditProductionCategoryId(event.target.value)}
-                  required={!editIsExternalProject}
+                  required={Boolean(editProjectId) && !editIsExternalProject}
                 >
                   <option value="">Select department</option>
                   {productionCategoryOptions.map((category) => (
@@ -742,6 +750,7 @@ export function ProcurementTable({
                   name="bannerAccountCodeId"
                   value={editBannerAccountCodeId}
                   onChange={(event) => setEditBannerAccountCodeId(event.target.value)}
+                  required={!editProjectId}
                 >
                   <option value="">Unassigned</option>
                   {accountCodeOptions.map((accountCode) => (

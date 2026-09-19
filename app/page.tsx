@@ -1,8 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { formatCurrency } from "@/lib/format";
-import { getDashboardOpenRequisitions, getDashboardProjects, getFiscalYearOptions, getMyBudgetData } from "@/lib/db";
-import type { DashboardOpenRequisition, DashboardProject } from "@/lib/db";
+import {
+  getDashboardOpenRequisitions,
+  getDashboardOrganizationBudgets,
+  getDashboardProjects,
+  getFiscalYearOptions,
+  getMyBudgetData
+} from "@/lib/db";
+import type { DashboardOpenRequisition, DashboardOrganizationBudget, DashboardProject } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
 import { resolveCurrentFiscalYearId, resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
@@ -89,7 +95,7 @@ async function getInstitutionalDashboardWarnings(fiscalYearId: string): Promise<
 export default async function DashboardPage({
   searchParams
 }: {
-  searchParams?: Promise<{ fiscalYearId?: string }>;
+  searchParams?: Promise<{ fiscalYearId?: string; budgetType?: string }>;
 }) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
@@ -221,8 +227,12 @@ export default async function DashboardPage({
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const fiscalYears = await getFiscalYearOptions();
   const fiscalYearId = resolveRequestedFiscalYearId(fiscalYears, resolvedSearchParams?.fiscalYearId);
+  const requestedBudgetType = String(resolvedSearchParams?.budgetType ?? "all").toLowerCase();
+  const budgetType: "all" | "theatre" | "non_theatre" =
+    requestedBudgetType === "theatre" || requestedBudgetType === "non_theatre" ? requestedBudgetType : "all";
 
   let projects: DashboardProject[] = [];
+  let organizationBudgets: DashboardOrganizationBudget[] = [];
   let openRequisitions: DashboardOpenRequisition[] = [];
   let institutionalWarnings: Awaited<ReturnType<typeof getInstitutionalDashboardWarnings>> = {
     overBudgetBuckets: [],
@@ -232,9 +242,10 @@ export default async function DashboardPage({
   let loadError: string | null = null;
 
   try {
-    [projects, openRequisitions, institutionalWarnings] = await Promise.all([
-      getDashboardProjects({ fiscalYearId }),
-      getDashboardOpenRequisitions({ fiscalYearId }),
+    [projects, organizationBudgets, openRequisitions, institutionalWarnings] = await Promise.all([
+      budgetType === "non_theatre" ? Promise.resolve([]) : getDashboardProjects({ fiscalYearId }),
+      budgetType === "theatre" ? Promise.resolve([]) : getDashboardOrganizationBudgets({ fiscalYearId }),
+      getDashboardOpenRequisitions({ fiscalYearId, budgetType }),
       getInstitutionalDashboardWarnings(fiscalYearId)
     ]);
   } catch {
@@ -245,12 +256,38 @@ export default async function DashboardPage({
     <section>
       <div className="heroCard">
         <p className="eyebrow">Portfolio View</p>
-        <h1 className="heroTitle">Production Budget Dashboard</h1>
+        <h1 className="heroTitle">Budget Dashboard</h1>
         <p className="heroSubtitle">
-          True remaining excludes unapproved requests. Planning overlay shows what remaining would be if open
-          requests were approved.
+          View theatre project budgets and non-theatre organization budgets together, or filter either group.
         </p>
       </div>
+
+      <article className="panel">
+        <h2>Dashboard Filters</h2>
+        <form className="panelGrid">
+          <label>
+            Fiscal Year
+            <select name="fiscalYearId" defaultValue={fiscalYearId}>
+              {fiscalYears.map((fiscalYear) => (
+                <option key={fiscalYear.id} value={fiscalYear.id}>
+                  {fiscalYear.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Budget Type
+            <select name="budgetType" defaultValue={budgetType}>
+              <option value="all">All Budgets</option>
+              <option value="theatre">Theatre Projects</option>
+              <option value="non_theatre">Non-Theatre Organizations</option>
+            </select>
+          </label>
+          <div>
+            <button className="buttonPrimary" type="submit">Apply</button>
+          </div>
+        </form>
+      </article>
 
       <DashboardRequisitionTable openRequisitions={openRequisitions} />
 
@@ -317,10 +354,10 @@ export default async function DashboardPage({
           </article>
         ) : null}
 
-        {projects.length === 0 ? (
+        {projects.length === 0 && organizationBudgets.length === 0 ? (
           <article className="projectCard">
-            <h2>No projects yet</h2>
-            <p>Add projects and budget lines in Supabase to start tracking.</p>
+            <h2>No budgets found</h2>
+            <p>No budgets match the selected fiscal year and budget type.</p>
           </article>
         ) : null}
 
@@ -370,6 +407,39 @@ export default async function DashboardPage({
             </dl>
             <Link href={`/projects/${project.projectId}`} className="buttonLink">
               Open Budget Board
+            </Link>
+          </article>
+        ))}
+
+        {organizationBudgets.map((organization) => (
+          <article key={`organization:${organization.organizationId}`} className="projectCard">
+            <div className="projectCardHeader">
+              <h2>{organization.organizationName}</h2>
+              <p>{organization.fiscalYearName ?? "No Fiscal Year"} | {organization.orgCode} | Non-Theatre</p>
+            </div>
+            <dl className="metricGrid">
+              <div><dt>Allocated</dt><dd>{formatCurrency(organization.allocatedTotal)}</dd></div>
+              <div><dt>YTD</dt><dd>{formatCurrency(organization.ytdTotal)}</dd></div>
+              <div><dt>ENC</dt><dd>{formatCurrency(organization.encTotal)}</dd></div>
+              <div><dt>Held</dt><dd>{formatCurrency(organization.heldTotal)}</dd></div>
+              <div><dt>Pending CC</dt><dd>{formatCurrency(organization.pendingCcTotal)}</dd></div>
+              <div><dt>Obligated</dt><dd>{formatCurrency(organization.obligatedTotal)}</dd></div>
+              <div>
+                <dt>Remaining</dt>
+                <dd className={organization.remainingTrue < 0 ? "negative" : "positive"}>{formatCurrency(organization.remainingTrue)}</dd>
+              </div>
+              <div>
+                <dt>Remaining if Requested Approved</dt>
+                <dd className={organization.remainingIfRequestedApproved < 0 ? "negative" : "positive"}>
+                  {formatCurrency(organization.remainingIfRequestedApproved)}
+                </dd>
+              </div>
+            </dl>
+            <Link
+              href={`/institutional-budget?fiscalYearId=${encodeURIComponent(fiscalYearId)}&organizationId=${encodeURIComponent(organization.organizationId)}`}
+              className="buttonLink"
+            >
+              Open Organization Budget
             </Link>
           </article>
         ))}

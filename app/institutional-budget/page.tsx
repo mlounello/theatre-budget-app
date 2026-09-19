@@ -26,6 +26,7 @@ type MonthlyBudgetRow = {
   approved_outgoing_variance_amount?: string | number | null;
   official_available_amount?: string | number | null;
   projected_available_amount?: string | number | null;
+  is_revenue?: boolean | null;
 };
 
 function asNumber(value: string | number | null | undefined): number {
@@ -98,7 +99,7 @@ export default async function InstitutionalBudgetPage({
   let query = supabase
     .from("v_institutional_monthly_budget_availability")
     .select(
-      "fiscal_year_id, fiscal_year_name, organization_id, org_code, organization_name, account_code_id, account_code, account_category, account_name, budget_plan_month_id, month_start, fiscal_month_index, monthly_allocation, commitment_count, submitted_commitments_amount, approved_incoming_variance_amount, approved_outgoing_variance_amount, official_available_amount, projected_available_amount"
+      "fiscal_year_id, fiscal_year_name, organization_id, org_code, organization_name, account_code_id, account_code, account_category, account_name, budget_plan_month_id, month_start, fiscal_month_index, monthly_allocation, commitment_count, submitted_commitments_amount, approved_incoming_variance_amount, approved_outgoing_variance_amount, official_available_amount, projected_available_amount, is_revenue"
     )
     .order("fiscal_year_name", { ascending: true })
     .order("org_code", { ascending: true })
@@ -148,6 +149,7 @@ export default async function InstitutionalBudgetPage({
         accountCode: row.account_code ?? "-",
         accountName: row.account_name ?? "-",
         accountCategory: row.account_category ?? "",
+        isRevenue: Boolean(row.is_revenue),
         cells: new Map<string, MonthlyBudgetRow>()
       });
     }
@@ -161,6 +163,7 @@ export default async function InstitutionalBudgetPage({
     accountCode: string;
     accountName: string;
     accountCategory: string;
+    isRevenue: boolean;
     cells: Map<string, MonthlyBudgetRow>;
   }>());
   const gridRows = Array.from(groupedRows.values()).sort((a, b) =>
@@ -266,6 +269,7 @@ export default async function InstitutionalBudgetPage({
                     <td className="stickyCol stickyCol3">
                       <strong>{gridRow.accountCode}</strong>
                       <div className="muted">{gridRow.accountName}</div>
+                      {gridRow.isRevenue ? <div className="statusPill status-held">Revenue target</div> : null}
                     </td>
                     <td className="stickyCol stickyCol4">{gridRow.accountCategory || "-"}</td>
                     {monthColumns.map((month) => {
@@ -276,14 +280,18 @@ export default async function InstitutionalBudgetPage({
                       const isNegative = officialAvailable < 0 || projectedAvailable < 0;
                       return (
                         <td key={month.monthStart} className={isNegative ? "budgetMonthCell negativeMonthCell" : "budgetMonthCell"}>
-                          <div className={officialAvailable < 0 ? "negative monthAvailable" : "positive monthAvailable"}>
-                            {formatCurrency(officialAvailable)}
-                          </div>
+                          {gridRow.isRevenue ? (
+                            <div className="monthAvailable muted">Not spendable</div>
+                          ) : (
+                            <div className={officialAvailable < 0 ? "negative monthAvailable" : "positive monthAvailable"}>
+                              {formatCurrency(officialAvailable)}
+                            </div>
+                          )}
                           <div className="monthMeta">
-                            <span>Alloc {formatCurrency(asNumber(cell.monthly_allocation))}</span>
-                            <span>Commit {formatCurrency(asNumber(cell.submitted_commitments_amount))}</span>
+                            <span>{gridRow.isRevenue ? "Target" : "Alloc"} {formatCurrency(asNumber(cell.monthly_allocation))}</span>
+                            {!gridRow.isRevenue ? <span>Commit {formatCurrency(asNumber(cell.submitted_commitments_amount))}</span> : null}
                           </div>
-                          {isNegative && cell.budget_plan_month_id ? (
+                          {!gridRow.isRevenue && isNegative && cell.budget_plan_month_id ? (
                             <div className="varianceCellActions">
                               <label className="varianceSelectLabel">
                                 <input type="checkbox" name="budgetPlanMonthId" value={cell.budget_plan_month_id} />

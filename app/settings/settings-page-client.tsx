@@ -242,7 +242,16 @@ export function SettingsPageClient({
 
   const organizationLookup = useMemo(() => {
     return new Map(
-      organizations.map((org) => [org.id, { id: org.id, name: org.name, orgCode: org.orgCode, fiscalYearId: org.fiscalYearId }] as const)
+      organizations.map((org) => [
+        org.id,
+        {
+          id: org.id,
+          name: org.name,
+          orgCode: org.orgCode,
+          fiscalYearId: org.fiscalYearId,
+          projectTrackingRequired: org.projectTrackingRequired
+        }
+      ] as const)
     );
   }, [organizations]);
 
@@ -316,7 +325,7 @@ export function SettingsPageClient({
   }, [projects]);
 
   const [fyForm, setFyForm] = useState({ name: "", startDate: "", endDate: "" });
-  const [orgForm, setOrgForm] = useState({ name: "", orgCode: "" });
+  const [orgForm, setOrgForm] = useState({ name: "", orgCode: "", fiscalYearIds: [] as string[], projectTrackingRequired: true });
   const [projectForm, setProjectForm] = useState({
     name: "",
     season: "",
@@ -381,9 +390,13 @@ export function SettingsPageClient({
     lastOrganizationIdRef.current = editingOrganization.id;
     setOrgForm({
       name: editingOrganization.name ?? "",
-      orgCode: editingOrganization.orgCode ?? ""
+      orgCode: editingOrganization.orgCode ?? "",
+      projectTrackingRequired: editingOrganization.projectTrackingRequired,
+      fiscalYearIds: organizations
+        .filter((organization) => organization.orgCode === editingOrganization.orgCode && organization.fiscalYearId)
+        .map((organization) => organization.fiscalYearId as string)
     });
-  }, [editingOrganization]);
+  }, [editingOrganization, organizations]);
 
   useEffect(() => {
     if (!editingProject) {
@@ -1308,6 +1321,43 @@ export function SettingsPageClient({
                   required
                 />
               </label>
+              <fieldset className="drawerChoiceGroup">
+                <legend>Available Fiscal Years</legend>
+                <div className="drawerChoiceGrid">
+                  {fiscalYears.map((fy) => (
+                    <label className="checkboxLabel" key={fy.id}>
+                      <input
+                        name="fiscalYearIds"
+                        type="checkbox"
+                        value={fy.id}
+                        checked={orgForm.fiscalYearIds.includes(fy.id)}
+                        onChange={(event) =>
+                          setOrgForm((prev) => ({
+                            ...prev,
+                            fiscalYearIds: event.target.checked
+                              ? [...new Set([...prev.fiscalYearIds, fy.id])]
+                              : prev.fiscalYearIds.filter((id) => id !== fy.id)
+                          }))
+                        }
+                      />
+                      {fy.name}
+                    </label>
+                  ))}
+                </div>
+                <span className="helperText">
+                  Checking another year adds this organization there. Existing fiscal-year assignments are not removed.
+                </span>
+              </fieldset>
+              <label className="checkboxLabel">
+                <input
+                  name="projectTrackingRequired"
+                  type="checkbox"
+                  checked={orgForm.projectTrackingRequired}
+                  onChange={(event) => setOrgForm((prev) => ({ ...prev, projectTrackingRequired: event.target.checked }))}
+                />
+                Require a project for purchases
+              </label>
+              <span className="helperText">Uncheck to use this fiscal year’s organization budget without projects. Other fiscal years are unchanged.</span>
               <div className="modalActions">
                 <a className="tinyButton" href="/settings">
                   Cancel

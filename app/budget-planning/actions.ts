@@ -70,6 +70,7 @@ type AllocationImportConfig = {
   fiscalYearEndDate: string;
   expectedGrandTotal: number | null;
   requiredOrganizations: Record<string, string>;
+  fixedOrganizationCode: string | null;
   months: string[];
   monthAliases: Map<string, string>;
 };
@@ -191,17 +192,36 @@ function parseOptionalExpectedTotal(value: FormDataEntryValue | null): number | 
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function buildAllocationImportConfig(formData: FormData): AllocationImportConfig {
+async function buildAllocationImportConfig(formData: FormData): Promise<AllocationImportConfig> {
   const fiscalYearName = String(formData.get("fiscalYearName") ?? DEFAULT_ALLOCATION_IMPORT_FISCAL_YEAR).trim() || DEFAULT_ALLOCATION_IMPORT_FISCAL_YEAR;
   const fiscalYearStartDate = parseDateInput(formData.get("fiscalYearStartDate"), DEFAULT_ALLOCATION_IMPORT_START_DATE);
   const fiscalYearEndDate = parseDateInput(formData.get("fiscalYearEndDate"), DEFAULT_ALLOCATION_IMPORT_END_DATE);
   const months = buildJuneMayMonths(fiscalYearStartDate);
+  const targetOrganizationId = String(formData.get("targetOrganizationId") ?? "").trim();
+  let requiredOrganizations: Record<string, string> = DEFAULT_ALLOCATION_IMPORT_ORGS;
+  let fixedOrganizationCode: string | null = null;
+  if (targetOrganizationId) {
+    const supabase = await getSupabaseServerClient();
+    const { data: organization, error } = await supabase
+      .from("organizations")
+      .select("id, name, org_code, fiscal_year_id, fiscal_years(name)")
+      .eq("id", targetOrganizationId)
+      .single();
+    if (error || !organization) throw new Error("Selected organization was not found.");
+    const organizationFiscalYear = organization.fiscal_years as { name?: string } | null;
+    if (organizationFiscalYear?.name && organizationFiscalYear.name !== fiscalYearName) {
+      throw new Error("Selected organization does not belong to the selected fiscal year.");
+    }
+    fixedOrganizationCode = String(organization.org_code);
+    requiredOrganizations = { [fixedOrganizationCode]: String(organization.name) };
+  }
   return {
     fiscalYearName,
     fiscalYearStartDate,
     fiscalYearEndDate,
     expectedGrandTotal: parseOptionalExpectedTotal(formData.get("expectedGrandTotal")),
-    requiredOrganizations: DEFAULT_ALLOCATION_IMPORT_ORGS,
+    requiredOrganizations,
+    fixedOrganizationCode,
     months,
     monthAliases: buildMonthAliases(months)
   };
@@ -311,7 +331,7 @@ async function parseInstitutionalAllocationWorkbook(
   const errors: string[] = [];
   const warnings: string[] = [];
   const rows: InstitutionalAllocationImportRow[] = [];
-  let currentOrgCode: string | null = null;
+  let currentOrgCode: string | null = config.fixedOrganizationCode;
 
   for (let rowNumber = detected.rowNumber + 1; rowNumber <= worksheet.rowCount; rowNumber += 1) {
     const row = worksheet.getRow(rowNumber);
@@ -322,9 +342,11 @@ async function parseInstitutionalAllocationWorkbook(
     const joined = values.join(" ").trim();
     if (!joined) continue;
 
-    for (const orgCode of Object.keys(config.requiredOrganizations)) {
-      if (new RegExp(`\\b${orgCode}\\b`, "i").test(joined)) {
-        currentOrgCode = orgCode;
+    if (!config.fixedOrganizationCode) {
+      for (const orgCode of Object.keys(config.requiredOrganizations)) {
+        if (new RegExp(`\\b${orgCode}\\b`, "i").test(joined)) {
+          currentOrgCode = orgCode;
+        }
       }
     }
 
@@ -635,7 +657,7 @@ export async function previewInstitutionalAllocationImportAction(
   try {
     void _prevState;
     await requireAllocationImportAccess();
-    const config = buildAllocationImportConfig(formData);
+    const config = await buildAllocationImportConfig(formData);
     const file = formData.get("allocationFile");
     if (!(file instanceof File) || file.size === 0) {
       throw new Error("Upload an institutional allocation XLSX file.");

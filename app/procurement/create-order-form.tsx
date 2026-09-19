@@ -136,6 +136,9 @@ export function CreateOrderForm({
 
   const selectedProject = filteredProjectOptions.find((project) => project.id === projectId) ?? null;
   const isExternalProject = selectedProject?.isExternal ?? false;
+  const selectedOrganization = organizationOptions.find((organization) => organization.id === organizationId) ?? null;
+  const allowsProjectlessPurchases = selectedOrganization ? !selectedOrganization.projectTrackingRequired : false;
+  const projectRequired = !allowsProjectlessPurchases;
 
   return (
     <form action={formAction} className="requestForm" ref={formRef}>
@@ -165,13 +168,14 @@ export function CreateOrderForm({
       <label>
         Organization
         <select
+          name="organizationId"
           value={organizationId}
           onChange={(event) => {
             setOrganizationId(event.target.value);
             setProjectId("");
           }}
-          disabled={!isExternalProject}
-          required={isExternalProject}
+          disabled={!fiscalYearId}
+          required
         >
           <option value="">Select organization</option>
           {filteredOrganizationOptions.map((option) => (
@@ -180,12 +184,16 @@ export function CreateOrderForm({
             </option>
           ))}
         </select>
-        {!isExternalProject ? <span className="helperText">For budget-tracked projects, organization comes from the project.</span> : null}
+        {allowsProjectlessPurchases ? (
+          <span className="helperText">This non-theatre budget can be used without selecting a project.</span>
+        ) : (
+          <span className="helperText">This organization requires purchases to be assigned to a project.</span>
+        )}
       </label>
       <label>
         Project
-        <select name="projectId" value={projectId} onChange={(event) => setProjectId(event.target.value)} required>
-          <option value="">Select project</option>
+        <select name="projectId" value={projectId} onChange={(event) => setProjectId(event.target.value)} required={projectRequired}>
+          <option value="">{allowsProjectlessPurchases ? "No project — organization budget" : "Select project"}</option>
           {filteredProjectOptions.map((project) => (
             <option key={project.id} value={project.id}>
               {project.label}
@@ -199,7 +207,7 @@ export function CreateOrderForm({
           name="productionCategoryId"
           value={productionCategoryId}
           onChange={(event) => setProductionCategoryId(event.target.value)}
-          required={!isExternalProject}
+          required={Boolean(projectId) && !isExternalProject}
         >
           <option value="">Select department</option>
           {productionCategoryOptions.map((category) => (
@@ -210,8 +218,13 @@ export function CreateOrderForm({
         </select>
       </label>
       <label>
-        Banner Account Code (optional)
-        <select name="bannerAccountCodeId" value={bannerAccountCodeId} onChange={(event) => setBannerAccountCodeId(event.target.value)}>
+        Banner Account Code {allowsProjectlessPurchases && !projectId ? "" : "(optional)"}
+        <select
+          name="bannerAccountCodeId"
+          value={bannerAccountCodeId}
+          onChange={(event) => setBannerAccountCodeId(event.target.value)}
+          required={allowsProjectlessPurchases && !projectId}
+        >
           <option value="">Unassigned</option>
           {accountCodeOptions.map((accountCode) => (
             <option key={accountCode.id} value={accountCode.id}>
@@ -221,7 +234,6 @@ export function CreateOrderForm({
         </select>
       </label>
       {isExternalProject ? <p className="heroSubtitle">External Procurement rows are automatically marked as off-budget.</p> : null}
-      <input type="hidden" name="organizationId" value={isExternalProject ? organizationId : ""} />
       <input type="hidden" name="budgetLineId" value="" />
       <label>
         Request Type

@@ -29,7 +29,19 @@ function monthLabel(monthStart: string): string {
   return new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric" }).format(date);
 }
 
-export function InstitutionalAllocationImportPanel() {
+export function InstitutionalAllocationImportPanel({
+  fiscalYearName,
+  fiscalYearStartDate,
+  fiscalYearEndDate,
+  organizationId,
+  organizationLabel
+}: {
+  fiscalYearName: string;
+  fiscalYearStartDate: string;
+  fiscalYearEndDate: string;
+  organizationId: string;
+  organizationLabel: string;
+}) {
   const [previewState, previewAction] = useActionState(previewInstitutionalAllocationImportAction, initialPreviewState);
   const [commitState, commitAction] = useActionState(commitInstitutionalAllocationImportAction, initialCommitState);
   const preview = previewState.preview;
@@ -38,18 +50,22 @@ export function InstitutionalAllocationImportPanel() {
   return (
     <article className="panel">
       <h2>Institutional Allocation Import</h2>
+      <p className="heroSubtitle">
+        Importing into <strong>{organizationLabel}</strong>. Use the filters below to choose a different fiscal year or organization first.
+      </p>
       <form action={previewAction} className="requestForm">
+        <input name="targetOrganizationId" type="hidden" value={organizationId} />
         <label>
           Fiscal Year
-          <input name="fiscalYearName" defaultValue="FY27" required />
+          <input name="fiscalYearName" value={fiscalYearName} readOnly required />
         </label>
         <label>
           Fiscal Year Start
-          <input name="fiscalYearStartDate" type="date" defaultValue="2026-06-01" required />
+          <input name="fiscalYearStartDate" type="date" value={fiscalYearStartDate} readOnly required />
         </label>
         <label>
           Fiscal Year End
-          <input name="fiscalYearEndDate" type="date" defaultValue="2027-05-31" required />
+          <input name="fiscalYearEndDate" type="date" value={fiscalYearEndDate} readOnly required />
         </label>
         <label>
           Expected Total (optional)
@@ -58,6 +74,7 @@ export function InstitutionalAllocationImportPanel() {
         <label>
           Allocation Workbook
           <input name="allocationFile" type="file" accept=".xlsx" required />
+          <span className="helperText">The workbook should include account codes and monthly allocation columns for the selected fiscal year.</span>
         </label>
         <button className="buttonPrimary" type="submit">
           Preview Import

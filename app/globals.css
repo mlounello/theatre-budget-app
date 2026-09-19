@@ -65,6 +65,8 @@ th {
 }
 
 .topNav {
+  position: relative;
+  z-index: 50;
   background: linear-gradient(120deg, var(--siena-green), var(--siena-dark-green));
   color: var(--siena-white);
   border-bottom: 4px solid var(--siena-yellow);
@@ -177,6 +179,76 @@ th {
 
 .navLink:hover {
   background: #ffffff1a;
+}
+
+.navMenuList {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.navMenu {
+  position: relative;
+}
+
+.navMenuButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2.2rem;
+  color: var(--siena-white);
+  font-family: "Gudea", "Arial", sans-serif;
+  border: 1px solid #ffffff52;
+  background: transparent;
+  border-radius: 999px;
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+}
+
+.navMenuButton:hover,
+.navMenuButton.active,
+.navMenuButton[aria-expanded="true"] {
+  background: #ffffff1a;
+  border-color: #ffffff99;
+}
+
+.navMenuChevron {
+  font-size: 0.72rem;
+  transition: transform 150ms ease;
+}
+
+.navMenuButton[aria-expanded="true"] .navMenuChevron {
+  transform: rotate(180deg);
+}
+
+.navMenuDropdown {
+  position: absolute;
+  z-index: 80;
+  top: calc(100% + 0.45rem);
+  left: 0;
+  display: grid;
+  min-width: 220px;
+  padding: 0.45rem;
+  border: 1px solid #cfd8d2;
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 14px 32px #092c2060;
+}
+
+.navMenuLink {
+  color: var(--text-main);
+  text-decoration: none;
+  font-family: "Gudea", "Arial", sans-serif;
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  white-space: nowrap;
+}
+
+.navMenuLink:hover,
+.navMenuLink.active {
+  color: var(--siena-dark-green);
+  background: #e8f2ed;
 }
 
 .navButton {
@@ -2203,6 +2275,21 @@ th {
   .mainNav {
     width: 100%;
     flex-wrap: wrap;
+  }
+
+  .navMenuList {
+    width: 100%;
+  }
+
+  .navMenu {
+    position: static;
+  }
+
+  .navMenuDropdown {
+    top: auto;
+    right: 0.75rem;
+    left: 0.75rem;
+    margin-top: 0.35rem;
   }
 
   .inlineStatusForm {

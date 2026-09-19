@@ -31,9 +31,28 @@ export type DashboardProject = {
   incomeTotal: number;
 };
 
+export type DashboardOrganizationBudget = {
+  organizationId: string;
+  organizationName: string;
+  orgCode: string;
+  fiscalYearId: string | null;
+  fiscalYearName: string | null;
+  allocatedTotal: number;
+  requestedOpenTotal: number;
+  heldTotal: number;
+  encTotal: number;
+  pendingCcTotal: number;
+  ytdTotal: number;
+  obligatedTotal: number;
+  remainingTrue: number;
+  remainingIfRequestedApproved: number;
+};
+
 export type DashboardOpenRequisition = {
   id: string;
-  projectId: string;
+  projectId: string | null;
+  organizationId: string | null;
+  budgetType: "theatre" | "non_theatre";
   fiscalYearId: string | null;
   projectName: string;
   season: string | null;
@@ -161,7 +180,7 @@ export type RequestReceiptRow = {
 
 export type ProcurementRow = {
   id: string;
-  projectId: string;
+  projectId: string | null;
   projectName: string;
   season: string | null;
   organizationId: string | null;
@@ -570,6 +589,7 @@ export type OrganizationOption = {
   fiscalYearId: string | null;
   fiscalYearName: string | null;
   sortOrder: number;
+  projectTrackingRequired: boolean;
   label: string;
 };
 
@@ -851,28 +871,131 @@ export async function getDashboardProjects(params: { fiscalYearId?: string } = {
   });
 }
 
-export async function getDashboardOpenRequisitions(params: { fiscalYearId?: string } = {}): Promise<DashboardOpenRequisition[]> {
+export async function getDashboardOrganizationBudgets(
+  params: { fiscalYearId?: string } = {}
+): Promise<DashboardOrganizationBudget[]> {
   const supabase = await getSupabaseServerClient();
+  let organizationsQuery = supabase
+    .from("organizations")
+    .select("id, name, org_code, fiscal_year_id, project_tracking_required, fiscal_years(name)")
+    .order("sort_order", { ascending: true })
+    .order("name", { ascending: true });
+  if (params.fiscalYearId) organizationsQuery = organizationsQuery.eq("fiscal_year_id", params.fiscalYearId);
 
-  let query = supabase
+  const { data: allOrganizations, error: organizationsError } = await organizationsQuery;
+  if (organizationsError) throw organizationsError;
+  const allOrganizationIds = (allOrganizations ?? []).map((row) => row.id as string);
+  if (allOrganizationIds.length === 0) return [];
+
+  const { data: directPurchases, error: directPurchasesError } = await supabase
     .from("purchases")
-    .select(
-      "id, project_id, title, requisition_number, po_number, procurement_status, estimated_amount, requested_amount, encumbered_amount, posted_amount, projects!inner(name, season, fiscal_year_id), vendors(name)"
-    )
-    .eq("request_type", "requisition")
-    .neq("procurement_status", "paid")
-    .neq("procurement_status", "cancelled")
-    .not("projects.name", "ilike", "external procurement")
-    .order("created_at", { ascending: false })
-    .limit(100);
+    .select("organization_id, status, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount")
+    .is("project_id", null)
+    .in("organization_id", allOrganizationIds);
+  if (directPurchasesError) throw directPurchasesError;
 
-  if (params.fiscalYearId) query = query.eq("projects.fiscal_year_id", params.fiscalYearId);
+  const organizationsWithDirectPurchases = new Set(
+    (directPurchases ?? []).map((purchase) => purchase.organization_id as string)
+  );
+  const organizations = (allOrganizations ?? []).filter(
+    (row) => row.project_tracking_required === false || organizationsWithDirectPurchases.has(row.id as string)
+  );
+  const organizationIds = organizations.map((row) => row.id as string);
+  if (organizationIds.length === 0) return [];
 
-  const { data, error } = await query;
+  const { data: plans, error: plansError } = await supabase
+    .from("budget_plans")
+    .select("organization_id, annual_amount, account_codes(is_revenue)")
+    .in("organization_id", organizationIds);
+  if (plansError) throw plansError;
+  const purchases = (directPurchases ?? []).filter((purchase) =>
+    organizationIds.includes(purchase.organization_id as string)
+  );
 
-  if (error) throw error;
+  const allocatedByOrganization = new Map<string, number>();
+  for (const plan of plans ?? []) {
+    const account = plan.account_codes as { is_revenue?: boolean } | null;
+    if (account?.is_revenue) continue;
+    const organizationId = plan.organization_id as string;
+    allocatedByOrganization.set(
+      organizationId,
+      (allocatedByOrganization.get(organizationId) ?? 0) + asNumber(plan.annual_amount as string | number | null)
+    );
+  }
 
-  return ((data as Array<Record<string, unknown>> | null) ?? []).map((row) => {
+  const totalsByOrganization = new Map<
+    string,
+    { requested: number; held: number; enc: number; pending: number; ytd: number }
+  >();
+  for (const purchase of purchases ?? []) {
+    const organizationId = purchase.organization_id as string;
+    const totals = totalsByOrganization.get(organizationId) ?? { requested: 0, held: 0, enc: 0, pending: 0, ytd: 0 };
+    const status = String(purchase.status ?? "").toLowerCase();
+    if (status === "requested") {
+      const requested = asNumber(purchase.requested_amount as string | number | null);
+      totals.requested += requested !== 0 ? requested : asNumber(purchase.estimated_amount as string | number | null);
+    } else if (status === "held") {
+      totals.held += asNumber(purchase.estimated_amount as string | number | null);
+    } else if (status === "encumbered") {
+      totals.enc += asNumber(purchase.encumbered_amount as string | number | null);
+    } else if (status === "pending_cc") {
+      totals.pending += asNumber(purchase.pending_cc_amount as string | number | null);
+    } else if (status === "posted") {
+      totals.ytd += asNumber(purchase.posted_amount as string | number | null);
+    }
+    totalsByOrganization.set(organizationId, totals);
+  }
+
+  return (organizations ?? []).map((row) => {
+    const organizationId = row.id as string;
+    const fiscalYear = row.fiscal_years as { name?: string } | null;
+    const allocatedTotal = allocatedByOrganization.get(organizationId) ?? 0;
+    const totals = totalsByOrganization.get(organizationId) ?? { requested: 0, held: 0, enc: 0, pending: 0, ytd: 0 };
+    const obligatedTotal = totals.enc + totals.pending + totals.ytd;
+    const remainingTrue = allocatedTotal - obligatedTotal;
+    return {
+      organizationId,
+      organizationName: (row.name as string) ?? "Organization Budget",
+      orgCode: (row.org_code as string) ?? "-",
+      fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
+      fiscalYearName: fiscalYear?.name ?? null,
+      allocatedTotal,
+      requestedOpenTotal: totals.requested,
+      heldTotal: totals.held,
+      encTotal: totals.enc,
+      pendingCcTotal: totals.pending,
+      ytdTotal: totals.ytd,
+      obligatedTotal,
+      remainingTrue,
+      remainingIfRequestedApproved: remainingTrue - totals.requested
+    };
+  });
+}
+
+export async function getDashboardOpenRequisitions(
+  params: { fiscalYearId?: string; budgetType?: "all" | "theatre" | "non_theatre" } = {}
+): Promise<DashboardOpenRequisition[]> {
+  const supabase = await getSupabaseServerClient();
+  const budgetType = params.budgetType ?? "all";
+  const rows: DashboardOpenRequisition[] = [];
+
+  if (budgetType !== "non_theatre") {
+    let query = supabase
+      .from("purchases")
+      .select(
+        "id, project_id, title, requisition_number, po_number, procurement_status, estimated_amount, requested_amount, encumbered_amount, posted_amount, projects!inner(name, season, fiscal_year_id), vendors(name)"
+      )
+      .eq("request_type", "requisition")
+      .neq("procurement_status", "paid")
+      .neq("procurement_status", "cancelled")
+      .not("projects.name", "ilike", "external procurement")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (params.fiscalYearId) query = query.eq("projects.fiscal_year_id", params.fiscalYearId);
+    const { data, error } = await query;
+    if (error) throw error;
+
+    rows.push(...(((data as Array<Record<string, unknown>> | null) ?? []).map((row) => {
     const project = row.projects as { name?: string; season?: string | null; fiscal_year_id?: string | null } | null;
     const vendor = row.vendors as { name?: string } | null;
     const estimated = asNumber(row.estimated_amount as string | number | null);
@@ -884,6 +1007,8 @@ export async function getDashboardOpenRequisitions(params: { fiscalYearId?: stri
     return {
       id: row.id as string,
       projectId: row.project_id as string,
+      organizationId: null,
+      budgetType: "theatre" as const,
       fiscalYearId: project?.fiscal_year_id ?? null,
       projectName: project?.name ?? "Unknown Project",
       season: project?.season ?? null,
@@ -894,7 +1019,52 @@ export async function getDashboardOpenRequisitions(params: { fiscalYearId?: stri
       procurementStatus: ((row.procurement_status as string | null) ?? "requested").toLowerCase(),
       orderValue
     };
-  });
+    })));
+  }
+
+  if (budgetType !== "theatre") {
+    let query = supabase
+      .from("purchases")
+      .select(
+        "id, organization_id, title, requisition_number, po_number, procurement_status, estimated_amount, requested_amount, encumbered_amount, posted_amount, organizations!inner(name, org_code, fiscal_year_id, project_tracking_required), vendors(name)"
+      )
+      .is("project_id", null)
+      .eq("request_type", "requisition")
+      .neq("procurement_status", "paid")
+      .neq("procurement_status", "cancelled")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    if (params.fiscalYearId) query = query.eq("organizations.fiscal_year_id", params.fiscalYearId);
+    const { data, error } = await query;
+    if (error) throw error;
+
+    rows.push(...(((data as Array<Record<string, unknown>> | null) ?? []).map((row) => {
+      const organization = row.organizations as { name?: string; org_code?: string; fiscal_year_id?: string | null } | null;
+      const vendor = row.vendors as { name?: string } | null;
+      const estimated = asNumber(row.estimated_amount as string | number | null);
+      const requested = asNumber(row.requested_amount as string | number | null);
+      const encumbered = asNumber(row.encumbered_amount as string | number | null);
+      const posted = asNumber(row.posted_amount as string | number | null);
+      const orderValue = estimated !== 0 ? estimated : requested !== 0 ? requested : encumbered !== 0 ? encumbered : posted;
+      return {
+        id: row.id as string,
+        projectId: null,
+        organizationId: (row.organization_id as string | null) ?? null,
+        budgetType: "non_theatre" as const,
+        fiscalYearId: organization?.fiscal_year_id ?? null,
+        projectName: `${organization?.org_code ?? "-"} | ${organization?.name ?? "Organization Budget"}`,
+        season: null,
+        title: (row.title as string) ?? "Untitled",
+        requisitionNumber: (row.requisition_number as string | null) ?? null,
+        poNumber: (row.po_number as string | null) ?? null,
+        vendorName: vendor?.name ?? null,
+        procurementStatus: ((row.procurement_status as string | null) ?? "requested").toLowerCase(),
+        orderValue
+      };
+    })));
+  }
+
+  return rows;
 }
 
 export async function getProjectBudgetBoard(projectId: string): Promise<{
@@ -1169,6 +1339,10 @@ export async function getRequestsData(): Promise<{
 
   const budgetLineOptions: ProjectBudgetLineOption[] = (optionsData ?? [])
     .filter((row) => projectLookup.has(row.project_id as string))
+    .filter((row) => {
+      const account = (accountCodeData ?? []).find((candidate) => candidate.id === row.account_code_id);
+      return !Boolean(account?.is_revenue as boolean | null);
+    })
     .map((row) => {
       const projectMeta = projectLookup.get(row.project_id as string)!;
       return {
@@ -1188,7 +1362,7 @@ export async function getRequestsData(): Promise<{
 
   const accountCodeOptions: AccountCodeOption[] = (
     (accountCodeData as Array<{ id?: unknown; code?: unknown; category?: unknown; name?: unknown; is_revenue?: unknown }> | null) ?? []
-  ).map((row) => ({
+  ).filter((row) => !Boolean(row.is_revenue as boolean | null)).map((row) => ({
     id: row.id as string,
     code: row.code as string,
     category: row.category as string,
@@ -1261,7 +1435,7 @@ export async function getProcurementData(): Promise<{
     supabase
       .from("project_budget_lines")
       .select(
-        "id, project_id, budget_code, category, line_name, projects(name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name))"
+        "id, project_id, account_code_id, budget_code, category, line_name, account_codes(is_revenue), projects(name, season, organization_id, fiscal_year_id, organizations(name, org_code), fiscal_years(name))"
       )
       .eq("active", true)
       .order("budget_code", { ascending: true }),
@@ -1274,10 +1448,14 @@ export async function getProcurementData(): Promise<{
       .from("purchase_receiving_docs")
       .select("id, purchase_id, doc_code, received_on, note, created_at")
       .order("created_at", { ascending: false }),
-    supabase.from("projects").select("id, name, season, organization_id, fiscal_year_id").order("name", { ascending: true }),
+    supabase
+      .from("projects")
+      .select("id, name, season, organization_id, fiscal_year_id")
+      .not("name", "ilike", "external procurement")
+      .order("name", { ascending: true }),
     supabase
       .from("organizations")
-      .select("id, name, org_code, fiscal_year_id, sort_order, fiscal_years(name)")
+      .select("id, name, org_code, fiscal_year_id, sort_order, project_tracking_required, fiscal_years(name)")
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true }),
     supabase
@@ -1332,8 +1510,8 @@ export async function getProcurementData(): Promise<{
     const accountCode = row.account_codes as { code?: string } | null;
     return {
       id: row.id as string,
-      projectId: row.project_id as string,
-      projectName: project?.name ?? "Unknown Project",
+      projectId: (row.project_id as string | null) ?? null,
+      projectName: project?.name ?? "Organization Budget",
       season: project?.season ?? null,
       organizationId: (row.organization_id as string | null) ?? ((project?.organization_id as string | null) ?? null),
       organizationName,
@@ -1383,7 +1561,10 @@ export async function getProcurementData(): Promise<{
     };
   });
 
-  const budgetLineOptionsRaw: ProcurementBudgetLineOption[] = (linesResponse.data ?? []).map((row) => {
+  const budgetLineOptionsRaw: ProcurementBudgetLineOption[] = (linesResponse.data ?? []).filter((row) => {
+    const account = row.account_codes as { is_revenue?: boolean } | null;
+    return !Boolean(account?.is_revenue);
+  }).map((row) => {
     const project = row.projects as
       | {
           name?: string;
@@ -1465,6 +1646,7 @@ export async function getProcurementData(): Promise<{
       fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
       fiscalYearName,
       sortOrder: (row.sort_order as number | null) ?? 0,
+      projectTrackingRequired: (row.project_tracking_required as boolean | null) ?? true,
       label: `${row.org_code as string} | ${row.name as string}${fiscalYearName ? ` (${fiscalYearName})` : ""}`
     };
   });
@@ -1477,7 +1659,7 @@ export async function getProcurementData(): Promise<{
 
   const accountCodeOptions: AccountCodeOption[] = (
     (accountCodeResponse.data as Array<{ id?: unknown; code?: unknown; category?: unknown; name?: unknown; is_revenue?: unknown }> | null) ?? []
-  ).map((row) => ({
+  ).filter((row) => !Boolean(row.is_revenue as boolean | null)).map((row) => ({
     id: row.id as string,
     code: row.code as string,
     category: row.category as string,
@@ -1841,7 +2023,7 @@ export async function getContractsData(): Promise<{
     fiscalYearOptions: fiscalYears,
     organizationOptions: organizations,
     projectOptions,
-    accountCodeOptions: accountCodes,
+    accountCodeOptions: accountCodes.filter((account) => !account.isRevenue),
     foapalOptions,
     guestArtistOptions,
     unionAgreementOptions,
@@ -1878,6 +2060,7 @@ export async function getSettingsProjects(): Promise<SettingsProject[]> {
   const { data, error } = await supabase
     .from("projects")
     .select("id, name, season, organization_id, fiscal_year_id, planning_requests_enabled, sort_order")
+    .not("name", "ilike", "external procurement")
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
 
@@ -2437,7 +2620,7 @@ export async function getOrganizationOptions(): Promise<OrganizationOption[]> {
   const supabase = await getSupabaseServerClient();
   const { data, error } = await supabase
     .from("organizations")
-    .select("id, name, org_code, fiscal_year_id, sort_order, fiscal_years(name)")
+    .select("id, name, org_code, fiscal_year_id, sort_order, project_tracking_required, fiscal_years(name)")
     .order("sort_order", { ascending: true })
     .order("name", { ascending: true });
   if (error) throw error;
@@ -2451,6 +2634,7 @@ export async function getOrganizationOptions(): Promise<OrganizationOption[]> {
       fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
       fiscalYearName,
       sortOrder: (row.sort_order as number | null) ?? 0,
+      projectTrackingRequired: (row.project_tracking_required as boolean | null) ?? true,
       label: `${row.org_code as string} | ${row.name as string}${fiscalYearName ? ` (${fiscalYearName})` : ""}`
     };
   });
@@ -2938,7 +3122,8 @@ export async function getOrganizationOverviewRows(): Promise<OrganizationOvervie
 
   return Array.from(grouped.values())
     .map((row) => {
-      const fundingPoolTotal = row.fundingPoolTotal;
+      // Revenue remains visible for reporting, but it is no longer spendable.
+      const fundingPoolTotal = row.startingBudgetTotal;
       const requestedOpenTotal = row.requestedOpenTotal;
       const heldTotal = row.heldTotal;
       const encTotal = row.encTotal;
@@ -3550,6 +3735,8 @@ export async function getMyBudgetData(params: { fiscalYearId?: string } = {}): P
       openRequisitions.push({
         id: row.id as string,
         projectId,
+        organizationId: project.organizationId,
+        budgetType: "theatre",
         fiscalYearId: project.fiscalYearId,
         projectName: project.name,
         season: project.season,

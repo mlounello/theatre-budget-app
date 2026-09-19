@@ -6,57 +6,75 @@ import { getAccessContext } from "@/lib/access";
 import { getFiscalYearOptions } from "@/lib/db";
 import { resolveCurrentFiscalYearId } from "@/lib/fiscal-year-context";
 import { GlobalFiscalYearPicker } from "@/components/global-fiscal-year-picker";
+import { GroupedNavMenus, type NavMenuGroup } from "@/components/grouped-nav-menus";
 
-function linksForRole(role: string): Array<{ href: string; label: string }> {
+type Navigation = {
+  directLinks: Array<{ href: string; label: string }>;
+  groups: NavMenuGroup[];
+};
+
+function navigationForRole(role: string): Navigation {
   if (role === "procurement_tracker") {
-    return [{ href: "/procurement-tracker", label: "Procurement Tracker" }];
+    return { directLinks: [{ href: "/procurement-tracker", label: "Procurement Tracker" }], groups: [] };
   }
 
   if (role === "viewer" || role === "buyer") {
-    return [
-      { href: "/", label: "Dashboard" },
-      { href: "/my-budget", label: "My Budget" }
-    ];
+    return {
+      directLinks: [
+        { href: "/", label: "Dashboard" },
+        { href: "/my-budget", label: "My Budget" }
+      ],
+      groups: []
+    };
   }
 
-  if (role === "project_manager") {
-    return [
-      { href: "/", label: "Dashboard" },
-      { href: "/overview", label: "Overview" },
-      { href: "/my-budget", label: "Viewer Totals" },
-      { href: "/procurement", label: "Procurement" },
-      { href: "/contracts", label: "Contracts" },
-      { href: "/guest-artists", label: "Guest Artists" },
-      { href: "/union-agreements", label: "Union Agreements" },
-      { href: "/budget-planning", label: "Budget Planning" },
-      { href: "/institutional-budget", label: "Institutional Budget" },
-      { href: "/variance", label: "Variance" },
-      { href: "/income", label: "Income" },
-      { href: "/cc", label: "CC" },
-      { href: "/settings", label: "Settings" }
-    ];
+  if (role === "project_manager" || role === "admin") {
+    return {
+      directLinks: [{ href: "/", label: "Dashboard" }],
+      groups: [
+        {
+          label: "Spending",
+          links: [
+            { href: "/procurement", label: "Procurement" },
+            { href: "/cc", label: "Credit Cards" }
+          ]
+        },
+        {
+          label: "Contracts",
+          links: [
+            { href: "/contracts", label: "All Contracts" },
+            { href: "/guest-artists", label: "Guest Artists" },
+            { href: "/union-agreements", label: "Union Agreements" }
+          ]
+        },
+        {
+          label: "Budgets",
+          links: [
+            { href: "/budget-planning", label: "Budget Planning" },
+            { href: "/institutional-budget", label: "Institutional Budget" },
+            { href: "/variance", label: "Variances" },
+            { href: "/income", label: "Revenue & Income" }
+          ]
+        },
+        {
+          label: "Reports",
+          links: [
+            { href: "/overview", label: "Overview" },
+            { href: "/my-budget", label: "Viewer Totals" }
+          ]
+        },
+        {
+          label: "Administration",
+          links: [
+            { href: "/settings", label: "Settings" },
+            ...(role === "admin" ? [{ href: "/debug", label: "Debug" }] : [])
+          ]
+        }
+      ]
+    };
   }
 
-  if (role === "admin") {
-    return [
-      { href: "/", label: "Dashboard" },
-      { href: "/overview", label: "Overview" },
-      { href: "/my-budget", label: "Viewer Totals" },
-      { href: "/procurement", label: "Procurement" },
-      { href: "/contracts", label: "Contracts" },
-      { href: "/guest-artists", label: "Guest Artists" },
-      { href: "/union-agreements", label: "Union Agreements" },
-      { href: "/budget-planning", label: "Budget Planning" },
-      { href: "/institutional-budget", label: "Institutional Budget" },
-      { href: "/variance", label: "Variance" },
-      { href: "/income", label: "Income" },
-      { href: "/cc", label: "CC" },
-      { href: "/settings", label: "Settings" },
-      { href: "/debug", label: "Debug" }
-    ];
-  }
-
-  return [];
+  return { directLinks: [], groups: [] };
 }
 
 export async function TopNav() {
@@ -90,7 +108,7 @@ export async function TopNav() {
     redirect("/auth/denied");
   }
 
-  const links = linksForRole(role);
+  const navigation = navigationForRole(role);
   if (!hasUser) return null;
 
   return (
@@ -115,11 +133,12 @@ export async function TopNav() {
           </span>
         </Link>
         <nav className="mainNav" aria-label="Primary">
-          {links.map((link) => (
+          {navigation.directLinks.map((link) => (
             <Link key={link.href} href={link.href} className="navLink">
               {link.label}
             </Link>
           ))}
+          <GroupedNavMenus groups={navigation.groups} />
           {hasUser ? <GlobalFiscalYearPicker fiscalYears={fiscalYears} defaultFiscalYearId={defaultFiscalYearId} /> : null}
           {hasUser && !isImpersonating ? (
             <form action={signOut}>

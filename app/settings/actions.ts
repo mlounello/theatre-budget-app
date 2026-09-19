@@ -357,6 +357,10 @@ export async function createOrganizationAction(_prevState: ActionState = emptySt
     const supabase = await getSupabaseServerClient();
     const name = String(formData.get("name") ?? "").trim();
     const orgCode = String(formData.get("orgCode") ?? "").trim();
+    const fiscalYearIds = Array.from(
+      new Set(formData.getAll("fiscalYearIds").map((value) => String(value).trim()).filter(Boolean))
+    );
+    const projectTrackingRequired = formData.get("projectTrackingRequired") === "on";
 
     if (!name || !orgCode) throw new Error("Organization name and org code are required.");
 
@@ -368,12 +372,14 @@ export async function createOrganizationAction(_prevState: ActionState = emptySt
     if (maxSortError) throw new Error(maxSortError.message);
     const nextSort = ((maxSortRows?.[0]?.sort_order as number | null) ?? -1) + 1;
 
-    const { error } = await supabase.from("organizations").insert({
+    const organizationRows = (fiscalYearIds.length > 0 ? fiscalYearIds : [null]).map((fiscalYearId, index) => ({
       name,
       org_code: orgCode,
-      fiscal_year_id: null,
-      sort_order: nextSort
-    });
+      fiscal_year_id: fiscalYearId,
+      project_tracking_required: projectTrackingRequired,
+      sort_order: nextSort + index
+    }));
+    const { error } = await supabase.from("organizations").insert(organizationRows);
     if (error) throw new Error(error.message);
 
     revalidatePath("/settings");
@@ -729,17 +735,62 @@ export async function updateOrganizationAction(_prevState: ActionState = emptySt
     const id = String(formData.get("id") ?? "").trim();
     const name = String(formData.get("name") ?? "").trim();
     const orgCode = String(formData.get("orgCode") ?? "").trim();
+    const fiscalYearIds = Array.from(
+      new Set(formData.getAll("fiscalYearIds").map((value) => String(value).trim()).filter(Boolean))
+    );
+    const projectTrackingRequired = formData.get("projectTrackingRequired") === "on";
 
     if (!id || !name || !orgCode) throw new Error("Organization id, name, and org code are required.");
 
+    const { data: currentOrganization, error: currentOrganizationError } = await supabase
+      .from("organizations")
+      .select("org_code")
+      .eq("id", id)
+      .maybeSingle();
+    if (currentOrganizationError) throw new Error(currentOrganizationError.message);
+    if (!currentOrganization?.org_code) throw new Error("Organization was not found.");
+    const currentOrgCode = String(currentOrganization.org_code);
+
+    const { data: familyRows, error: familyRowsError } = await supabase
+      .from("organizations")
+      .select("id, fiscal_year_id, sort_order")
+      .eq("org_code", currentOrgCode);
+    if (familyRowsError) throw new Error(familyRowsError.message);
+
     const { data: updated, error } = await supabase
       .from("organizations")
-      .update({ name, org_code: orgCode, fiscal_year_id: null })
+      .update({ name, org_code: orgCode })
+      .eq("org_code", currentOrgCode)
+      .select("id");
+    if (error) throw new Error(error.message);
+    if (!updated?.length) throw new Error("Organization update was not applied.");
+
+    const { data: updatedBudgetType, error: budgetTypeError } = await supabase
+      .from("organizations")
+      .update({ project_tracking_required: projectTrackingRequired })
       .eq("id", id)
       .select("id")
       .maybeSingle();
-    if (error) throw new Error(error.message);
-    if (!updated?.id) throw new Error("Organization update was not applied.");
+    if (budgetTypeError) throw new Error(budgetTypeError.message);
+    if (!updatedBudgetType?.id) throw new Error("Organization budget type update was not applied.");
+
+    const existingFiscalYearIds = new Set(
+      (familyRows ?? []).map((row) => (row.fiscal_year_id as string | null) ?? "").filter(Boolean)
+    );
+    const missingFiscalYearIds = fiscalYearIds.filter((fiscalYearId) => !existingFiscalYearIds.has(fiscalYearId));
+    if (missingFiscalYearIds.length > 0) {
+      const maxSortOrder = Math.max(-1, ...(familyRows ?? []).map((row) => (row.sort_order as number | null) ?? -1));
+      const { error: insertError } = await supabase.from("organizations").insert(
+        missingFiscalYearIds.map((fiscalYearId, index) => ({
+          name,
+          org_code: orgCode,
+          fiscal_year_id: fiscalYearId,
+          project_tracking_required: projectTrackingRequired,
+          sort_order: maxSortOrder + index + 1
+        }))
+      );
+      if (insertError) throw new Error(insertError.message);
+    }
 
     revalidatePath("/settings");
     revalidatePath("/overview");

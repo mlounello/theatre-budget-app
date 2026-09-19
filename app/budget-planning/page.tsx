@@ -50,6 +50,8 @@ export default async function BudgetPlanningPage({
   const requestedOrganizationId = (resolvedSearchParams?.organizationId ?? "").trim();
   const fallbackOrganizationId = orgOptions[0]?.id ?? organizations[0]?.id ?? "";
   const organizationId = orgOptions.some((org) => org.id === requestedOrganizationId) ? requestedOrganizationId : fallbackOrganizationId;
+  const selectedFiscalYear = fiscalYears.find((fy) => fy.id === fiscalYearId) ?? null;
+  const selectedOrganization = organizations.find((org) => org.id === organizationId) ?? null;
 
   if (!fiscalYearId || !organizationId) {
     return (
@@ -122,7 +124,15 @@ export default async function BudgetPlanningPage({
         </p>
       </header>
 
-      {isAdmin ? <InstitutionalAllocationImportPanel /> : null}
+      {isAdmin && selectedFiscalYear && selectedOrganization ? (
+        <InstitutionalAllocationImportPanel
+          fiscalYearName={selectedFiscalYear.name}
+          fiscalYearStartDate={selectedFiscalYear.startDate ?? ""}
+          fiscalYearEndDate={selectedFiscalYear.endDate ?? ""}
+          organizationId={selectedOrganization.id}
+          organizationLabel={selectedOrganization.label}
+        />
+      ) : null}
 
       <article className="panel">
         <h2>Filters</h2>
