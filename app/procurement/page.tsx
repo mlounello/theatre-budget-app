@@ -5,7 +5,11 @@ import { getProcurementData } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
 import { redirect } from "next/navigation";
 
-export default async function ProcurementPage() {
+export default async function ProcurementPage({
+  searchParams
+}: {
+  searchParams?: Promise<{ fiscalYearId?: string }>;
+}) {
   const access = await getAccessContext();
   if (!access.userId) redirect("/login");
   if (!["admin", "project_manager"].includes(access.role)) redirect("/my-budget");
@@ -22,6 +26,11 @@ export default async function ProcurementPage() {
     productionCategoryOptions,
     canManageProcurement
   } = await getProcurementData();
+  const resolvedSearchParams = searchParams ? await searchParams : undefined;
+  const requestedFiscalYearId = (resolvedSearchParams?.fiscalYearId ?? "").trim();
+  const defaultFiscalYearId = organizationOptions.some((option) => option.fiscalYearId === requestedFiscalYearId)
+    ? requestedFiscalYearId
+    : "";
 
   return (
     <section>
@@ -36,6 +45,7 @@ export default async function ProcurementPage() {
           <article className="panel panelFull">
             <h2>Add Order</h2>
             <CreateOrderForm
+              defaultFiscalYearId={defaultFiscalYearId}
               projectOptions={projectOptions}
               budgetLineOptions={budgetLineOptions}
               organizationOptions={organizationOptions}
@@ -49,6 +59,7 @@ export default async function ProcurementPage() {
             <h2>Quick Batch Add</h2>
             <p className="heroSubtitle">Set shared context once, then add many requisition/CC rows at once.</p>
             <QuickBatchAddForm
+              defaultFiscalYearId={defaultFiscalYearId}
               projectOptions={projectOptions}
               budgetLineOptions={budgetLineOptions}
               organizationOptions={organizationOptions}

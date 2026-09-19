@@ -38,12 +38,14 @@ function makeLine(): BatchLine {
 }
 
 export function QuickBatchAddForm({
+  defaultFiscalYearId,
   projectOptions,
   budgetLineOptions,
   organizationOptions,
   accountCodeOptions,
   productionCategoryOptions
 }: {
+  defaultFiscalYearId: string;
   projectOptions: ProcurementProjectOption[];
   budgetLineOptions: ProcurementBudgetLineOption[];
   organizationOptions: OrganizationOption[];
@@ -51,7 +53,7 @@ export function QuickBatchAddForm({
   productionCategoryOptions: ProductionCategoryOption[];
 }) {
   const [state, formAction] = useActionState(createProcurementBatchAction, initialState);
-  const [fiscalYearId, setFiscalYearId] = useState("");
+  const [fiscalYearId, setFiscalYearId] = useState(defaultFiscalYearId);
   const [organizationId, setOrganizationId] = useState("");
   const [projectId, setProjectId] = useState("");
   const [productionCategoryId, setProductionCategoryId] = useState("");
@@ -61,8 +63,10 @@ export function QuickBatchAddForm({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const fy =
+      defaultFiscalYearId ||
       window.localStorage.getItem("tba_batch_fiscal_year_id") ||
-      window.localStorage.getItem(GLOBAL_FISCAL_YEAR_STORAGE_KEY);
+      window.localStorage.getItem(GLOBAL_FISCAL_YEAR_STORAGE_KEY) ||
+      "";
     const org = window.localStorage.getItem("tba_batch_org_id");
     const project = window.localStorage.getItem("tba_batch_project_id");
     const category = window.localStorage.getItem("tba_batch_production_category_id");
@@ -72,7 +76,7 @@ export function QuickBatchAddForm({
     if (project) setProjectId(project);
     if (category) setProductionCategoryId(category);
     if (banner) setBannerAccountCodeId(banner);
-  }, []);
+  }, [defaultFiscalYearId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

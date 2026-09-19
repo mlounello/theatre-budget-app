@@ -9,6 +9,7 @@ function source(path) {
 const procurementActions = source("../app/procurement/actions.ts");
 const procurementCreateForm = source("../app/procurement/create-order-form.tsx");
 const procurementBatchForm = source("../app/procurement/quick-batch-add-form.tsx");
+const procurementPage = source("../app/procurement/page.tsx");
 const incomeActions = source("../app/income/actions.ts");
 const incomeForm = source("../app/income/add-income-form.tsx");
 const incomeTable = source("../app/income/income-table.tsx");
@@ -18,6 +19,9 @@ const dbSource = source("../lib/db.ts");
 test("new procurement writers require and persist fiscal year", () => {
   assert.match(procurementCreateForm, /name="fiscalYearId"/);
   assert.match(procurementBatchForm, /name="fiscalYearId"/);
+  assert.match(procurementPage, /defaultFiscalYearId=\{defaultFiscalYearId\}/);
+  assert.match(procurementCreateForm, /useState\(defaultFiscalYearId\)/);
+  assert.match(procurementBatchForm, /useState\(defaultFiscalYearId\)/);
   assert.match(procurementActions, /if \(!fiscalYearId\) return err\("Fiscal year is required\."\)/);
   assert.match(procurementActions, /fiscal_year_id: fiscalYearId/);
   assert.match(procurementActions, /validateOrganizationFiscalYear/);

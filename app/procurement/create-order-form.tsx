@@ -18,6 +18,7 @@ const NEW_VENDOR_VALUE = "__new_vendor__";
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
 
 export function CreateOrderForm({
+  defaultFiscalYearId,
   projectOptions,
   budgetLineOptions,
   organizationOptions,
@@ -25,6 +26,7 @@ export function CreateOrderForm({
   accountCodeOptions,
   productionCategoryOptions
 }: {
+  defaultFiscalYearId: string;
   projectOptions: ProcurementProjectOption[];
   budgetLineOptions: ProcurementBudgetLineOption[];
   organizationOptions: OrganizationOption[];
@@ -35,7 +37,7 @@ export function CreateOrderForm({
   const [state, formAction] = useActionState(createProcurementOrderAction, initialState);
   const formRef = useRef<HTMLFormElement | null>(null);
   const [projectId, setProjectId] = useState("");
-  const [fiscalYearId, setFiscalYearId] = useState("");
+  const [fiscalYearId, setFiscalYearId] = useState(defaultFiscalYearId);
   const [organizationId, setOrganizationId] = useState("");
   const [vendorId, setVendorId] = useState("");
   const [productionCategoryId, setProductionCategoryId] = useState("");
@@ -49,8 +51,10 @@ export function CreateOrderForm({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const fy =
+      defaultFiscalYearId ||
       window.localStorage.getItem("tba_procurement_fiscal_year_id") ||
-      window.localStorage.getItem(GLOBAL_FISCAL_YEAR_STORAGE_KEY);
+      window.localStorage.getItem(GLOBAL_FISCAL_YEAR_STORAGE_KEY) ||
+      "";
     const org = window.localStorage.getItem("tba_procurement_org_id");
     const project = window.localStorage.getItem("tba_procurement_project_id");
     const vendor = window.localStorage.getItem("tba_procurement_vendor_id");
@@ -75,7 +79,7 @@ export function CreateOrderForm({
       setRequestType(type);
     }
     if (cc === "0") setIsCreditCard(false);
-  }, []);
+  }, [defaultFiscalYearId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
