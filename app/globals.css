@@ -1301,6 +1301,190 @@ th {
   gap: 0.5rem;
 }
 
+.planningMatrixForm,
+.planningMatrixSection {
+  display: grid;
+  gap: 1rem;
+}
+
+.planningMatrixForm {
+  margin-top: 1rem;
+}
+
+.planningMatrixSection + .planningMatrixSection {
+  padding-top: 1.25rem;
+  border-top: 2px solid #dce6df;
+}
+
+.planningMatrixSectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.planningMatrixSectionHeader h2,
+.planningMatrixSectionHeader p {
+  margin: 0;
+}
+
+.planningMatrixWrap {
+  max-height: min(68vh, 760px);
+  overflow: auto;
+  border: 1px solid #d6e0d9;
+  border-radius: 10px;
+  background: #fff;
+  outline: none;
+}
+
+.planningMatrixWrap:focus-visible {
+  box-shadow: 0 0 0 3px #006b5424;
+}
+
+.planningMatrix {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.planningMatrix th,
+.planningMatrix td {
+  min-width: 112px;
+  padding: 0.55rem;
+  border-right: 1px solid #e2e8e3;
+  border-bottom: 1px solid #e2e8e3;
+  background: #fff;
+  vertical-align: top;
+}
+
+.planningMatrix thead th {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: #eef4ef;
+  color: var(--siena-dark-green);
+  font-family: "Gudea", "Arial", sans-serif;
+  text-align: left;
+}
+
+.planningMatrix .planningStickyAccount {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  min-width: 250px;
+  max-width: 250px;
+  background: #f8fbf9;
+}
+
+.planningMatrix .planningStickyPrior {
+  position: sticky;
+  left: 250px;
+  z-index: 3;
+  min-width: 125px;
+  background: #f8fbf9;
+}
+
+.planningMatrix .planningStickyAnnual {
+  position: sticky;
+  left: 375px;
+  z-index: 3;
+  min-width: 135px;
+  background: #f8fbf9;
+  box-shadow: 5px 0 8px #17352710;
+}
+
+.planningMatrix thead .planningStickyAccount,
+.planningMatrix thead .planningStickyPrior,
+.planningMatrix thead .planningStickyAnnual {
+  z-index: 6;
+  background: #e7f0e9;
+}
+
+.planningMatrixRow.isDirty th,
+.planningMatrixRow.isDirty td {
+  background-color: #fffaf0;
+}
+
+.planningMatrixRow.isDirty .planningStickyAccount,
+.planningMatrixRow.isDirty .planningStickyPrior,
+.planningMatrixRow.isDirty .planningStickyAnnual {
+  background: #fff7df;
+}
+
+.planningMatrix input {
+  width: 100%;
+  min-width: 94px;
+  border: 1px solid #c8d4cc;
+  border-radius: 7px;
+  padding: 0.42rem 0.45rem;
+  font: inherit;
+  text-align: right;
+}
+
+.planningMatrix input:focus {
+  border-color: var(--siena-green);
+  box-shadow: 0 0 0 2px #006b541f;
+  outline: none;
+}
+
+.planningMatrix td small,
+.planningMatrix th small,
+.planningStickyAnnual strong {
+  display: block;
+}
+
+.planningMatrix td small,
+.planningMatrix th small {
+  margin-top: 0.25rem;
+  color: var(--text-muted);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.72rem;
+}
+
+.planningAccountCode {
+  display: block;
+  color: var(--siena-dark-green);
+  font-family: "Gudea", "Arial", sans-serif;
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+}
+
+.planningMatrix th .uiStatusPill {
+  margin-top: 0.4rem;
+}
+
+.planningSaveBar {
+  position: sticky;
+  bottom: 0.75rem;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #cad8ce;
+  border-radius: 12px;
+  background: #f5f8f6f2;
+  box-shadow: 0 8px 24px #10291e20;
+  backdrop-filter: blur(8px);
+}
+
+.planningSaveBar.isDirty {
+  border-color: #d7b646;
+  background: #fff8e8f2;
+}
+
+.planningSaveBar p {
+  margin: 0.1rem 0 0;
+}
+
+.planningSaveBar > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .dangerButton {
   border-color: var(--siena-red);
   color: var(--siena-red);
@@ -2643,6 +2827,26 @@ th {
 }
 
 @media (max-width: 720px) {
+  .planningMatrixSectionHeader,
+  .planningSaveBar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .planningSaveBar > div:last-child {
+    width: 100%;
+  }
+
+  .planningSaveBar button {
+    flex: 1;
+  }
+
+  .planningMatrix .planningStickyPrior,
+  .planningMatrix .planningStickyAnnual {
+    position: static;
+    box-shadow: none;
+  }
+
   .varianceQueueGrid,
   .varianceQueueMetrics {
     grid-template-columns: 1fr;

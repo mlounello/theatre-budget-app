@@ -6,7 +6,7 @@ import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
 import { getFiscalYearOptions, getHistoricalMonthlyActuals } from "@/lib/db";
 
-type ActionState = {
+export type ActionState = {
   ok: boolean;
   message: string;
   timestamp: number;
@@ -26,6 +26,12 @@ type MonthUpdateInput = {
   id?: string;
   monthStart?: string;
   amount: number;
+};
+
+type MatrixUpdateInput = {
+  accountCodeId: string;
+  planId: string | null;
+  months: Array<{ monthStart: string; amount: number }>;
 };
 
 type FiscalMonth = {
@@ -115,6 +121,21 @@ function parseMonthUpdates(value: FormDataEntryValue | null): MonthUpdateInput[]
         amount: Number.parseFloat(String(entry?.amount ?? "0"))
       }))
       .filter((entry) => (entry.id || entry.monthStart) && Number.isFinite(entry.amount));
+  } catch {
+    return [];
+  }
+}
+
+function parseMatrixUpdates(value: FormDataEntryValue | null): MatrixUpdateInput[] {
+  if (typeof value !== "string" || value.trim() === "") return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((entry: { accountCodeId?: unknown; planId?: unknown; months?: unknown }) => ({
+      accountCodeId: typeof entry?.accountCodeId === "string" ? entry.accountCodeId.trim() : "",
+      planId: typeof entry?.planId === "string" && entry.planId.trim() ? entry.planId.trim() : null,
+      months: Array.isArray(entry?.months) ? entry.months.map((month: { monthStart?: unknown; amount?: unknown }) => ({ monthStart: typeof month?.monthStart === "string" ? month.monthStart.trim() : "", amount: Number.parseFloat(String(month?.amount ?? "0")) })) : []
+    })).filter((entry: MatrixUpdateInput) => entry.accountCodeId && entry.months.length === 12 && entry.months.every((month: { monthStart: string; amount: number }) => /^\d{4}-\d{2}-\d{2}$/.test(month.monthStart) && Number.isFinite(month.amount)));
   } catch {
     return [];
   }
@@ -452,40 +473,44 @@ async function ensureImportOrganization(
 ): Promise<string> {
   const { data: existingRows, error: existingError } = await supabase
     .from("organizations")
-    .select("id")
-    .eq("fiscal_year_id", fiscalYearId)
-    .eq("org_code", orgCode)
+    .select("id, project_tracking_required, sort_order")
+    .ilike("org_code", orgCode)
+    .is("superseded_by_organization_id", null)
+    .eq("active", true)
     .limit(1);
   if (existingError) throw new Error(existingError.message);
   const existing = existingRows?.[0];
+  let organizationId: string;
+  let projectTrackingRequired = true;
+  let organizationSortOrder = 0;
   if (existing?.id) {
     const { error: updateError } = await supabase
       .from("organizations")
       .update({ name: orgName })
       .eq("id", existing.id as string);
     if (updateError) throw new Error(updateError.message);
-    return existing.id as string;
+    organizationId = existing.id as string;
+    projectTrackingRequired = Boolean(existing.project_tracking_required);
+    organizationSortOrder = Number(existing.sort_order ?? 0);
+  } else {
+    const { data: maxSortRows, error: maxSortError } = await supabase.from("organizations").select("sort_order").order("sort_order", { ascending: false }).limit(1);
+    if (maxSortError) throw new Error(maxSortError.message);
+    organizationSortOrder = ((maxSortRows?.[0]?.sort_order as number | null) ?? -1) + 1;
+    const { data: inserted, error: insertError } = await supabase
+      .from("organizations")
+      .insert({ fiscal_year_id: null, org_code: orgCode, name: orgName, sort_order: organizationSortOrder, project_tracking_required: projectTrackingRequired })
+      .select("id")
+      .single();
+    if (insertError || !inserted) throw new Error(insertError?.message ?? `Could not create org ${orgCode}.`);
+    organizationId = inserted.id as string;
   }
 
-  const { data: maxSortRows, error: maxSortError } = await supabase
-    .from("organizations")
-    .select("sort_order")
-    .order("sort_order", { ascending: false })
-    .limit(1);
-  if (maxSortError) throw new Error(maxSortError.message);
-
-  const { data: inserted, error: insertError } = await supabase
-    .from("organizations")
-    .insert({
-      fiscal_year_id: fiscalYearId,
-      org_code: orgCode,
-      name: orgName,
-      sort_order: ((maxSortRows?.[0]?.sort_order as number | null) ?? -1) + 1
-    })
-    .select("id")
-    .single();
-  if (insertError || !inserted) throw new Error(insertError?.message ?? `Could not create org ${orgCode}.`);
-  return inserted.id as string;
+  const { error: membershipError } = await supabase.from("fiscal_year_organizations").upsert(
+    { fiscal_year_id: fiscalYearId, organization_id: organizationId, active: true, sort_order: organizationSortOrder, project_tracking_required: projectTrackingRequired },
+    { onConflict: "fiscal_year_id,organization_id" }
+  );
+  if (membershipError) throw new Error(membershipError.message);
+  return organizationId;
 }
 
 async function ensureImportAccountCode(
@@ -1127,6 +1152,73 @@ export async function bulkCreateBudgetPlansAction(
   } catch (error) {
     rethrowIfRedirect(error);
     return err(getErrorMessage(error, "Unable to save bulk plans."));
+  }
+}
+
+export async function saveBudgetPlanningMatrixAction(
+  _prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  try {
+    void _prevState;
+    const supabase = await getSupabaseServerClient();
+    const { userId } = await requirePlanningAccess();
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+    const organizationId = String(formData.get("organizationId") ?? "").trim();
+    const sourceFiscalYearId = String(formData.get("sourceFiscalYearId") ?? "").trim() || fiscalYearId;
+    const updates = parseMatrixUpdates(formData.get("matrixUpdatesJson"));
+    if (!fiscalYearId || !organizationId) throw new Error("Fiscal year and organization are required.");
+    if (updates.length === 0) throw new Error("No monthly changes were provided.");
+
+    const expectedMonths = computeFiscalMonths(await fetchFiscalYearStart(fiscalYearId)).map((month) => month.monthStart);
+    const expectedMonthSet = new Set(expectedMonths);
+    for (const update of updates) {
+      if (update.months.some((month) => month.amount < 0)) throw new Error("Monthly amounts must be non-negative.");
+      if (new Set(update.months.map((month) => month.monthStart)).size !== 12 || update.months.some((month) => !expectedMonthSet.has(month.monthStart))) {
+        throw new Error("Every edited account must include the fiscal year's 12 months.");
+      }
+    }
+
+    for (const update of updates) {
+      const annualAmount = fromCents(update.months.reduce((sum, month) => sum + toCents(month.amount), 0));
+      await upsertBudgetPlanAnnualAmount({ supabase, userId, fiscalYearId, organizationId, accountCodeId: update.accountCodeId, annualAmount, sourceFiscalYearId });
+
+      const { data: plan, error: planError } = await supabase
+        .from("budget_plans")
+        .select("id")
+        .eq("fiscal_year_id", fiscalYearId)
+        .eq("organization_id", organizationId)
+        .eq("account_code_id", update.accountCodeId)
+        .single();
+      if (planError || !plan) throw new Error(planError?.message ?? "Budget plan could not be resolved after save.");
+
+      const { data: monthRows, error: monthError } = await supabase
+        .from("budget_plan_months")
+        .select("id, month_start")
+        .eq("budget_plan_id", plan.id as string);
+      if (monthError) throw new Error(monthError.message);
+      const monthIdByStart = new Map((monthRows ?? []).map((month) => [String(month.month_start), String(month.id)]));
+      if (monthIdByStart.size !== 12) throw new Error("The saved plan does not contain all 12 fiscal months.");
+
+      for (const month of update.months) {
+        const monthId = monthIdByStart.get(month.monthStart);
+        if (!monthId) throw new Error(`Missing budget month ${month.monthStart}.`);
+        const { error: updateError } = await supabase.from("budget_plan_months").update({ amount: month.amount, source: "manual" }).eq("id", monthId);
+        if (updateError) throw new Error(updateError.message);
+      }
+
+      await recomputePercents(supabase, plan.id as string);
+      const { error: planUpdateError } = await supabase.from("budget_plans").update({ annual_amount: annualAmount, updated_by_user_id: userId }).eq("id", plan.id as string);
+      if (planUpdateError) throw new Error(planUpdateError.message);
+    }
+
+    revalidatePath("/budget-planning");
+    revalidatePath("/institutional-budget");
+    revalidatePath("/");
+    return ok(`${updates.length} account${updates.length === 1 ? "" : "s"} saved.`);
+  } catch (error) {
+    rethrowIfRedirect(error);
+    return err(getErrorMessage(error, "Unable to save the planning matrix."));
   }
 }
 
