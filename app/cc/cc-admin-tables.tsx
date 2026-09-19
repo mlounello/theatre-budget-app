@@ -45,10 +45,12 @@ function monthStateValue(month: StatementMonthRow): string {
 
 export function CcAdminTables({
   cards,
-  statementMonths
+  statementMonths,
+  section = "all"
 }: {
   cards: CardRow[];
   statementMonths: StatementMonthRow[];
+  section?: "cards" | "months" | "all";
 }) {
   const [bulkCardUpdateState, bulkCardUpdateAction] = useActionState(bulkUpdateCreditCardsAction, initialState);
   const [bulkCardDeleteState, bulkCardDeleteAction] = useActionState(bulkDeleteCreditCardsAction, initialState);
@@ -159,6 +161,8 @@ export function CcAdminTables({
 
   return (
     <>
+      {section !== "months" ? (
+        <>
       {bulkCardUpdateState.message ? (
         <p className={bulkCardUpdateState.ok ? "successNote" : "errorNote"} key={bulkCardUpdateState.timestamp}>
           {bulkCardUpdateState.message}
@@ -304,6 +308,11 @@ export function CcAdminTables({
         </table>
       </div>
 
+        </>
+      ) : null}
+
+      {section !== "cards" ? (
+        <>
       {bulkMonthUpdateState.message ? (
         <p className={bulkMonthUpdateState.ok ? "successNote" : "errorNote"} key={bulkMonthUpdateState.timestamp}>
           {bulkMonthUpdateState.message}
@@ -477,6 +486,8 @@ export function CcAdminTables({
           </tbody>
         </table>
       </div>
+        </>
+      ) : null}
     </>
   );
 }
