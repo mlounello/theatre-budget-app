@@ -3,7 +3,7 @@
 **Audit date:** September 19, 2026  
 **Branch:** `codex/phase-4-gate-1-audit`  
 **Production schema:** `app_theatre_budget`  
-**Gate status:** Complete; awaiting review and explicit Gate 2 approval  
+**Gate status:** Approved September 19, 2026; Gate 2 authorized but not started  
 **Production changes made by this audit:** None
 
 ## Executive conclusion
@@ -312,9 +312,9 @@ Each numbered database change is a separate reviewed migration with baseline and
 - [x] Read-only characterization and baseline scripts prepared and executed.
 - [x] Dropdown mitigation designed.
 - [x] Gate 2 migration/deployment/verification/forward-repair order documented.
-- [ ] Gate 1 findings reviewed by the user and Gate 2 explicitly approved.
+- [x] Gate 1 findings reviewed by the user and Gate 2 explicitly approved on September 19, 2026.
 
-Gate 1 technical work is complete. The unchecked item is the intentional approval boundary, not missing audit work.
+Gate 1 is complete and approved. Gate 2 remains subject to its documented migration-by-migration safeguards and review requirements.
 
 ## 12. Verification run
 
