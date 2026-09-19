@@ -1,6 +1,6 @@
 # Phase 4 Gate 5G — Settings
 
-Status: Built and awaiting approval.
+Status: Approved on 2026-09-19.
 
 ## Delivered
 
@@ -48,4 +48,4 @@ Status: Built and awaiting approval.
 
 ## Approval
 
-Gate 5G must be reviewed and approved before Gate 5H begins.
+Gate 5G was approved for merge and production deployment on 2026-09-19. No database migration is required.
