@@ -14,6 +14,8 @@ import {
   type ActionState
 } from "@/app/procurement/actions";
 import { formatCurrency } from "@/lib/format";
+import { SideDrawer } from "@/components/ui/side-drawer";
+import { BulkSelectionToolbar } from "@/components/ui/toolbars";
 import type {
   AccountCodeOption,
   OrganizationOption,
@@ -28,7 +30,7 @@ import type {
 const PROCUREMENT_STATUSES = [
   { value: "requested", label: "Requested" },
   { value: "ordered", label: "Ordered" },
-  { value: "partial_received", label: "Partial Received" },
+  { value: "partial_received", label: "Partially Received" },
   { value: "fully_received", label: "Fully Received" },
   { value: "invoice_sent", label: "Invoice Sent" },
   { value: "invoice_received", label: "Invoice Received" },
@@ -54,6 +56,27 @@ function procurementLabel(value: string, isCreditCard: boolean, requestType: Pro
   const found = list.find((status) => status.value === value);
   return found?.label ?? value;
 }
+
+function budgetStatusLabel(value: ProcurementRow["budgetStatus"]): string {
+  const labels: Record<string, string> = {
+    requested: "Requested",
+    held: "Held",
+    encumbered: "Encumbered",
+    pending_cc: "Pending Card",
+    posted: "Posted",
+    cancelled: "Cancelled"
+  };
+  return labels[value] ?? value.replaceAll("_", " ");
+}
+
+type OptionalColumn = "department" | "account" | "receiving" | "budgetStatus" | "receiptTotal";
+const OPTIONAL_COLUMNS: Array<{ key: OptionalColumn; label: string }> = [
+  { key: "department", label: "Department" },
+  { key: "account", label: "Account" },
+  { key: "receiving", label: "Receiving Docs" },
+  { key: "budgetStatus", label: "Budget Status" },
+  { key: "receiptTotal", label: "Receipt Total" }
+];
 
 type SortKey =
   | "createdAt"
@@ -250,11 +273,6 @@ export function ProcurementTable({
   const [direction, setDirection] = useState<SortDirection>(
     dirFromUrl === "asc" || dirFromUrl === "desc" ? dirFromUrl : "desc"
   );
-  const [projectFilter, setProjectFilter] = useState(searchParams.get("pr_f_project") ?? "");
-  const [procurementStatusFilter, setProcurementStatusFilter] = useState(searchParams.get("pr_f_proc_status") ?? "");
-  const [budgetStatusFilter, setBudgetStatusFilter] = useState(searchParams.get("pr_f_budget_status") ?? "");
-  const [typeFilter, setTypeFilter] = useState(searchParams.get("pr_f_type") ?? "");
-  const [queryFilter, setQueryFilter] = useState(searchParams.get("pr_f_q") ?? "");
   const editingPurchase = useMemo(() => purchases.find((purchase) => purchase.id === editingId) ?? null, [purchases, editingId]);
   const [editProjectId, setEditProjectId] = useState("");
   const [editOrganizationId, setEditOrganizationId] = useState("");
@@ -285,27 +303,14 @@ export function ProcurementTable({
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [pendingBulkDeleteIds, setPendingBulkDeleteIds] = useState<string[]>([]);
+  const [visibleColumns, setVisibleColumns] = useState<OptionalColumn[]>(["department", "account"]);
   const CONTRACT_PAYMENT_PROCUREMENT_STATUSES = [
     { value: "requested", label: "Unpaid" },
     { value: "paid", label: "Paid" }
   ] as const;
-  const filteredPurchases = useMemo(() => {
-    const q = queryFilter.trim().toLowerCase();
-    return purchases.filter((purchase) => {
-      if (projectFilter && (purchase.projectId ?? "__organization_budget__") !== projectFilter) return false;
-      if (procurementStatusFilter && purchase.procurementStatus !== procurementStatusFilter) return false;
-      if (budgetStatusFilter && purchase.budgetStatus !== budgetStatusFilter) return false;
-      if (typeFilter && purchase.requestType !== typeFilter) return false;
-      if (!q) return true;
-      const haystack =
-        `${purchase.projectName} ${purchase.organizationName ?? ""} ${purchase.orgCode ?? ""} ${purchase.productionCategoryName ?? ""} ${purchase.bannerAccountCode ?? ""} ${purchase.title} ${purchase.requisitionNumber ?? ""} ${purchase.poNumber ?? ""} ${purchase.vendorName ?? ""}`.toLowerCase();
-      return haystack.includes(q);
-    });
-  }, [budgetStatusFilter, procurementStatusFilter, projectFilter, purchases, queryFilter, typeFilter]);
-
   const sortedPurchases = useMemo(
-    () => sortRows(filteredPurchases, receipts, sortKey, direction),
-    [filteredPurchases, receipts, sortKey, direction]
+    () => sortRows(purchases, receipts, sortKey, direction),
+    [purchases, receipts, sortKey, direction]
   );
   const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
   const selectedVisibleCount = useMemo(
@@ -460,11 +465,7 @@ export function ProcurementTable({
         </p>
       ) : null}
 
-      <div className="bulkToolbar">
-        <p className="bulkMeta">
-          Selected: {selectedIds.length} total ({selectedVisibleCount} visible)
-        </p>
-        <div className="bulkActions">
+      <BulkSelectionToolbar selectedCount={selectedIds.length} totalCount={sortedPurchases.length} label="orders" sticky>
           <button type="button" className="tinyButton" disabled={selectedIds.length === 0} onClick={openBulkEdit}>
             Bulk Edit
           </button>
@@ -483,59 +484,29 @@ export function ProcurementTable({
               Bulk Delete
             </button>
           </form>
-        </div>
-      </div>
+      </BulkSelectionToolbar>
 
-      <div className="inlineFilters" style={{ marginBottom: "0.5rem" }}>
-        <label>
-          Project
-          <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)}>
-            <option value="">All</option>
-            {Array.from(new Map(purchases.map((p) => [p.projectId ?? "__organization_budget__", p.projectName])).entries()).map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
+      <div className="procurementTableTools">
+        <p className="helperText">Showing {sortedPurchases.length} orders on this page.</p>
+        <details className="columnChooser">
+          <summary>Columns</summary>
+          <div>
+            {OPTIONAL_COLUMNS.map((column) => (
+              <label key={column.key} className="checkboxLabel">
+                <input
+                  type="checkbox"
+                  checked={visibleColumns.includes(column.key)}
+                  onChange={(event) => setVisibleColumns((current) =>
+                    event.target.checked
+                      ? [...current, column.key]
+                      : current.filter((key) => key !== column.key)
+                  )}
+                />
+                {column.label}
+              </label>
             ))}
-          </select>
-        </label>
-        <label>
-          Procurement
-          <select value={procurementStatusFilter} onChange={(event) => setProcurementStatusFilter(event.target.value)}>
-            <option value="">All</option>
-            {Array.from(new Set(purchases.map((purchase) => purchase.procurementStatus))).map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Budget Status
-          <select value={budgetStatusFilter} onChange={(event) => setBudgetStatusFilter(event.target.value)}>
-            <option value="">All</option>
-            <option value="requested">Requested</option>
-            <option value="encumbered">Encumbered</option>
-            <option value="pending_cc">Pending CC</option>
-            <option value="posted">Posted</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-        </label>
-        <label>
-          Type
-          <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)}>
-            <option value="">All</option>
-            <option value="requisition">Requisition</option>
-            <option value="expense">Expense</option>
-            <option value="contract">Contract</option>
-            <option value="request">Budget Hold</option>
-            <option value="budget_transfer">Budget Transfer</option>
-            <option value="contract_payment">Contract Payment</option>
-          </select>
-        </label>
-        <label>
-          Search
-          <input value={queryFilter} onChange={(event) => setQueryFilter(event.target.value)} placeholder="Req, PO, vendor, title..." />
-        </label>
+          </div>
+        </details>
       </div>
 
       <div className="tableWrap">
@@ -543,29 +514,11 @@ export function ProcurementTable({
           <thead>
             <tr>
               <th className="rowSelectHeader">
-                <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} />
+                <input type="checkbox" checked={allVisibleSelected} onChange={toggleSelectAllVisible} aria-label="Select all orders on this page" />
               </th>
-              <SortTh label="Project" sortKey="projectName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-              <SortTh label="Org" sortKey="organizationName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-              <SortTh
-                label="Department"
-                sortKey="productionCategoryName"
-                activeKey={sortKey}
-                direction={direction}
-                onToggle={onToggle}
-              />
-              <SortTh
-                label="Banner Code"
-                sortKey="bannerAccountCode"
-                activeKey={sortKey}
-                direction={direction}
-                onToggle={onToggle}
-              />
-              <SortTh label="Title" sortKey="title" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-              <SortTh label="Req #" sortKey="requisitionNumber" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-              <SortTh label="PO #" sortKey="poNumber" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-              <th>Receiving Doc #</th>
+              <SortTh label="Order" sortKey="title" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <SortTh label="Vendor" sortKey="vendorName" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              <th>Requisition / PO</th>
               <SortTh label="Order Value" sortKey="orderValue" activeKey={sortKey} direction={direction} onToggle={onToggle} />
               <SortTh
                 label="Procurement"
@@ -574,15 +527,18 @@ export function ProcurementTable({
                 direction={direction}
                 onToggle={onToggle}
               />
-              <SortTh label="Budget Status" sortKey="budgetStatus" activeKey={sortKey} direction={direction} onToggle={onToggle} />
-              <SortTh label="Receipt Total" sortKey="receiptTotal" activeKey={sortKey} direction={direction} onToggle={onToggle} />
+              {visibleColumns.includes("department") ? <SortTh label="Department" sortKey="productionCategoryName" activeKey={sortKey} direction={direction} onToggle={onToggle} /> : null}
+              {visibleColumns.includes("account") ? <SortTh label="Account" sortKey="bannerAccountCode" activeKey={sortKey} direction={direction} onToggle={onToggle} /> : null}
+              {visibleColumns.includes("receiving") ? <th>Receiving Docs</th> : null}
+              {visibleColumns.includes("budgetStatus") ? <SortTh label="Budget Status" sortKey="budgetStatus" activeKey={sortKey} direction={direction} onToggle={onToggle} /> : null}
+              {visibleColumns.includes("receiptTotal") ? <SortTh label="Receipt Total" sortKey="receiptTotal" activeKey={sortKey} direction={direction} onToggle={onToggle} /> : null}
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
             {sortedPurchases.length === 0 ? (
               <tr>
-                <td colSpan={14}>No procurement records yet.</td>
+                <td colSpan={7 + visibleColumns.length}>No orders match this queue and filter.</td>
               </tr>
             ) : null}
             {sortedPurchases.map((purchase) => {
@@ -601,25 +557,18 @@ export function ProcurementTable({
               return (
                 <tr key={purchase.id}>
                   <td className="rowSelectCell">
-                    <input type="checkbox" checked={selectedSet.has(purchase.id)} onChange={() => toggleRowSelection(purchase.id)} />
+                    <input type="checkbox" checked={selectedSet.has(purchase.id)} onChange={() => toggleRowSelection(purchase.id)} aria-label={`Select ${purchase.title}`} />
                   </td>
-                  <td>
-                    {purchase.projectName}
-                    {purchase.season ? <div>{purchase.season}</div> : null}
-                  </td>
-                  <td>{purchase.orgCode ? `${purchase.orgCode} | ${purchase.organizationName ?? ""}` : purchase.organizationName ?? "-"}</td>
-                  <td>{purchase.productionCategoryName ?? purchase.category ?? "-"}</td>
-                  <td>{purchase.bannerAccountCode ?? purchase.budgetCode ?? "-"}</td>
-                  <td>{purchase.title}</td>
-                  <td>{purchase.requisitionNumber ?? "-"}</td>
-                  <td>{purchase.poNumber ?? "-"}</td>
-                  <td>
-                    {receivingDocs
-                      .filter((doc) => doc.purchaseId === purchase.id)
-                      .map((doc) => doc.docCode)
-                      .join(", ") || "-"}
+                  <td className="procurementOrderCell">
+                    <strong>{purchase.title}</strong>
+                    <span>{purchase.projectName}{purchase.season ? ` · ${purchase.season}` : ""}</span>
+                    <span>{purchase.orgCode ? `${purchase.orgCode} | ${purchase.organizationName ?? ""}` : purchase.organizationName ?? "-"}</span>
                   </td>
                   <td>{purchase.vendorName ?? "-"}</td>
+                  <td className="procurementIdentifiers">
+                    <span><b>Req</b> {purchase.requisitionNumber ?? "—"}</span>
+                    <span><b>PO</b> {purchase.poNumber ?? "—"}</span>
+                  </td>
                   <td>{formatCurrency(orderValueDisplay)}</td>
                   <td>
                     <span className={`statusChip status-${purchase.procurementStatus}`}>
@@ -630,10 +579,15 @@ export function ProcurementTable({
                       )}
                     </span>
                   </td>
-                  <td>
-                    <span className={`statusChip status-${purchase.budgetStatus}`}>{purchase.budgetStatus}</span>
-                  </td>
-                  <td>{formatCurrency(receiptTotal)}</td>
+                  {visibleColumns.includes("department") ? <td>{purchase.productionCategoryName ?? purchase.category ?? "-"}</td> : null}
+                  {visibleColumns.includes("account") ? <td>{purchase.bannerAccountCode ?? purchase.budgetCode ?? "-"}</td> : null}
+                  {visibleColumns.includes("receiving") ? (
+                    <td>{receivingDocs.filter((doc) => doc.purchaseId === purchase.id).map((doc) => doc.docCode).join(", ") || "-"}</td>
+                  ) : null}
+                  {visibleColumns.includes("budgetStatus") ? (
+                    <td><span className={`statusChip status-${purchase.budgetStatus}`}>{budgetStatusLabel(purchase.budgetStatus)}</span></td>
+                  ) : null}
+                  {visibleColumns.includes("receiptTotal") ? <td>{formatCurrency(receiptTotal)}</td> : null}
                   <td>
                     {canManageProcurement ? (
                       <div className="actionCell">
@@ -668,9 +622,14 @@ export function ProcurementTable({
       </div>
 
       {editingPurchase ? (
-        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Edit procurement record">
-          <div className="modalPanel">
-            <h2>Edit Procurement Record</h2>
+        <SideDrawer
+          open
+          onClose={closeEdit}
+          eyebrow="Procurement order"
+          title={editingPurchase.title}
+          description={`${editingPurchase.projectName} · ${procurementLabel(editingPurchase.procurementStatus, editingPurchase.requestType === "expense" && editingPurchase.isCreditCard, editingPurchase.requestType)}`}
+          closeLabel="Close procurement order"
+        >
             {updateState.message ? (
               <p className={updateState.ok ? "successNote" : "errorNote"} key={updateState.timestamp}>
                 {updateState.message}
@@ -986,15 +945,18 @@ export function ProcurementTable({
                 {receipts.filter((receipt) => receipt.purchaseId === editingPurchase.id).length === 0 ? <li>(none)</li> : null}
               </ul>
             </article>
-          </div>
-        </div>
+        </SideDrawer>
       ) : null}
 
       {bulkEditOpen ? (
-        <div className="modalOverlay" role="dialog" aria-modal="true" aria-label="Bulk edit procurement rows">
-          <div className="modalPanel">
-            <h2>Bulk Edit Procurement Rows</h2>
-            <p className="heroSubtitle">Only checked fields are applied to all selected rows.</p>
+        <SideDrawer
+          open
+          onClose={closeBulkEdit}
+          eyebrow="Bulk action"
+          title="Bulk Edit Procurement Rows"
+          description="Only checked fields are applied to all selected rows."
+          closeLabel="Close bulk edit panel"
+        >
             {bulkUpdateState.message ? (
               <p className={bulkUpdateState.ok ? "successNote" : "errorNote"} key={bulkUpdateState.timestamp}>
                 {bulkUpdateState.message}
@@ -1192,8 +1154,7 @@ export function ProcurementTable({
                 </button>
               </div>
             </form>
-          </div>
-        </div>
+        </SideDrawer>
       ) : null}
     </>
   );
