@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-19  
 **Branch:** `codex/phase-4-gate-5a`  
-**Status:** Complete and awaiting approval
+**Status:** Approved 2026-09-19
 
 ## Purpose
 
@@ -61,4 +61,4 @@ The preview correctly enforces authentication and therefore cannot reuse the pro
 
 ## Approval boundary
 
-Gate 5B must not begin until Gate 5A is explicitly approved, deployed, and passes authenticated keyboard/live-browser verification.
+Gate 5A was explicitly approved on 2026-09-19. It may merge and deploy; Gate 5B begins after authenticated keyboard/live-browser verification passes.
