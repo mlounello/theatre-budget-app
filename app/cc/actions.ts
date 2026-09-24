@@ -667,7 +667,7 @@ export async function assignReceiptsToStatementAction(
 
     const { data: receipts, error: receiptsError } = await supabase
       .from("purchase_receipts")
-      .select("id, purchase_id, cc_statement_month_id, purchases!inner(id, fiscal_year_id, status, request_type, is_credit_card, credit_card_id)")
+      .select("id, purchase_id, cc_statement_month_id, purchases!purchase_receipts_purchase_id_fkey!inner(id, fiscal_year_id, status, request_type, is_credit_card, credit_card_id)")
       .in("id", receiptIds);
     if (receiptsError) return err(receiptsError.message);
     if (!receipts || receipts.length !== receiptIds.length) return err("One or more receipts were not found.");
@@ -846,7 +846,7 @@ export async function updateStagedReceiptAction(
 
     const { data: receipt, error: receiptError } = await supabase
       .from("purchase_receipts")
-      .select("id, cc_statement_month_id, purchase_id, purchases!inner(fiscal_year_id)")
+      .select("id, cc_statement_month_id, purchase_id, purchases!purchase_receipts_purchase_id_fkey!inner(fiscal_year_id)")
       .eq("id", receiptId)
       .single();
     if (receiptError || !receipt) return err("Receipt not found.");
@@ -1222,7 +1222,7 @@ export async function submitStatementMonthAction(
 
     const { data: receipts, error: receiptsError } = await supabase
       .from("purchase_receipts")
-      .select("id, amount_received, purchase_id, purchases!inner(id, project_id, status, estimated_amount, requested_amount, pending_cc_amount, request_type, is_credit_card)")
+      .select("id, amount_received, purchase_id, purchases!purchase_receipts_purchase_id_fkey!inner(id, project_id, status, estimated_amount, requested_amount, pending_cc_amount, request_type, is_credit_card)")
       .eq("cc_statement_month_id", statementMonthId);
     if (receiptsError) return err(receiptsError.message);
     if (!receipts || receipts.length === 0) return err("No receipts assigned to this statement month.");
