@@ -13,6 +13,7 @@ import {
   unpostStatementMonthFromBannerAction,
   unassignReceiptFromStatementAction,
   updateCcAttentionPurchaseAction,
+  updateExpenseBudgetDestinationAction,
   type ActionState
 } from "@/app/cc/actions";
 import { addProcurementReceiptAction, deleteProcurementReceiptAction } from "@/app/procurement/actions";
@@ -55,6 +56,13 @@ type PendingReceiptRow = {
 
 type PendingPurchaseDetailRow = {
   id: string;
+  fiscalYearId: string;
+  projectId: string | null;
+  organizationId: string | null;
+  productionCategoryId: string | null;
+  accountCodeId: string | null;
+  status: string;
+  expenseStage: string | null;
   projectLabel: string;
   budgetLineLabel: string;
   requestType: string;
@@ -177,6 +185,7 @@ export function CcPageClient({
   const [reopenState, reopenAction] = useActionState(reopenStatementMonthAction, initialState);
   const [unpostState, unpostAction] = useActionState(unpostStatementMonthFromBannerAction, initialState);
   const [attentionUpdateState, attentionUpdateAction] = useActionState(updateCcAttentionPurchaseAction, initialState);
+  const [budgetDestinationState, budgetDestinationAction] = useActionState(updateExpenseBudgetDestinationAction, initialState);
   const [attentionReconcileState, attentionReconcileAction] = useActionState(reconcileCcPurchaseToReceiptsAction, initialState);
   const [attentionReceiptState, attentionReceiptAction] = useActionState(addProcurementReceiptAction, initialState);
   const [attentionDeleteReceiptState, attentionDeleteReceiptAction] = useActionState(deleteProcurementReceiptAction, initialState);
@@ -230,7 +239,8 @@ export function CcPageClient({
       (!selectedStatement || !receipt.purchaseCreditCardId || receipt.purchaseCreditCardId === selectedStatement.creditCardId)
   );
   const assignedTotal = assignedReceipts.reduce((sum, receipt) => sum + receipt.amount, 0);
-  const exceptionRows = pendingPurchaseDetails.filter(
+  const pendingTransactions = pendingPurchaseDetails.filter((purchase) => purchase.status === "pending_cc");
+  const exceptionRows = pendingTransactions.filter(
     (purchase) => !["Ready to assign", "Already linked to statement month"].includes(purchase.assignmentState)
   );
   const missingReceiptCount = exceptionRows.filter((purchase) => purchase.assignmentState === "Missing receipts").length;
@@ -323,13 +333,52 @@ export function CcPageClient({
       <SideDrawer
         open={Boolean(activeAttentionPurchase)}
         onClose={() => setActiveAttentionPurchase(null)}
-        eyebrow="Transaction needing attention"
+        eyebrow={activeAttentionPurchase?.status === "pending_cc" ? "Transaction needing attention" : "Expense details"}
         title={activeAttentionPurchase?.requestTitle ?? "Credit-card transaction"}
-        description={activeAttentionPurchase ? `${activeAttentionPurchase.projectLabel} · ${activeAttentionPurchase.assignmentState}` : undefined}
+        description={activeAttentionPurchase ? `${activeAttentionPurchase.requestNumber ?? "Expense"} · ${activeAttentionPurchase.projectLabel}` : undefined}
         closeLabel="Close transaction editor"
       >
         {activeAttentionPurchase ? (
           <div className="varianceDrawerBody">
+            <section className="varianceDrawerSection">
+              <h3>Expense budget destination</h3>
+              <p className="helperText">This is the final budget assignment for this individual Expense and its receipt. Updating it also corrects older Expenses and their budget reporting.</p>
+              {budgetDestinationState.message ? <p className={budgetDestinationState.ok ? "successNote" : "errorNote"}>{budgetDestinationState.message}</p> : null}
+              <form action={budgetDestinationAction} className="drawerFieldGrid ccExpenseBudgetForm" key={activeAttentionPurchase.id}>
+                <input type="hidden" name="purchaseId" value={activeAttentionPurchase.id} />
+                <label>
+                  Charge To
+                  <select name="chargeTo" defaultValue={activeAttentionPurchase.projectId ? `project:${activeAttentionPurchase.projectId}` : activeAttentionPurchase.organizationId ? `organization:${activeAttentionPurchase.organizationId}` : ""} required>
+                    <option value="">Select project or organization budget</option>
+                    <optgroup label="Theatre Projects">
+                      {scopedProjects.map((project) => <option key={project.id} value={`project:${project.id}`}>{project.name}{project.season ? ` (${project.season})` : ""}</option>)}
+                    </optgroup>
+                    <optgroup label="Organization Budgets">
+                      {organizationOptions.map((organization) => <option key={organization.id} value={`organization:${organization.id}`}>{organization.orgCode} | {organization.name}</option>)}
+                    </optgroup>
+                  </select>
+                </label>
+                <label>
+                  Production Category
+                  <select name="productionCategoryId" defaultValue={activeAttentionPurchase.productionCategoryId ?? ""}>
+                    <option value="">Not used for organization budgets</option>
+                    {productionCategoryOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                  </select>
+                </label>
+                <label>
+                  Banner Account / FOAP Charge
+                  <select name="bannerAccountCodeId" defaultValue={activeAttentionPurchase.accountCodeId ?? ""} required>
+                    <option value="">Select account</option>
+                    {accountCodeOptions.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}
+                  </select>
+                </label>
+                <div className="ccExpenseBudgetSave">
+                  <button type="submit" className="buttonLink buttonPrimary">Save Budget Destination</button>
+                </div>
+              </form>
+            </section>
+
+            {activeAttentionPurchase.status === "pending_cc" ? (
             <section className="varianceDrawerSection">
               <h3>Reconciliation summary</h3>
               <p><strong>Authorized cap:</strong> {formatCurrency(activeAttentionPurchase.pendingCcAmount)}</p>
@@ -345,6 +394,9 @@ export function CcPageClient({
               </form>
             </section>
 
+            ) : null}
+
+            {activeAttentionPurchase.status === "pending_cc" && activeAttentionPurchase.isCreditCard ? (
             <section className="varianceDrawerSection">
               <h3>Edit transaction</h3>
               {attentionUpdateState.message ? <p className={attentionUpdateState.ok ? "successNote" : "errorNote"}>{attentionUpdateState.message}</p> : null}
@@ -355,6 +407,8 @@ export function CcPageClient({
                 <button type="submit" className="tinyButton">Save Transaction</button>
               </form>
             </section>
+
+            ) : null}
 
             <section className="varianceDrawerSection">
               <h3>Receipts</h3>
@@ -573,6 +627,7 @@ export function CcPageClient({
           pageSize={expenseClaimPageSize}
           hrefForPage={expenseClaimHref}
           onCreate={() => setOpenDrawer("claim")}
+          onEditExpense={(expenseId) => setActiveAttentionPurchase(expenseId)}
         />
       ) : null}
 

@@ -25,7 +25,8 @@ export function ExpenseClaimsPanel({
   total,
   pageSize,
   hrefForPage,
-  onCreate
+  onCreate,
+  onEditExpense
 }: {
   claims: ExpenseClaimView[];
   page: number;
@@ -33,6 +34,7 @@ export function ExpenseClaimsPanel({
   pageSize: number;
   hrefForPage: (page: number) => string;
   onCreate: () => void;
+  onEditExpense: (expenseId: string) => void;
 }) {
   return (
     <article className="panel panelFull">
@@ -69,7 +71,8 @@ export function ExpenseClaimsPanel({
                       { key: "budget", label: "Budget / Category", render: (expense) => expense.budgetLabel },
                       { key: "account", label: "Account", render: (expense) => expense.accountCode ?? "-" },
                       { key: "stage", label: "Stage", render: (expense) => expense.stage?.replaceAll("_", " ") ?? "-" },
-                      { key: "amount", label: "Amount", numeric: true, render: (expense) => formatCurrency(expense.amount) }
+                      { key: "amount", label: "Amount", numeric: true, render: (expense) => formatCurrency(expense.amount) },
+                      { key: "actions", label: "Actions", render: (expense) => <button type="button" className="tinyButton" onClick={() => onEditExpense(expense.id)}>Edit Budget</button> }
                     ]}
                   />
                 </div>

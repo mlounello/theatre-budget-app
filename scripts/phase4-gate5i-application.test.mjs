@@ -101,7 +101,7 @@ test("Expense Claims are collections while every Expense owns its budget assignm
   const form = await read("app/cc/expense-claim-form.tsx");
   const actions = await read("app/cc/expense-claim-actions.ts");
   const migration = await read("supabase/migrations/20260919233000_expense_level_budget_assignments.sql");
-  assert.match(form, /Each EX###### Expense selects its own budget destination/);
+  assert.match(form, /Each EX###### Expense and receipt selects its own final budget destination/);
   assert.match(form, /Charge To/);
   assert.match(form, /Production Category/);
   assert.match(form, /Banner Account \/ FOAP Charge/);
@@ -110,6 +110,22 @@ test("Expense Claims are collections while every Expense owns its budget assignm
   assert.match(migration, /alter column organization_id drop not null/);
   assert.match(migration, /nullif\(v_expense->>'production_category_id'/);
   assert.match(migration, /v_expense->>'banner_account_code_id'/);
+});
+
+test("Existing Expenses can move their final budget destination without changing claim or receipt history", async () => {
+  const client = await read("app/cc/cc-page-client.tsx");
+  const panel = await read("app/cc/expense-claims-panel.tsx");
+  const actions = await read("app/cc/actions.ts");
+  const migration = await read("supabase/migrations/20260924143000_edit_expense_budget_destinations.sql");
+  assert.match(panel, /Edit Budget/);
+  assert.match(client, /Expense budget destination/);
+  assert.match(client, /Save Budget Destination/);
+  assert.match(actions, /updateExpenseBudgetDestinationAction/);
+  assert.match(actions, /update_expense_budget_destination/);
+  assert.match(migration, /create or replace function app_theatre_budget\.update_expense_budget_destination/);
+  assert.match(migration, /delete from app_theatre_budget\.purchase_allocations/);
+  assert.match(migration, /update app_theatre_budget\.purchases/);
+  assert.match(migration, /Expense budget destination updated/);
 });
 
 test("Procurement explicitly separates PO work from Expense Claims", async () => {

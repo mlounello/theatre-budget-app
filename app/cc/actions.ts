@@ -800,6 +800,77 @@ export async function updateCcAttentionPurchaseAction(
   }
 }
 
+export async function updateExpenseBudgetDestinationAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) return err("You must be signed in.");
+    await requireCcManagerRole();
+
+    const purchaseId = String(formData.get("purchaseId") ?? "").trim();
+    const chargeTo = String(formData.get("chargeTo") ?? "").trim();
+    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const bannerAccountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
+    const [scopeType, scopeId] = chargeTo.split(":");
+    const projectId = scopeType === "project" ? scopeId : "";
+    const organizationId = scopeType === "organization" ? scopeId : "";
+
+    if (!purchaseId || (!projectId && !organizationId) || (projectId && organizationId)) {
+      return err("Choose exactly one project or organization budget for this Expense.");
+    }
+    if (!bannerAccountCodeId) return err("Choose a Banner account / FOAP charge for this Expense.");
+    if (projectId && !productionCategoryId) return err("Choose a Production Category for this Expense.");
+
+    const { data: purchase, error: purchaseError } = await supabase
+      .from("purchases")
+      .select("id, fiscal_year_id, request_type, expense_number")
+      .eq("id", purchaseId)
+      .maybeSingle();
+    if (purchaseError) return err(purchaseError.message);
+    if (!purchase?.id || purchase.request_type !== "expense") return err("Expense not found or outside your access scope.");
+
+    if (projectId) {
+      await requireProjectRole(projectId, ["admin", "project_manager"], {
+        productionCategoryId,
+        errorMessage: "You do not have permission to charge this Expense to that project or category."
+      });
+      const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .select("id, fiscal_year_id")
+        .eq("id", projectId)
+        .maybeSingle();
+      if (projectError || !project?.id) return err("The selected project could not be found.");
+      if (project.fiscal_year_id !== purchase.fiscal_year_id) return err("The selected project is outside this Expense's fiscal year.");
+    } else {
+      await requireOrganizationMembership(supabase, purchase.fiscal_year_id as string, organizationId, { projectlessOnly: true });
+    }
+
+    const { error: updateError } = await supabase.rpc("update_expense_budget_destination", {
+      p_purchase_id: purchaseId,
+      p_project_id: projectId || null,
+      p_organization_id: organizationId || null,
+      p_production_category_id: projectId ? productionCategoryId : null,
+      p_account_code_id: bannerAccountCodeId,
+      p_user_id: user.id
+    });
+    if (updateError) return err(updateError.message);
+
+    await createInstitutionalCommitmentForPurchase(supabase, purchaseId, user.id);
+    revalidatePath("/cc");
+    revalidatePath("/procurement");
+    revalidatePath("/");
+    return ok(`${purchase.expense_number || "Expense"} budget destination updated.`);
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not update the Expense budget destination."));
+  }
+}
+
 export async function reconcileCcPurchaseToReceiptsAction(
   prevState: ActionState = emptyState,
   formData: FormData

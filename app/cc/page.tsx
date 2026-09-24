@@ -43,6 +43,13 @@ type PendingReceiptRow = {
 
 type PendingPurchaseDetailRow = {
   id: string;
+  fiscalYearId: string;
+  projectId: string | null;
+  organizationId: string | null;
+  productionCategoryId: string | null;
+  accountCodeId: string | null;
+  status: string;
+  expenseStage: string | null;
   projectLabel: string;
   budgetLineLabel: string;
   requestType: string;
@@ -170,10 +177,10 @@ export default async function CreditCardPage({
     supabase
       .from("purchases")
       .select(
-        "id, fiscal_year_id, organization_id, title, reference_number, requisition_number, expense_number, pending_cc_amount, status, request_type, is_credit_card, cc_workflow_status, cc_statement_month_id, credit_card_id, projects(name, season), organizations(name, org_code), production_categories(name), account_codes(code), project_budget_lines(budget_code), credit_cards(nickname)"
+        "id, fiscal_year_id, project_id, organization_id, production_category_id, banner_account_code_id, title, reference_number, requisition_number, expense_number, expense_stage, pending_cc_amount, status, request_type, is_credit_card, cc_workflow_status, cc_statement_month_id, credit_card_id, projects(name, season), organizations(name, org_code), production_categories(name), account_codes(code), project_budget_lines(budget_code), credit_cards(nickname)"
       )
       .eq("fiscal_year_id", selectedFiscalYearId)
-      .eq("status", "pending_cc")
+      .eq("request_type", "expense")
       .order("created_at", { ascending: false }),
     supabase
       .from("cc_statement_lines")
@@ -438,6 +445,13 @@ export default async function CreditCardPage({
 
     return {
       id: purchaseId,
+      fiscalYearId: row.fiscal_year_id as string,
+      projectId: (row.project_id as string | null) ?? null,
+      organizationId: (row.organization_id as string | null) ?? null,
+      productionCategoryId: (row.production_category_id as string | null) ?? null,
+      accountCodeId: (row.banner_account_code_id as string | null) ?? null,
+      status: (row.status as string | null) ?? "requested",
+      expenseStage: (row.expense_stage as string | null) ?? null,
       projectLabel: project
         ? `${project.name ?? "Unknown Project"}${project.season ? ` (${project.season})` : ""}`
         : `${organization?.org_code ?? "-"} | ${organization?.name ?? "Organization Budget"}`,

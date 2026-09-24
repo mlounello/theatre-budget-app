@@ -132,7 +132,11 @@ export function ExpenseClaimForm({
         <div className="contractsPanelHeader">
           <div>
             <h3>Expenses</h3>
-            <p className="helperText">Each EX###### Expense selects its own budget destination. The EC###### claim is only the collection.</p>
+            <p className="helperText">
+              {type === "funding_request"
+                ? "Choose the expected destination for the temporary budget hold. The final destination can be changed for each actual Expense during reconciliation."
+                : "Each EX###### Expense and receipt selects its own final budget destination. The EC###### claim is only the collection."}
+            </p>
           </div>
           <button type="button" className="tinyButton" onClick={() => setLines((current) => [...current, blankLine()])}>Add Expense</button>
         </div>
@@ -145,7 +149,7 @@ export function ExpenseClaimForm({
               <label>Amount<input type="number" min="0.01" step="0.01" value={line.amount} onChange={(event) => updateLine(index, { amount: event.target.value })} required /></label>
               <label>Date<input type="date" value={line.expenseDate} onChange={(event) => updateLine(index, { expenseDate: event.target.value })} /></label>
               <label>
-                Charge To
+                {type === "funding_request" ? "Estimated Charge To" : "Charge To"}
                 <select
                   value={line.projectId ? `project:${line.projectId}` : line.organizationId ? `organization:${line.organizationId}` : ""}
                   onChange={(event) => {
@@ -168,14 +172,14 @@ export function ExpenseClaimForm({
                 </select>
               </label>
               <label>
-                Production Category
+                {type === "funding_request" ? "Estimated Production Category" : "Production Category"}
                 <select value={line.productionCategoryId} onChange={(event) => updateLine(index, { productionCategoryId: event.target.value })} required={Boolean(line.projectId)} disabled={!line.projectId}>
                   <option value="">{line.projectId ? "Select category" : "Not used for organization budgets"}</option>
                   {productionCategories.map((option) => <option key={option.id} value={option.id}>{option.name ?? option.label}</option>)}
                 </select>
               </label>
               <label>
-                Banner Account / FOAP Charge
+                {type === "funding_request" ? "Estimated Banner Account / FOAP" : "Banner Account / FOAP Charge"}
                 <select value={line.bannerAccountCodeId} onChange={(event) => updateLine(index, { bannerAccountCodeId: event.target.value })} required>
                   <option value="">Select account</option>
                   {accountCodes.map((option) => <option key={option.id} value={option.id}>{option.label ?? option.name}</option>)}
