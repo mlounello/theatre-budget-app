@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useActionState, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  assignReceiptsToStatementAction,
+  finalizeReceiptBatchAction,
   createCreditCardAction,
   postStatementMonthToBannerAction,
   reconcileCcPurchaseToReceiptsAction,
@@ -14,6 +14,7 @@ import {
   unassignReceiptFromStatementAction,
   updateCcAttentionPurchaseAction,
   updateExpenseBudgetDestinationAction,
+  updateStagedReceiptAction,
   type ActionState
 } from "@/app/cc/actions";
 import { addProcurementReceiptAction, deleteProcurementReceiptAction } from "@/app/procurement/actions";
@@ -39,14 +40,20 @@ type StatementMonthRow = {
 type PendingReceiptRow = {
   id: string;
   purchaseId: string;
+  authorizationPurchaseId: string | null;
   amount: number;
   note: string | null;
   receiptDate: string;
+  projectId: string | null;
+  organizationId: string | null;
+  productionCategoryId: string | null;
+  accountCodeId: string | null;
   requestTitle: string;
   requestNumber: string | null;
   purchasePendingCcAmount: number;
   purchaseCreditCardId: string | null;
   purchaseStatus: string;
+  purchaseExpenseStage: string | null;
   purchaseRequestType: string;
   purchaseIsCreditCard: boolean;
   statementMonthId: string | null;
@@ -178,7 +185,7 @@ export function CcPageClient({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [createCardState, createCardAction] = useActionState(createCreditCardAction, initialState);
-  const [assignState, assignAction] = useActionState(assignReceiptsToStatementAction, initialState);
+  const [finalizeState, finalizeAction] = useActionState(finalizeReceiptBatchAction, initialState);
   const [unassignState, unassignAction] = useActionState(unassignReceiptFromStatementAction, initialState);
   const [submitState, submitAction] = useActionState(submitStatementMonthAction, initialState);
   const [postState, postAction] = useActionState(postStatementMonthToBannerAction, initialState);
@@ -189,7 +196,9 @@ export function CcPageClient({
   const [attentionReconcileState, attentionReconcileAction] = useActionState(reconcileCcPurchaseToReceiptsAction, initialState);
   const [attentionReceiptState, attentionReceiptAction] = useActionState(addProcurementReceiptAction, initialState);
   const [attentionDeleteReceiptState, attentionDeleteReceiptAction] = useActionState(deleteProcurementReceiptAction, initialState);
-  const [openDrawer, setOpenDrawer] = useState<"claim" | "statement" | "card" | null>(null);
+  const [receiptEditState, receiptEditAction] = useActionState(updateStagedReceiptAction, initialState);
+  const [openDrawer, setOpenDrawer] = useState<"claim" | "statement" | "card" | "reconcile" | null>(null);
+  const [selectedReceiptIds, setSelectedReceiptIds] = useState<string[]>([]);
   const selectedStatement = useMemo(
     () =>
       statementMonths.find((month) => month.id === requestedStatementId) ??
@@ -213,7 +222,7 @@ export function CcPageClient({
         requestNumber: receipt.requestNumber,
         requestTitle: receipt.requestTitle,
         amount: receipt.amount,
-        canRemove: true,
+        canRemove: !receipt.authorizationPurchaseId,
         receiptId: receipt.id,
         purchaseId: receipt.purchaseId,
         sourceLabel: "Receipt"
@@ -233,7 +242,7 @@ export function CcPageClient({
   const unassignedCandidates = pendingReceipts.filter(
     (receipt) =>
       !receipt.statementMonthId &&
-      receipt.purchaseStatus === "pending_cc" &&
+      (receipt.purchaseStatus === "pending_cc" || receipt.purchaseExpenseStage === "authorization") &&
       receipt.purchaseRequestType === "expense" &&
       receipt.purchaseIsCreditCard &&
       (!selectedStatement || !receipt.purchaseCreditCardId || receipt.purchaseCreditCardId === selectedStatement.creditCardId)
@@ -247,8 +256,9 @@ export function CcPageClient({
   const unassignedCardCount = exceptionRows.filter((purchase) => purchase.assignmentState === "Unassigned card").length;
   const activeAttentionPurchase = pendingPurchaseDetails.find((purchase) => purchase.id === searchParams.get("cc_purchase")) ?? null;
   const activeAttentionReceipts = activeAttentionPurchase
-    ? pendingReceipts.filter((receipt) => receipt.purchaseId === activeAttentionPurchase.id)
+    ? pendingReceipts.filter((receipt) => receipt.purchaseId === activeAttentionPurchase.id || receipt.authorizationPurchaseId === activeAttentionPurchase.id)
     : [];
+  const selectedReceipts = unassignedCandidates.filter((receipt) => selectedReceiptIds.includes(receipt.id));
   const workspaceHref = (view: Props["selectedView"], statementId?: string) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("cc_view", view);
@@ -300,7 +310,7 @@ export function CcPageClient({
         onClose={() => setOpenDrawer(null)}
         eyebrow="Credit Cards"
         title="New Expense Claim"
-        description="Create a Card Funding Request, Monthly Card Reconciliation, or Reimbursement with EC###### and EX###### identifiers."
+        description="Create a Card Funding Request or Reimbursement. Monthly reconciliation is created from selected receipts in the Current Statement workspace."
       >
         <ExpenseClaimForm
           fiscalYearId={selectedFiscalYearId}
@@ -327,6 +337,37 @@ export function CcPageClient({
           <label>Masked Number<input name="maskedNumber" placeholder="****1234" /></label>
           <label className="checkboxLabel"><input name="active" type="checkbox" defaultChecked />Active</label>
           <button type="submit" className="buttonLink buttonPrimary">Save Card</button>
+        </form>
+      </SideDrawer>
+
+      <SideDrawer
+        open={openDrawer === "reconcile"}
+        onClose={() => setOpenDrawer(null)}
+        eyebrow="Monthly reconciliation"
+        title="Finalize Selected Receipts"
+        description={selectedStatement ? `Create one monthly Expense Claim for ${selectedStatement.statementMonth.slice(0, 7)} on ${selectedStatement.creditCardName}. Each receipt becomes its own EX Expense.` : undefined}
+      >
+        <form action={finalizeAction} className="requestForm">
+          {finalizeState.message ? <p className={finalizeState.ok ? "successNote" : "errorNote"}>{finalizeState.message}</p> : null}
+          <input type="hidden" name="statementMonthId" value={selectedStatement?.id ?? ""} />
+          <label>Monthly Expense Claim Number<input name="claimNumber" pattern="EC[0-9]{6}" placeholder="EC######" required /></label>
+          <p className="helperText">This EC is the collection for this card and month. Enter the final EX number assigned to each receipt.</p>
+          <div className="expenseLinesEditor">
+            {selectedReceipts.map((receipt, index) => (
+              <fieldset className="expenseLineCard" key={receipt.id}>
+                <legend>Receipt {index + 1}</legend>
+                <input type="hidden" name="receiptId" value={receipt.id} />
+                <p><strong>{receipt.note ?? receipt.requestTitle}</strong> · {formatCurrency(receipt.amount)} · {receipt.receiptDate}</p>
+                <p className="helperText">{receipt.projectLabel} · {receipt.budgetLineLabel} · originally requested on {receipt.requestNumber ?? "funding request"}</p>
+                <label>Expense Number<input name={`expenseNumber_${receipt.id}`} pattern="EX[0-9]{6}" placeholder="EX######" required /></label>
+              </fieldset>
+            ))}
+          </div>
+          {selectedReceipts.length === 0 ? <p className="errorNote">Select at least one receipt from the statement workspace.</p> : null}
+          <div className="buttonCluster">
+            <button type="button" className="buttonLink" onClick={() => setOpenDrawer(null)}>Cancel</button>
+            <button type="submit" className="buttonLink buttonPrimary" disabled={selectedReceipts.length === 0}>Finalize Monthly EC</button>
+          </div>
         </form>
       </SideDrawer>
 
@@ -416,23 +457,45 @@ export function CcPageClient({
               {attentionDeleteReceiptState.message ? <p className={attentionDeleteReceiptState.ok ? "successNote" : "errorNote"}>{attentionDeleteReceiptState.message}</p> : null}
               <form action={attentionReceiptAction} className="requestForm">
                 <input type="hidden" name="purchaseId" value={activeAttentionPurchase.id} />
-                <label>Receipt Description<input name="note" placeholder="Vendor or purchase description" /></label>
+                <label>Receipt Description<input name="note" placeholder="Vendor or purchase description" required /></label>
                 <label>Receipt Amount<input name="amountReceived" type="number" min="0.01" step="0.01" required /></label>
+                <label>Receipt Date<input name="receiptDate" type="date" required /></label>
+                <label>
+                  Charge To
+                  <select name="chargeTo" defaultValue={activeAttentionPurchase.projectId ? `project:${activeAttentionPurchase.projectId}` : activeAttentionPurchase.organizationId ? `organization:${activeAttentionPurchase.organizationId}` : ""} required>
+                    <option value="">Select project or organization budget</option>
+                    <optgroup label="Theatre Projects">{scopedProjects.map((project) => <option key={project.id} value={`project:${project.id}`}>{project.name}{project.season ? ` (${project.season})` : ""}</option>)}</optgroup>
+                    <optgroup label="Organization Budgets">{organizationOptions.map((organization) => <option key={organization.id} value={`organization:${organization.id}`}>{organization.orgCode} | {organization.name}</option>)}</optgroup>
+                  </select>
+                </label>
+                <label>Production Category<select name="productionCategoryId" defaultValue={activeAttentionPurchase.productionCategoryId ?? ""}><option value="">Not used for organization budgets</option>{productionCategoryOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+                <label>Banner Account / FOAP<select name="bannerAccountCodeId" defaultValue={activeAttentionPurchase.accountCodeId ?? ""} required><option value="">Select account</option>{accountCodeOptions.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}</select></label>
                 <label>Receipt Link<input name="attachmentUrl" type="url" placeholder="Optional receipt URL" /></label>
                 <input type="hidden" name="fullyReceived" value="on" />
                 <button type="submit" className="tinyButton">Add Receipt</button>
               </form>
-              <ul>
+              {receiptEditState.message ? <p className={receiptEditState.ok ? "successNote" : "errorNote"}>{receiptEditState.message}</p> : null}
+              <div className="expenseLinesEditor">
                 {activeAttentionReceipts.map((receipt) => (
-                  <li key={receipt.id}>{receipt.note ?? "Receipt"} · {formatCurrency(receipt.amount)}
-                    <form action={attentionDeleteReceiptAction} className="inlineEditForm">
-                      <input type="hidden" name="id" value={receipt.id} />
-                      <button type="submit" className="tinyButton dangerButton">Remove</button>
-                    </form>
-                  </li>
+                  <details key={receipt.id} className="expenseLineCard">
+                    <summary>{receipt.note ?? "Receipt"} · {formatCurrency(receipt.amount)} · {receipt.receiptDate}</summary>
+                    {!receipt.statementMonthId ? (
+                      <form action={receiptEditAction} className="drawerFieldGrid">
+                        <input type="hidden" name="receiptId" value={receipt.id} />
+                        <label>Description<input name="note" defaultValue={receipt.note ?? ""} required /></label>
+                        <label>Amount<input name="amountReceived" type="number" min="0.01" step="0.01" defaultValue={receipt.amount.toFixed(2)} required /></label>
+                        <label>Date<input name="receiptDate" type="date" defaultValue={receipt.receiptDate.slice(0, 10)} required /></label>
+                        <label>Charge To<select name="chargeTo" defaultValue={receipt.projectId ? `project:${receipt.projectId}` : receipt.organizationId ? `organization:${receipt.organizationId}` : ""} required><option value="">Select budget</option><optgroup label="Theatre Projects">{scopedProjects.map((project) => <option key={project.id} value={`project:${project.id}`}>{project.name}{project.season ? ` (${project.season})` : ""}</option>)}</optgroup><optgroup label="Organization Budgets">{organizationOptions.map((organization) => <option key={organization.id} value={`organization:${organization.id}`}>{organization.orgCode} | {organization.name}</option>)}</optgroup></select></label>
+                        <label>Production Category<select name="productionCategoryId" defaultValue={receipt.productionCategoryId ?? ""}><option value="">Not used for organization budgets</option>{productionCategoryOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+                        <label>Banner Account / FOAP<select name="bannerAccountCodeId" defaultValue={receipt.accountCodeId ?? ""} required><option value="">Select account</option>{accountCodeOptions.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}</select></label>
+                        <button type="submit" className="tinyButton">Save Receipt</button>
+                      </form>
+                    ) : <p className="helperText">Finalized in a monthly Expense Claim. Edit its budget through the linked EX Expense.</p>}
+                    {!receipt.statementMonthId ? <form action={attentionDeleteReceiptAction} className="inlineEditForm"><input type="hidden" name="id" value={receipt.id} /><button type="submit" className="tinyButton dangerButton">Remove</button></form> : null}
+                  </details>
                 ))}
-                {activeAttentionReceipts.length === 0 ? <li>No receipts recorded.</li> : null}
-              </ul>
+                {activeAttentionReceipts.length === 0 ? <p>No receipts recorded.</p> : null}
+              </div>
             </section>
           </div>
         ) : null}
@@ -470,9 +533,9 @@ export function CcPageClient({
             <button type="button" className="buttonLink buttonPrimary" onClick={() => setOpenDrawer("statement")}>Open the first statement</button>
           </div>
         )}
-        {assignState.message ? (
-          <p className={assignState.ok ? "successNote" : "errorNote"} key={assignState.timestamp}>
-            {assignState.message}
+        {finalizeState.message ? (
+          <p className={finalizeState.ok ? "successNote" : "errorNote"} key={finalizeState.timestamp}>
+            {finalizeState.message}
           </p>
         ) : null}
         {unassignState.message ? (
@@ -555,13 +618,17 @@ export function CcPageClient({
 
               {!selectedStatement.postedAt ? (
                 <>
-                  <form action={assignAction} className="requestForm">
-                    <input type="hidden" name="statementMonthId" value={selectedStatement.id} />
+                  <div className="requestForm">
+                    <p className="helperText">Select this card&apos;s staged receipts for the month, then finalize them into one monthly EC with one EX per receipt.</p>
                     <div className="checkboxStack">
                       {unassignedCandidates.map((receipt) => (
                         <div key={receipt.id} className="ccCandidateRow">
                           <label className="checkboxLabel">
-                            <input type="checkbox" name="receiptId" value={receipt.id} />
+                            <input
+                              type="checkbox"
+                              checked={selectedReceiptIds.includes(receipt.id)}
+                              onChange={(event) => setSelectedReceiptIds((current) => event.target.checked ? [...current, receipt.id] : current.filter((id) => id !== receipt.id))}
+                            />
                             {receipt.projectLabel} | {receipt.budgetLineLabel} | {receipt.requestNumber ?? receipt.id.slice(0, 8)} |{" "}
                             {receipt.requestTitle} | {formatCurrency(receipt.amount)}
                           </label>
@@ -571,11 +638,11 @@ export function CcPageClient({
                       {unassignedCandidates.length === 0 ? <p>No unassigned Pending CC receipts for this card.</p> : null}
                     </div>
                     {unassignedCandidates.length > 0 ? (
-                      <button type="submit" className="tinyButton">
-                        Add Selected Receipts
+                      <button type="button" className="buttonLink buttonPrimary" disabled={selectedReceiptIds.length === 0} onClick={() => setOpenDrawer("reconcile")}>
+                        Finalize Selected Receipts ({selectedReceiptIds.length})
                       </button>
                     ) : null}
-                  </form>
+                  </div>
 
                   <form action={submitAction} className="inlineEditForm" style={{ marginTop: "0.6rem" }}>
                     <input type="hidden" name="statementMonthId" value={selectedStatement.id} />

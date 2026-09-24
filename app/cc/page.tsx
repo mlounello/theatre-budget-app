@@ -26,14 +26,20 @@ type StatementMonthRow = {
 type PendingReceiptRow = {
   id: string;
   purchaseId: string;
+  authorizationPurchaseId: string | null;
   amount: number;
   note: string | null;
   receiptDate: string;
+  projectId: string | null;
+  organizationId: string | null;
+  productionCategoryId: string | null;
+  accountCodeId: string | null;
   requestTitle: string;
   requestNumber: string | null;
   purchasePendingCcAmount: number;
   purchaseCreditCardId: string | null;
   purchaseStatus: string;
+  purchaseExpenseStage: string | null;
   purchaseRequestType: string;
   purchaseIsCreditCard: boolean;
   statementMonthId: string | null;
@@ -170,7 +176,7 @@ export default async function CreditCardPage({
     supabase
       .from("purchase_receipts")
       .select(
-        "id, purchase_id, amount_received, note, created_at, cc_statement_month_id, purchases!inner(id, fiscal_year_id, organization_id, title, reference_number, requisition_number, expense_number, pending_cc_amount, cc_statement_month_id, credit_card_id, status, request_type, is_credit_card, projects(name, season), organizations(name, org_code), production_categories(name), account_codes(code), project_budget_lines(budget_code))"
+        "id, purchase_id, authorization_purchase_id, amount_received, note, created_at, receipt_date, project_id, organization_id, production_category_id, account_code_id, cc_statement_month_id, receipt_projects:projects!purchase_receipts_project_id_fkey(name, season), receipt_organizations:organizations!purchase_receipts_organization_id_fkey(name, org_code), receipt_categories:production_categories!purchase_receipts_production_category_id_fkey(name), receipt_accounts:account_codes!purchase_receipts_account_code_id_fkey(code), purchases!inner(id, fiscal_year_id, organization_id, title, reference_number, requisition_number, expense_number, expense_stage, pending_cc_amount, cc_statement_month_id, credit_card_id, status, request_type, is_credit_card, projects(name, season), organizations(name, org_code), production_categories(name), account_codes(code), project_budget_lines(budget_code))"
       )
       .eq("purchases.fiscal_year_id", selectedFiscalYearId)
       .order("created_at", { ascending: true }),
@@ -361,6 +367,7 @@ export default async function CreditCardPage({
           reference_number?: string | null;
           requisition_number?: string | null;
           expense_number?: string | null;
+          expense_stage?: string | null;
           pending_cc_amount?: number | string | null;
           cc_statement_month_id?: string | null;
           credit_card_id?: string | null;
@@ -374,10 +381,10 @@ export default async function CreditCardPage({
           project_budget_lines?: { budget_code?: string } | null;
         }
       | null;
-    const project = purchase?.projects;
-    const organization = purchase?.organizations;
-    const accountCode = purchase?.account_codes;
-    const productionCategory = purchase?.production_categories;
+    const project = (row.receipt_projects as { name?: string; season?: string | null } | null) ?? purchase?.projects;
+    const organization = (row.receipt_organizations as { name?: string; org_code?: string } | null) ?? purchase?.organizations;
+    const accountCode = (row.receipt_accounts as { code?: string } | null) ?? purchase?.account_codes;
+    const productionCategory = (row.receipt_categories as { name?: string } | null) ?? purchase?.production_categories;
     const budgetLine = purchase?.project_budget_lines;
     const claimRef = (purchase?.reference_number as string | null) ?? null;
     const expenseRef = (purchase?.expense_number as string | null) ?? null;
@@ -387,14 +394,20 @@ export default async function CreditCardPage({
     return {
       id: row.id as string,
       purchaseId,
+      authorizationPurchaseId: (row.authorization_purchase_id as string | null) ?? null,
       amount: Number(row.amount_received ?? 0),
       note: (row.note as string | null) ?? null,
-      receiptDate: (row.created_at as string) ?? "",
+      receiptDate: (row.receipt_date as string | null) ?? String(row.created_at ?? "").slice(0, 10),
+      projectId: (row.project_id as string | null) ?? null,
+      organizationId: (row.organization_id as string | null) ?? null,
+      productionCategoryId: (row.production_category_id as string | null) ?? null,
+      accountCodeId: (row.account_code_id as string | null) ?? null,
       requestTitle: purchase?.title ?? "Request",
       requestNumber: reqOrRef,
       purchasePendingCcAmount: Number(purchase?.pending_cc_amount ?? 0),
       purchaseCreditCardId: (purchase?.credit_card_id as string | null) ?? null,
       purchaseStatus: (purchase?.status as string | undefined) ?? "",
+      purchaseExpenseStage: (purchase?.expense_stage as string | null | undefined) ?? null,
       purchaseRequestType: (purchase?.request_type as string | undefined) ?? "",
       purchaseIsCreditCard: Boolean(purchase?.is_credit_card as boolean | null | undefined),
       statementMonthId: (row.cc_statement_month_id as string | null) ?? null,
@@ -407,8 +420,9 @@ export default async function CreditCardPage({
 
   const receiptTotalsByPurchaseId = new Map<string, { total: number; count: number }>();
   for (const receipt of pendingReceipts) {
-    const current = receiptTotalsByPurchaseId.get(receipt.purchaseId) ?? { total: 0, count: 0 };
-    receiptTotalsByPurchaseId.set(receipt.purchaseId, {
+    const summaryPurchaseId = receipt.authorizationPurchaseId ?? receipt.purchaseId;
+    const current = receiptTotalsByPurchaseId.get(summaryPurchaseId) ?? { total: 0, count: 0 };
+    receiptTotalsByPurchaseId.set(summaryPurchaseId, {
       total: current.total + receipt.amount,
       count: current.count + 1
     });

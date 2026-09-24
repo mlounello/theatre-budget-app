@@ -722,6 +722,162 @@ export async function assignReceiptsToStatementAction(
   }
 }
 
+export async function finalizeReceiptBatchAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return err("You must be signed in.");
+    await requireCcManagerRole();
+
+    const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
+    const claimNumber = String(formData.get("claimNumber") ?? "").trim().toUpperCase();
+    const receiptIds = formData.getAll("receiptId").map((value) => String(value).trim()).filter(Boolean);
+    if (!statementMonthId) return err("Statement month is required.");
+    if (!/^EC[0-9]{6}$/.test(claimNumber)) return err("Expense Claim number must use EC######.");
+    if (receiptIds.length === 0) return err("Select at least one receipt.");
+
+    const receipts = receiptIds.map((receiptId) => ({
+      receipt_id: receiptId,
+      expense_number: String(formData.get(`expenseNumber_${receiptId}`) ?? "").trim().toUpperCase()
+    }));
+    if (receipts.some((receipt) => !/^EX[0-9]{6}$/.test(receipt.expense_number))) {
+      return err("Every selected receipt needs an EX###### Expense number.");
+    }
+
+    const { data, error } = await supabase.rpc("finalize_cc_receipt_batch", {
+      p_statement_month_id: statementMonthId,
+      p_claim_number: claimNumber,
+      p_receipts: receipts,
+      p_user_id: user.id
+    });
+    if (error) return err(error.message);
+
+    const result = data as { purchase_ids?: string[]; receipt_count?: number; total?: number } | null;
+    let commitmentWarning = false;
+    const finalizedPurchaseIds = result?.purchase_ids ?? [];
+    if (finalizedPurchaseIds.length > 0) {
+      try {
+        const { data: finalizedPurchases, error: finalizedError } = await supabase
+          .from("purchases")
+          .select("authorization_purchase_id")
+          .in("id", finalizedPurchaseIds);
+        if (finalizedError) throw finalizedError;
+        const authorizationIds = Array.from(new Set((finalizedPurchases ?? []).map((row) => String(row.authorization_purchase_id ?? "")).filter(Boolean)));
+        if (authorizationIds.length > 0) {
+          const { data: authorizations, error: authorizationError } = await supabase
+            .from("purchases")
+            .select("id, expense_claim_id, estimated_amount")
+            .in("id", authorizationIds);
+          if (authorizationError) throw authorizationError;
+          const claimIds = Array.from(new Set((authorizations ?? []).map((row) => String(row.expense_claim_id ?? "")).filter(Boolean)));
+          for (const claimId of claimIds) {
+            const claimAuthorizationIds = (authorizations ?? []).filter((row) => row.expense_claim_id === claimId).map((row) => row.id as string);
+            const authorizedTotal = (authorizations ?? []).filter((row) => row.expense_claim_id === claimId).reduce((sum, row) => sum + Number(row.estimated_amount ?? 0), 0);
+            const { data: actuals, error: actualsError } = await supabase
+              .from("purchases")
+              .select("pending_cc_amount, posted_amount, status")
+              .in("authorization_purchase_id", claimAuthorizationIds)
+              .neq("status", "cancelled");
+            if (actualsError) throw actualsError;
+            const settledTotal = (actuals ?? []).reduce((sum, row) => sum + Number(row.pending_cc_amount ?? 0) + Number(row.posted_amount ?? 0), 0);
+            const { error: claimUpdateError } = await supabase.from("expense_claims").update({
+              settled_amount: Number(settledTotal.toFixed(2)),
+              status: settledTotal + 0.005 >= authorizedTotal ? "reconciled" : "approved"
+            }).eq("id", claimId);
+            if (claimUpdateError) throw claimUpdateError;
+          }
+        }
+      } catch (summaryError) {
+        commitmentWarning = true;
+        console.error("Funding request summary refresh failed", { finalizedPurchaseIds, summaryError });
+      }
+    }
+    for (const purchaseId of finalizedPurchaseIds) {
+      try {
+        await createInstitutionalCommitmentForPurchase(supabase, purchaseId, user.id);
+      } catch (syncError) {
+        commitmentWarning = true;
+        console.error("Finalized receipt commitment sync failed", { purchaseId, syncError });
+      }
+    }
+
+    revalidatePath("/cc");
+    revalidatePath("/");
+    revalidatePath("/institutional-budget");
+    return ok(
+      `${result?.receipt_count ?? receiptIds.length} receipt${receiptIds.length === 1 ? "" : "s"} finalized into ${claimNumber}.` +
+      (commitmentWarning ? " The Expense Claim was saved, but one institutional commitment needs review." : "")
+    );
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not finalize the monthly Expense Claim."));
+  }
+}
+
+export async function updateStagedReceiptAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return err("You must be signed in.");
+    await requireCcManagerRole();
+
+    const receiptId = String(formData.get("receiptId") ?? "").trim();
+    const note = String(formData.get("note") ?? "").trim();
+    const receiptDate = String(formData.get("receiptDate") ?? "").trim();
+    const amount = parseMoney(formData.get("amountReceived"));
+    const chargeTo = String(formData.get("chargeTo") ?? "").trim();
+    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const accountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
+    const [scopeType, scopeId] = chargeTo.split(":");
+    const projectId = scopeType === "project" ? scopeId : "";
+    const organizationId = scopeType === "organization" ? scopeId : "";
+
+    if (!receiptId || !note || !receiptDate || amount <= 0) return err("Description, date, and amount are required.");
+    if (!projectId && !organizationId) return err("Choose a project or organization budget.");
+    if (projectId && !productionCategoryId) return err("Choose a Production Category.");
+    if (!accountCodeId) return err("Choose a Banner account / FOAP.");
+
+    const { data: receipt, error: receiptError } = await supabase
+      .from("purchase_receipts")
+      .select("id, cc_statement_month_id, purchase_id, purchases!inner(fiscal_year_id)")
+      .eq("id", receiptId)
+      .single();
+    if (receiptError || !receipt) return err("Receipt not found.");
+    if (receipt.cc_statement_month_id) return err("Finalized receipts must be edited through their EX Expense.");
+    const purchase = receipt.purchases as { fiscal_year_id?: string } | null;
+    const fiscalYearId = String(purchase?.fiscal_year_id ?? "");
+    if (projectId) {
+      const { data: project, error: projectError } = await supabase.from("projects").select("id, fiscal_year_id").eq("id", projectId).single();
+      if (projectError || !project || project.fiscal_year_id !== fiscalYearId) return err("That project is outside this receipt's fiscal year.");
+    } else {
+      await requireOrganizationMembership(supabase, fiscalYearId, organizationId, { projectlessOnly: true });
+    }
+
+    const { error } = await supabase.from("purchase_receipts").update({
+      note,
+      amount_received: amount,
+      receipt_date: receiptDate,
+      project_id: projectId || null,
+      organization_id: organizationId || null,
+      production_category_id: projectId ? productionCategoryId : null,
+      account_code_id: accountCodeId
+    }).eq("id", receiptId);
+    if (error) return err(error.message);
+
+    revalidatePath("/cc");
+    return ok("Receipt details and budget destination updated.");
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not update the receipt."));
+  }
+}
+
 export async function updateCcAttentionPurchaseAction(
   prevState: ActionState = emptyState,
   formData: FormData

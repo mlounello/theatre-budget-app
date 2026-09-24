@@ -91,7 +91,6 @@ export function ExpenseClaimForm({
             if (next === "reimbursement") setCreditCardId("");
           }}>
             <option value="funding_request">Card Funding Request</option>
-            <option value="monthly_reconciliation">Monthly Card Reconciliation</option>
             <option value="reimbursement">Reimbursement</option>
           </select>
         </label>

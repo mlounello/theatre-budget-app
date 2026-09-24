@@ -128,6 +128,27 @@ test("Existing Expenses can move their final budget destination without changing
   assert.match(migration, /Expense budget destination updated/);
 });
 
+test("Card receipts stage against funding requests and finalize as one monthly EC with one EX per receipt", async () => {
+  const client = await read("app/cc/cc-page-client.tsx");
+  const ccActions = await read("app/cc/actions.ts");
+  const procurementActions = await read("app/procurement/actions.ts");
+  const migration = await read("supabase/migrations/20260924190000_receipt_staging_monthly_reconciliation.sql");
+  assert.match(client, /Finalize Selected Receipts/);
+  assert.match(client, /Monthly Expense Claim Number/);
+  assert.match(client, /expenseNumber_/);
+  assert.match(client, /Receipt Date/);
+  assert.match(client, /Banner Account \/ FOAP/);
+  assert.match(ccActions, /finalizeReceiptBatchAction/);
+  assert.match(ccActions, /finalize_cc_receipt_batch/);
+  assert.match(ccActions, /updateStagedReceiptAction/);
+  assert.match(procurementActions, /authorization_purchase_id/);
+  assert.match(migration, /add column if not exists receipt_date/);
+  assert.match(migration, /create or replace function app_theatre_budget\.finalize_cc_receipt_batch/);
+  assert.match(migration, /authorization_purchase_id/);
+  assert.match(migration, /expense_stage, authorization_purchase_id/);
+  assert.match(migration, /set purchase_id = v_purchase_id/);
+});
+
 test("Procurement explicitly separates PO work from Expense Claims", async () => {
   const page = await read("app/procurement/page.tsx");
   const table = await read("app/procurement/procurement-table.tsx");

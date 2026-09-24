@@ -1663,6 +1663,12 @@ export type Database = {
           "created_by_user_id": string | null;
           "created_at": string;
           "cc_statement_month_id": string | null;
+          "receipt_date": string | null;
+          "project_id": string | null;
+          "organization_id": string | null;
+          "production_category_id": string | null;
+          "account_code_id": string | null;
+          "authorization_purchase_id": string | null;
         };
         Insert: {
           "id"?: string;
@@ -1674,6 +1680,12 @@ export type Database = {
           "created_by_user_id"?: string | null;
           "created_at"?: string;
           "cc_statement_month_id"?: string | null;
+          "receipt_date"?: string | null;
+          "project_id"?: string | null;
+          "organization_id"?: string | null;
+          "production_category_id"?: string | null;
+          "account_code_id"?: string | null;
+          "authorization_purchase_id"?: string | null;
         };
         Update: {
           "id"?: string;
@@ -1685,11 +1697,22 @@ export type Database = {
           "created_by_user_id"?: string | null;
           "created_at"?: string;
           "cc_statement_month_id"?: string | null;
+          "receipt_date"?: string | null;
+          "project_id"?: string | null;
+          "organization_id"?: string | null;
+          "production_category_id"?: string | null;
+          "account_code_id"?: string | null;
+          "authorization_purchase_id"?: string | null;
         };
         Relationships: [
           { foreignKeyName: "purchase_receipts_cc_statement_month_id_fkey"; columns: ["cc_statement_month_id"]; isOneToOne: false; referencedRelation: "cc_statement_months"; referencedColumns: ["id"] },
           { foreignKeyName: "purchase_receipts_created_by_user_id_fkey"; columns: ["created_by_user_id"]; isOneToOne: false; referencedRelation: "users"; referencedColumns: ["id"] },
-          { foreignKeyName: "purchase_receipts_purchase_id_fkey"; columns: ["purchase_id"]; isOneToOne: false; referencedRelation: "purchases"; referencedColumns: ["id"] }
+          { foreignKeyName: "purchase_receipts_purchase_id_fkey"; columns: ["purchase_id"]; isOneToOne: false; referencedRelation: "purchases"; referencedColumns: ["id"] },
+          { foreignKeyName: "purchase_receipts_authorization_purchase_id_fkey"; columns: ["authorization_purchase_id"]; isOneToOne: false; referencedRelation: "purchases"; referencedColumns: ["id"] },
+          { foreignKeyName: "purchase_receipts_project_id_fkey"; columns: ["project_id"]; isOneToOne: false; referencedRelation: "projects"; referencedColumns: ["id"] },
+          { foreignKeyName: "purchase_receipts_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "purchase_receipts_production_category_id_fkey"; columns: ["production_category_id"]; isOneToOne: false; referencedRelation: "production_categories"; referencedColumns: ["id"] },
+          { foreignKeyName: "purchase_receipts_account_code_id_fkey"; columns: ["account_code_id"]; isOneToOne: false; referencedRelation: "account_codes"; referencedColumns: ["id"] }
         ];
       };
       "purchase_receiving_docs": {

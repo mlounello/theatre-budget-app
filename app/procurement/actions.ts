@@ -1072,9 +1072,32 @@ export async function addProcurementReceiptAction(
     const amountReceived = parseMoney(formData.get("amountReceived"));
     const attachmentUrl = String(formData.get("attachmentUrl") ?? "").trim();
     const fullyReceived = formData.get("fullyReceived") === "on";
+    const receiptDate = String(formData.get("receiptDate") ?? "").trim();
+    const chargeTo = String(formData.get("chargeTo") ?? "").trim();
+    const productionCategoryId = String(formData.get("productionCategoryId") ?? "").trim();
+    const accountCodeId = String(formData.get("bannerAccountCodeId") ?? "").trim();
 
     if (!purchaseId) return err("Purchase is required.");
     await ensurePurchasePmOrAdminAccess(supabase, user.id, purchaseId);
+
+    const { data: purchase, error: purchaseError } = await supabase
+      .from("purchases")
+      .select("id, request_type, is_credit_card, expense_stage, project_id, organization_id, production_category_id, banner_account_code_id")
+      .eq("id", purchaseId)
+      .single();
+    if (purchaseError || !purchase) return err("Purchase could not be found.");
+    const isCardExpense = purchase.request_type === "expense" && Boolean(purchase.is_credit_card);
+    const [scopeType, scopeId] = chargeTo.split(":");
+    const projectId = scopeType === "project" ? scopeId : isCardExpense ? "" : String(purchase.project_id ?? "");
+    const organizationId = scopeType === "organization" ? scopeId : projectId ? "" : isCardExpense ? "" : String(purchase.organization_id ?? "");
+    if (isCardExpense) {
+      if (!note) return err("Receipt description is required.");
+      if (amountReceived <= 0) return err("Receipt amount must be greater than zero.");
+      if (!receiptDate) return err("Receipt date is required.");
+      if (!projectId && !organizationId) return err("Choose the budget this receipt should charge.");
+      if (projectId && !productionCategoryId) return err("Choose a Production Category for this receipt.");
+      if (!accountCodeId) return err("Choose a Banner account / FOAP for this receipt.");
+    }
 
     const { error } = await supabase.from("purchase_receipts").insert({
       purchase_id: purchaseId,
@@ -1082,7 +1105,13 @@ export async function addProcurementReceiptAction(
       amount_received: amountReceived === 0 ? null : amountReceived,
       fully_received: fullyReceived,
       attachment_url: attachmentUrl || null,
-      created_by_user_id: user.id
+      created_by_user_id: user.id,
+      receipt_date: receiptDate || null,
+      project_id: projectId || null,
+      organization_id: organizationId || null,
+      production_category_id: projectId ? productionCategoryId || null : null,
+      account_code_id: accountCodeId || (purchase.banner_account_code_id as string | null) || null,
+      authorization_purchase_id: purchase.expense_stage === "authorization" ? purchaseId : null
     });
     if (error) return err(error.message);
 
