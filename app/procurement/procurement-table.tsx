@@ -1095,23 +1095,49 @@ export function ProcurementTable({
               <form action={addReceiptAction} className="requestForm">
                 <input type="hidden" name="purchaseId" value={editingPurchase.id} />
                 <label>
-                  Note
-                  <input name="note" placeholder="Package received / partial qty, etc." />
+                  Store
+                  <input name="note" placeholder="Store or vendor" required />
                 </label>
                 <label>
-                  Amount Received
-                  <input name="amountReceived" type="number" step="0.01" />
+                  Receipt Amount
+                  <input name="amountReceived" type="number" min="0.01" step="0.01" required />
+                </label>
+                <label>
+                  Receipt Date
+                  <input name="receiptDate" type="date" required />
+                </label>
+                <label>
+                  Charge To
+                  <select name="chargeTo" defaultValue={editingPurchase.projectId ? `project:${editingPurchase.projectId}` : editingPurchase.organizationId ? `organization:${editingPurchase.organizationId}` : ""} required>
+                    <option value="">Select project or organization budget</option>
+                    <optgroup label="Theatre Projects">
+                      {projectOptions.map((project) => <option key={project.id} value={`project:${project.id}`}>{project.label}</option>)}
+                    </optgroup>
+                    <optgroup label="Organization Budgets">
+                      {organizationOptions.filter((organization) => !organization.projectTrackingRequired).map((organization) => <option key={organization.id} value={`organization:${organization.id}`}>{organization.label}</option>)}
+                    </optgroup>
+                  </select>
+                </label>
+                <label>
+                  Production Category
+                  <select name="productionCategoryId" defaultValue={editingPurchase.productionCategoryId ?? ""}>
+                    <option value="">Not used for organization budgets</option>
+                    {productionCategoryOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                  </select>
+                </label>
+                <label>
+                  Banner Account / FOAP
+                  <select name="bannerAccountCodeId" defaultValue={editingPurchase.bannerAccountCodeId ?? ""} required>
+                    <option value="">Select account</option>
+                    {accountCodeOptions.map((accountCode) => <option key={accountCode.id} value={accountCode.id}>{accountCode.label}</option>)}
+                  </select>
                 </label>
                 <label>
                   Attachment URL
                   <input name="attachmentUrl" placeholder="Optional URL" />
                 </label>
-                <label className="checkboxLabel">
-                  <input name="fullyReceived" type="checkbox" />
-                  Fully received
-                </label>
                 <button type="submit" className="tinyButton">
-                  Add Receipt Log
+                  Add Receipt
                 </button>
               </form>
 
@@ -1120,8 +1146,7 @@ export function ProcurementTable({
                   .filter((receipt) => receipt.purchaseId === editingPurchase.id)
                   .map((receipt) => (
                     <li key={receipt.id}>
-                      {receipt.note ?? "Receipt"} | {formatCurrency(receipt.amountReceived)} | {receipt.createdAt.slice(0, 10)}
-                      {receipt.fullyReceived ? " | Full" : ""}
+                      {receipt.note ?? "Receipt"} | {formatCurrency(receipt.amountReceived)} | {(receipt.receiptDate ?? receipt.createdAt).slice(0, 10)}
                       <form action={deleteReceiptAction} className="inlineEditForm">
                         <input type="hidden" name="id" value={receipt.id} />
                         <button type="submit" className="tinyButton dangerButton">

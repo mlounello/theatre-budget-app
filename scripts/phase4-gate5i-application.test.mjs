@@ -149,6 +149,21 @@ test("Card receipts stage against funding requests and finalize as one monthly E
   assert.match(migration, /set purchase_id = v_purchase_id/);
 });
 
+test("Procurement receipt entry captures the complete staged receipt and finalization binds an unassigned card", async () => {
+  const table = await read("app/procurement/procurement-table.tsx");
+  const migration = await read("supabase/migrations/20260930120000_append_receipts_to_monthly_claim.sql");
+  assert.match(table, />\s*Store\s*</);
+  assert.match(table, /name="receiptDate" type="date"/);
+  assert.match(table, /name="chargeTo"/);
+  assert.match(table, /name="productionCategoryId"/);
+  assert.match(table, /name="bannerAccountCodeId"/);
+  assert.doesNotMatch(table, /name="fullyReceived" type="checkbox"/);
+  assert.match(migration, /select id into v_claim_id/);
+  assert.match(migration, /claim_type = 'monthly_reconciliation'/);
+  assert.match(migration, /v_authorization\.credit_card_id is null/);
+  assert.match(migration, /set credit_card_id = v_statement\.credit_card_id/);
+});
+
 test("Procurement explicitly separates PO work from Expense Claims", async () => {
   const page = await read("app/procurement/page.tsx");
   const table = await read("app/procurement/procurement-table.tsx");

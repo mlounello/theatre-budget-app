@@ -230,6 +230,7 @@ export type ProcurementReceiptRow = {
   fullyReceived: boolean;
   attachmentUrl: string | null;
   attachmentStoredValue: string | null;
+  receiptDate: string | null;
   createdAt: string;
 };
 
@@ -1566,7 +1567,7 @@ export async function getProcurementData(
     ? await Promise.all([
         supabase
           .from("purchase_receipts")
-          .select("id, purchase_id, note, amount_received, fully_received, attachment_url, created_at")
+          .select("id, purchase_id, note, amount_received, fully_received, attachment_url, receipt_date, created_at")
           .in("purchase_id", currentPagePurchaseIds)
           .order("created_at", { ascending: false }),
         supabase
@@ -1782,6 +1783,7 @@ export async function getProcurementData(
       ? procurementAttachmentUrls.get((row.attachment_url as string | null) ?? "") ?? null
       : null,
     attachmentStoredValue: (row.attachment_url as string | null) ?? null,
+    receiptDate: (row.receipt_date as string | null) ?? null,
     createdAt: row.created_at as string
   }));
 
