@@ -420,12 +420,20 @@ export default async function CreditCardPage({
 
   const receiptTotalsByPurchaseId = new Map<string, { total: number; count: number }>();
   for (const receipt of pendingReceipts) {
-    const summaryPurchaseId = receipt.authorizationPurchaseId ?? receipt.purchaseId;
-    const current = receiptTotalsByPurchaseId.get(summaryPurchaseId) ?? { total: 0, count: 0 };
-    receiptTotalsByPurchaseId.set(summaryPurchaseId, {
-      total: current.total + receipt.amount,
-      count: current.count + 1
-    });
+    // Once a staged receipt is finalized, purchase_id points at the monthly EX
+    // while authorization_purchase_id continues to point at the original funding
+    // request. Both records should show the receipt; otherwise the finalized EX is
+    // incorrectly reported as missing its own receipt.
+    const relatedPurchaseIds = new Set(
+      [receipt.purchaseId, receipt.authorizationPurchaseId].filter((value): value is string => Boolean(value))
+    );
+    for (const relatedPurchaseId of relatedPurchaseIds) {
+      const current = receiptTotalsByPurchaseId.get(relatedPurchaseId) ?? { total: 0, count: 0 };
+      receiptTotalsByPurchaseId.set(relatedPurchaseId, {
+        total: current.total + receipt.amount,
+        count: current.count + 1
+      });
+    }
   }
 
   const statementMonthLabelById = new Map(
@@ -449,10 +457,10 @@ export default async function CreditCardPage({
     let assignmentState = "Ready to assign";
     if (!isCreditCard || requestType !== "expense") {
       assignmentState = "Excluded from receipt assignment flow";
-    } else if (receiptSummary.count === 0) {
-      assignmentState = "Missing receipts";
     } else if (statementMonthId) {
       assignmentState = "Already linked to statement month";
+    } else if (receiptSummary.count === 0) {
+      assignmentState = "Missing receipts";
     } else if (!row.credit_card_id) {
       assignmentState = "Unassigned card";
     }

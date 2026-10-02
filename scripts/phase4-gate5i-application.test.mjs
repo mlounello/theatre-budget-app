@@ -164,6 +164,15 @@ test("Procurement receipt entry captures the complete staged receipt and finaliz
   assert.match(migration, /set credit_card_id = v_statement\.credit_card_id/);
 });
 
+test("Finalized monthly Expenses keep their receipts out of the missing-receipt exception count", async () => {
+  const page = await read("app/cc/page.tsx");
+  assert.match(page, /\[receipt\.purchaseId, receipt\.authorizationPurchaseId\]/);
+  assert.match(
+    page,
+    /else if \(statementMonthId\) \{\s*assignmentState = "Already linked to statement month";\s*\} else if \(receiptSummary\.count === 0\)/
+  );
+});
+
 test("Procurement explicitly separates PO work from Expense Claims", async () => {
   const page = await read("app/procurement/page.tsx");
   const table = await read("app/procurement/procurement-table.tsx");
