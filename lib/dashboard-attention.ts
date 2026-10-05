@@ -52,7 +52,7 @@ export async function getDashboardOperationalAttention(params: {
     supabase
       .from("purchases")
       .select(
-        "id, title, pending_cc_amount, projects(name, season), organizations(name, org_code), purchase_receipts(id, amount_received)"
+        "id, title, pending_cc_amount, projects(name, season), organizations(name, org_code), direct_receipts:purchase_receipts!purchase_receipts_purchase_id_fkey(id, amount_received), authorization_receipts:purchase_receipts!purchase_receipts_authorization_purchase_id_fkey(id, amount_received)"
       )
       .eq("fiscal_year_id", params.fiscalYearId)
       .eq("status", "pending_cc")
@@ -88,12 +88,18 @@ export async function getDashboardOperationalAttention(params: {
   const missingReceipts = ((pendingPurchasesResponse.data ?? []) as Array<Record<string, unknown>>)
     .map((row) => {
       const pendingAmount = asNumber(row.pending_cc_amount as string | number | null);
-      const receipts = (row.purchase_receipts as Array<{ amount_received?: string | number | null }> | null) ?? [];
+      const directReceipts = (row.direct_receipts as Array<{ id?: string }> | null) ?? [];
+      const authorizationReceipts = (row.authorization_receipts as Array<{ id?: string }> | null) ?? [];
+      const receiptIds = new Set(
+        [...directReceipts, ...authorizationReceipts]
+          .map((receipt) => String(receipt.id ?? "").trim())
+          .filter(Boolean)
+      );
       return {
         id: String(row.id ?? ""),
         label: String(row.title ?? "Credit-card purchase"),
         detail: `${scopeLabel(row)} · ${money(pendingAmount)} authorized · no receipt attached`,
-        receiptCount: receipts.length,
+        receiptCount: receiptIds.size,
         href: `/cc?fiscalYearId=${encodeURIComponent(params.fiscalYearId)}&cc_view=exceptions&cc_purchase=${encodeURIComponent(String(row.id ?? ""))}`
       };
     })

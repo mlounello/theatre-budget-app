@@ -26,7 +26,8 @@ test("dashboard leads with all eight reviewed attention categories", async () =>
 test("attention data uses existing workflow records without creating mutation paths", async () => {
   const attention = await read("lib/dashboard-attention.ts");
   assert.match(attention, /\.from\("purchases"\)[\s\S]*?\.eq\("status", "pending_cc"\)/);
-  assert.match(attention, /purchase_receipts\(id, amount_received\)/);
+  assert.match(attention, /direct_receipts:purchase_receipts!purchase_receipts_purchase_id_fkey/);
+  assert.match(attention, /authorization_receipts:purchase_receipts!purchase_receipts_authorization_purchase_id_fkey/);
   assert.match(attention, /\.from\("cc_statement_months"\)/);
   assert.match(attention, /\.from\("contract_installments"\)/);
   assert.match(attention, /\.from\("contract_union_contributions"\)/);
