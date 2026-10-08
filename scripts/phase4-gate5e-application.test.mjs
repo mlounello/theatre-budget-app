@@ -92,6 +92,20 @@ test("supporting records are restricted to purchases on the current page", async
   assert.match(db, /\.from\("purchase_receiving_docs"\)[\s\S]*?\.in\("purchase_id", currentPagePurchaseIds\)/);
 });
 
+test("department dashboards and running lists show requisition, PO, and receiving numbers", async () => {
+  const db = await read("lib/db.ts");
+  const dashboard = await read("app/page.tsx");
+  const detail = await read("app/dashboard-requisition-table.tsx");
+  const runningList = await read("app/my-budget/page.tsx");
+  assert.match(db, /receivingDocCodes: string\[\]/);
+  assert.match(db, /from\("purchase_receiving_docs"\)/);
+  assert.match(db, /receivingDocsByPurchaseId/);
+  assert.match(dashboard, /Receiving #/);
+  assert.match(detail, /Receiving #/);
+  assert.match(runningList, /Receiving #/);
+  assert.match(runningList, /row\.receivingDocCodes\.join\(", "\)/);
+});
+
 test("single and batch creation use shared accessible drawers", async () => {
   const drawers = await read("app/procurement/procurement-create-drawers.tsx");
   assert.match(drawers, /title="Add Order"/);

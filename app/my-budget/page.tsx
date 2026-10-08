@@ -55,6 +55,7 @@ export default async function MyBudgetPage({
         vendorName: string | null;
         requestNumber: string | null;
         poNumber: string | null;
+        receivingDocCodes: string[];
         procurementStatus: string;
         budgetStatus: string;
         amount: number;
@@ -85,6 +86,7 @@ export default async function MyBudgetPage({
         vendorName: entry.vendorName,
         requestNumber: entry.requisitionNumber ?? entry.referenceNumber ?? null,
         poNumber: entry.poNumber,
+        receivingDocCodes: entry.receivingDocCodes,
         procurementStatus: entry.procurementStatus,
         budgetStatus: entry.status,
         amount: entry.amount
@@ -205,6 +207,7 @@ export default async function MyBudgetPage({
                   <th>Vendor</th>
                   <th>Req/Ref #</th>
                   <th>PO #</th>
+                  <th>Receiving #</th>
                   <th>Procurement Status</th>
                   <th>Budget Status</th>
                   <th>Amount</th>
@@ -213,7 +216,7 @@ export default async function MyBudgetPage({
               <tbody>
                 {project.rows.length === 0 ? (
                   <tr>
-                    <td colSpan={9}>No line items in this project scope yet.</td>
+                    <td colSpan={10}>No line items in this project scope yet.</td>
                   </tr>
                 ) : null}
                 {project.rows.map((row) => (
@@ -224,6 +227,7 @@ export default async function MyBudgetPage({
                     <td>{row.vendorName ?? "-"}</td>
                     <td>{row.requestNumber ?? "-"}</td>
                     <td>{row.poNumber ?? "-"}</td>
+                    <td>{row.receivingDocCodes.length > 0 ? row.receivingDocCodes.join(", ") : "-"}</td>
                     <td>
                       <span className={`statusChip status-${row.procurementStatus}`}>{labelForStatus(row.procurementStatus)}</span>
                     </td>

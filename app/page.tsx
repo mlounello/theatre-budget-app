@@ -187,6 +187,7 @@ export default async function DashboardPage({
                   <th>Title</th>
                   <th>Req #</th>
                   <th>PO #</th>
+                  <th>Receiving #</th>
                   <th>Vendor</th>
                   <th>Status</th>
                   <th>Order Value</th>
@@ -195,7 +196,7 @@ export default async function DashboardPage({
               <tbody>
                 {openRequisitions.length === 0 ? (
                   <tr>
-                    <td colSpan={7}>No open requisitions.</td>
+                    <td colSpan={8}>No open requisitions.</td>
                   </tr>
                 ) : null}
                 {openRequisitions.map((row) => (
@@ -207,6 +208,7 @@ export default async function DashboardPage({
                     <td>{row.title}</td>
                     <td>{row.requisitionNumber ?? "-"}</td>
                     <td>{row.poNumber ?? "-"}</td>
+                    <td>{row.receivingDocCodes.length > 0 ? row.receivingDocCodes.join(", ") : "-"}</td>
                     <td>{row.vendorName ?? "-"}</td>
                     <td>
                       <span className={`statusChip status-${row.procurementStatus}`}>{requisitionProcurementLabel(row.procurementStatus)}</span>
@@ -395,7 +397,7 @@ export default async function DashboardPage({
             items={openRequisitions.slice(0, 3).map((row) => ({
               id: row.id,
               label: row.title,
-              detail: `${row.projectName} · ${requisitionProcurementLabel(row.procurementStatus)} · ${formatCurrency(row.orderValue)}`,
+              detail: `${row.projectName} · Req ${row.requisitionNumber ?? "-"} · PO ${row.poNumber ?? "-"} · Receiving ${row.receivingDocCodes.join(", ") || "-"} · ${requisitionProcurementLabel(row.procurementStatus)} · ${formatCurrency(row.orderValue)}`,
               href: `/procurement?fiscalYearId=${encodeURIComponent(fiscalYearId)}&pr_queue=all&pr_q=${encodeURIComponent(row.title)}&pr_edit=${encodeURIComponent(row.id)}`
             }))}
           />

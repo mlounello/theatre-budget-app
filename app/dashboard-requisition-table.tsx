@@ -44,6 +44,7 @@ export function DashboardRequisitionTable({ openRequisitions }: DashboardRequisi
               <th>Title</th>
               <th>Req #</th>
               <th>PO #</th>
+              <th>Receiving #</th>
               <th>Vendor</th>
               <th>Order Value</th>
               <th>Status</th>
@@ -53,7 +54,7 @@ export function DashboardRequisitionTable({ openRequisitions }: DashboardRequisi
           <tbody>
             {openRequisitions.length === 0 ? (
               <tr>
-                <td colSpan={8}>No open requisitions.</td>
+                <td colSpan={9}>No open requisitions.</td>
               </tr>
             ) : null}
             {openRequisitions.map((row) => (
@@ -65,6 +66,7 @@ export function DashboardRequisitionTable({ openRequisitions }: DashboardRequisi
                 <td>{row.title}</td>
                 <td>{row.requisitionNumber ?? "-"}</td>
                 <td>{row.poNumber ?? "-"}</td>
+                <td>{row.receivingDocCodes.length > 0 ? row.receivingDocCodes.join(", ") : "-"}</td>
                 <td>{row.vendorName ?? "-"}</td>
                 <td>{formatCurrency(row.orderValue)}</td>
                 <td>

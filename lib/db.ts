@@ -59,6 +59,7 @@ export type DashboardOpenRequisition = {
   title: string;
   requisitionNumber: string | null;
   poNumber: string | null;
+  receivingDocCodes: string[];
   vendorName: string | null;
   procurementStatus: string;
   orderValue: number;
@@ -71,6 +72,7 @@ export type MyBudgetEntry = {
   poNumber: string | null;
   requisitionNumber: string | null;
   referenceNumber: string | null;
+  receivingDocCodes: string[];
   procurementStatus: string;
   status: PurchaseStatus;
   requestType: "requisition" | "expense" | "contract" | "request" | "budget_transfer" | "contract_payment";
@@ -1049,6 +1051,7 @@ export async function getDashboardOpenRequisitions(
       title: (row.title as string) ?? "Untitled",
       requisitionNumber: (row.requisition_number as string | null) ?? null,
       poNumber: (row.po_number as string | null) ?? null,
+      receivingDocCodes: [],
       vendorName: vendor?.name ?? null,
       procurementStatus: ((row.procurement_status as string | null) ?? "requested").toLowerCase(),
       orderValue
@@ -1091,11 +1094,27 @@ export async function getDashboardOpenRequisitions(
         title: (row.title as string) ?? "Untitled",
         requisitionNumber: (row.requisition_number as string | null) ?? null,
         poNumber: (row.po_number as string | null) ?? null,
+        receivingDocCodes: [],
         vendorName: vendor?.name ?? null,
         procurementStatus: ((row.procurement_status as string | null) ?? "requested").toLowerCase(),
         orderValue
       };
     })));
+  }
+
+  if (rows.length > 0) {
+    const { data: receivingDocs, error: receivingDocsError } = await supabase
+      .from("purchase_receiving_docs")
+      .select("purchase_id, doc_code, created_at")
+      .in("purchase_id", rows.map((row) => row.id))
+      .order("created_at", { ascending: true });
+    if (receivingDocsError) throw receivingDocsError;
+    const rowById = new Map(rows.map((row) => [row.id, row] as const));
+    for (const receivingDoc of receivingDocs ?? []) {
+      const row = rowById.get(receivingDoc.purchase_id as string);
+      const docCode = String(receivingDoc.doc_code ?? "").trim();
+      if (row && docCode && !row.receivingDocCodes.includes(docCode)) row.receivingDocCodes.push(docCode);
+    }
   }
 
   return rows;
@@ -3809,6 +3828,28 @@ export async function getMyBudgetData(params: { fiscalYearId?: string } = {}): P
   if (linesError) throw linesError;
   if (purchasesError) throw purchasesError;
 
+  const purchaseIds = (purchasesData ?? []).map((row) => row.id as string);
+  let receivingDocsData: Array<Record<string, unknown>> = [];
+  if (purchaseIds.length > 0) {
+    const { data, error } = await supabase
+      .from("purchase_receiving_docs")
+      .select("purchase_id, doc_code, created_at")
+      .in("purchase_id", purchaseIds)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    receivingDocsData = (data ?? []) as Array<Record<string, unknown>>;
+  }
+
+  const receivingDocsByPurchaseId = new Map<string, string[]>();
+  for (const row of receivingDocsData) {
+    const purchaseId = String(row.purchase_id ?? "");
+    const docCode = String(row.doc_code ?? "").trim();
+    if (!purchaseId || !docCode) continue;
+    const codes = receivingDocsByPurchaseId.get(purchaseId) ?? [];
+    if (!codes.includes(docCode)) codes.push(docCode);
+    receivingDocsByPurchaseId.set(purchaseId, codes);
+  }
+
   const purchasesById = new Map((purchasesData ?? []).map((row) => [row.id as string, row] as const));
   const linkedActualAuthorizationIds = new Set(
     (purchasesData ?? [])
@@ -3955,6 +3996,7 @@ export async function getMyBudgetData(params: { fiscalYearId?: string } = {}): P
       poNumber: (displaySource?.po_number as string | null) ?? null,
       requisitionNumber: (displaySource?.requisition_number as string | null) ?? null,
       referenceNumber: (displaySource?.reference_number as string | null) ?? null,
+      receivingDocCodes: receivingDocsByPurchaseId.get(row.id as string) ?? [],
       procurementStatus: ((row.procurement_status as string | null) ?? "requested").toLowerCase(),
       status,
       requestType,
@@ -4001,6 +4043,7 @@ export async function getMyBudgetData(params: { fiscalYearId?: string } = {}): P
         title: (row.title as string) ?? "Untitled",
         requisitionNumber: (row.requisition_number as string | null) ?? null,
         poNumber: (row.po_number as string | null) ?? null,
+        receivingDocCodes: receivingDocsByPurchaseId.get(row.id as string) ?? [],
         vendorName: vendor?.name ?? null,
         procurementStatus: ((row.procurement_status as string | null) ?? "requested").toLowerCase(),
         orderValue: amount
