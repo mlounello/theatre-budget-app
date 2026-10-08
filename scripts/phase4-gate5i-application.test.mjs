@@ -173,6 +173,21 @@ test("Finalized monthly Expenses keep their receipts out of the missing-receipt 
   );
 });
 
+test("Monthly card finalization transfers budget impact off the funding authorization", async () => {
+  const ccActions = await read("app/cc/actions.ts");
+  const db = await read("lib/db.ts");
+  const migration = await read("supabase/migrations/20261008120000_transfer_card_authorization_budget_impact.sql");
+  assert.match(ccActions, /rescalePurchaseAllocations\(\s*supabase,\s*authorization\.id/);
+  assert.match(ccActions, /createInstitutionalCommitmentForPurchase\(supabase, authorizationId/);
+  assert.match(db, /authorization_purchase_id/);
+  assert.match(db, /linkedActualAuthorizationIds/);
+  assert.match(db, /departmentEntryByKey/);
+  assert.match(migration, /pending_cc_amount = v_remaining/);
+  assert.match(migration, /cc_workflow_status = 'receipts_uploaded' then 0/);
+  assert.match(migration, /institutional_budget_commitments/);
+  assert.doesNotMatch(migration, /delete\s+from\s+app_theatre_budget\.purchases/i);
+});
+
 test("Procurement explicitly separates PO work from Expense Claims", async () => {
   const page = await read("app/procurement/page.tsx");
   const table = await read("app/procurement/procurement-table.tsx");

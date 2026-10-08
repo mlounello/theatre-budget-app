@@ -759,6 +759,7 @@ export async function finalizeReceiptBatchAction(
     const result = data as { purchase_ids?: string[]; receipt_count?: number; total?: number } | null;
     let commitmentWarning = false;
     const finalizedPurchaseIds = result?.purchase_ids ?? [];
+    let finalizedAuthorizationIds: string[] = [];
     if (finalizedPurchaseIds.length > 0) {
       try {
         const { data: finalizedPurchases, error: finalizedError } = await supabase
@@ -766,13 +767,20 @@ export async function finalizeReceiptBatchAction(
           .select("authorization_purchase_id")
           .in("id", finalizedPurchaseIds);
         if (finalizedError) throw finalizedError;
-        const authorizationIds = Array.from(new Set((finalizedPurchases ?? []).map((row) => String(row.authorization_purchase_id ?? "")).filter(Boolean)));
-        if (authorizationIds.length > 0) {
+        finalizedAuthorizationIds = Array.from(new Set((finalizedPurchases ?? []).map((row) => String(row.authorization_purchase_id ?? "")).filter(Boolean)));
+        if (finalizedAuthorizationIds.length > 0) {
           const { data: authorizations, error: authorizationError } = await supabase
             .from("purchases")
-            .select("id, expense_claim_id, estimated_amount")
-            .in("id", authorizationIds);
+            .select("id, expense_claim_id, estimated_amount, pending_cc_amount")
+            .in("id", finalizedAuthorizationIds);
           if (authorizationError) throw authorizationError;
+          for (const authorization of authorizations ?? []) {
+            await rescalePurchaseAllocations(
+              supabase,
+              authorization.id as string,
+              Number(authorization.pending_cc_amount ?? 0)
+            );
+          }
           const claimIds = Array.from(new Set((authorizations ?? []).map((row) => String(row.expense_claim_id ?? "")).filter(Boolean)));
           for (const claimId of claimIds) {
             const claimAuthorizationIds = (authorizations ?? []).filter((row) => row.expense_claim_id === claimId).map((row) => row.id as string);
@@ -802,6 +810,14 @@ export async function finalizeReceiptBatchAction(
       } catch (syncError) {
         commitmentWarning = true;
         console.error("Finalized receipt commitment sync failed", { purchaseId, syncError });
+      }
+    }
+    for (const authorizationId of finalizedAuthorizationIds) {
+      try {
+        await createInstitutionalCommitmentForPurchase(supabase, authorizationId, user.id);
+      } catch (syncError) {
+        commitmentWarning = true;
+        console.error("Funding authorization commitment sync failed", { authorizationId, syncError });
       }
     }
 

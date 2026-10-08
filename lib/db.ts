@@ -3784,7 +3784,7 @@ export async function getMyBudgetData(params: { fiscalYearId?: string } = {}): P
       supabase
         .from("purchases")
         .select(
-          "id, project_id, production_category_id, title, reference_number, requisition_number, po_number, procurement_status, status, request_type, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, created_at, vendors(name), production_categories(name)"
+          "id, project_id, production_category_id, title, reference_number, expense_number, expense_stage, authorization_purchase_id, requisition_number, po_number, procurement_status, status, request_type, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, created_at, vendors(name), production_categories(name)"
         )
         .neq("procurement_status", "cancelled")
         .order("created_at", { ascending: false })
@@ -3808,6 +3808,14 @@ export async function getMyBudgetData(params: { fiscalYearId?: string } = {}): P
   if (projectsError) throw projectsError;
   if (linesError) throw linesError;
   if (purchasesError) throw purchasesError;
+
+  const purchasesById = new Map((purchasesData ?? []).map((row) => [row.id as string, row] as const));
+  const linkedActualAuthorizationIds = new Set(
+    (purchasesData ?? [])
+      .map((row) => (row.authorization_purchase_id as string | null) ?? null)
+      .filter((id): id is string => Boolean(id))
+  );
+  const departmentEntryByKey = new Map<string, MyBudgetEntry>();
 
   const projectsById = new Map(
     (projectsData ?? []).map((row) => {
@@ -3934,20 +3942,47 @@ export async function getMyBudgetData(params: { fiscalYearId?: string } = {}): P
     else if (status === "encumbered") card.encTotal += amount;
     else if (status === "requested") card.requestedOpenTotal += amount;
 
-    const vendor = row.vendors as { name?: string } | null;
-    card.entries.push({
-      id: row.id as string,
-      title: (row.title as string) ?? "Untitled",
+    const authorizationId = (row.authorization_purchase_id as string | null) ?? null;
+    const authorization = authorizationId ? purchasesById.get(authorizationId) ?? null : null;
+    const isLinkedActual = Boolean(authorizationId && authorization);
+    const isAuthorizationWithActuals = linkedActualAuthorizationIds.has(row.id as string);
+    const displaySource = isLinkedActual ? authorization : row;
+    const vendor = displaySource?.vendors as { name?: string } | null;
+    const entry: MyBudgetEntry = {
+      id: (displaySource?.id as string) ?? (row.id as string),
+      title: (displaySource?.title as string) ?? (row.title as string) ?? "Untitled",
       vendorName: vendor?.name ?? null,
-      poNumber: (row.po_number as string | null) ?? null,
-      requisitionNumber: (row.requisition_number as string | null) ?? null,
-      referenceNumber: (row.reference_number as string | null) ?? null,
+      poNumber: (displaySource?.po_number as string | null) ?? null,
+      requisitionNumber: (displaySource?.requisition_number as string | null) ?? null,
+      referenceNumber: (displaySource?.reference_number as string | null) ?? null,
       procurementStatus: ((row.procurement_status as string | null) ?? "requested").toLowerCase(),
       status,
       requestType,
       amount,
       createdAt: row.created_at as string
-    });
+    };
+
+    if (isLinkedActual || isAuthorizationWithActuals) {
+      // Department users see one funding-request line per final receipt destination.
+      // Monthly EC/EX records remain intact for reconciliation and accounting, but
+      // do not appear as a second independently named charge in the running list.
+      if (Math.abs(amount) >= 0.005) {
+        const fundingRequestId = authorizationId ?? (row.id as string);
+        const displayKey = `${key}:${fundingRequestId}`;
+        const existingEntry = departmentEntryByKey.get(displayKey);
+        if (existingEntry) {
+          existingEntry.amount = Number((existingEntry.amount + amount).toFixed(2));
+          if (entry.createdAt > existingEntry.createdAt) existingEntry.createdAt = entry.createdAt;
+          existingEntry.status = entry.status;
+          existingEntry.procurementStatus = entry.procurementStatus;
+        } else {
+          departmentEntryByKey.set(displayKey, entry);
+          card.entries.push(entry);
+        }
+      }
+    } else {
+      card.entries.push(entry);
+    }
     cards.set(key, card);
 
     if (
