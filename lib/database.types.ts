@@ -1560,6 +1560,7 @@ export type Database = {
         Row: {
           "id": string;
           "purchase_id": string;
+          "project_id": string | null;
           "reporting_budget_line_id": string | null;
           "organization_id": string | null;
           "account_code_id": string | null;
@@ -1573,6 +1574,7 @@ export type Database = {
         Insert: {
           "id"?: string;
           "purchase_id"?: string;
+          "project_id"?: string | null;
           "reporting_budget_line_id"?: string | null;
           "organization_id"?: string | null;
           "account_code_id"?: string | null;
@@ -1586,6 +1588,7 @@ export type Database = {
         Update: {
           "id"?: string;
           "purchase_id"?: string;
+          "project_id"?: string | null;
           "reporting_budget_line_id"?: string | null;
           "organization_id"?: string | null;
           "account_code_id"?: string | null;
@@ -1600,6 +1603,7 @@ export type Database = {
           { foreignKeyName: "purchase_allocations_account_code_id_fkey"; columns: ["account_code_id"]; isOneToOne: false; referencedRelation: "account_codes"; referencedColumns: ["id"] },
           { foreignKeyName: "purchase_allocations_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
           { foreignKeyName: "purchase_allocations_production_category_id_fkey"; columns: ["production_category_id"]; isOneToOne: false; referencedRelation: "production_categories"; referencedColumns: ["id"] },
+          { foreignKeyName: "purchase_allocations_project_id_fkey"; columns: ["project_id"]; isOneToOne: false; referencedRelation: "projects"; referencedColumns: ["id"] },
           { foreignKeyName: "purchase_allocations_purchase_id_fkey"; columns: ["purchase_id"]; isOneToOne: false; referencedRelation: "purchases"; referencedColumns: ["id"] },
           { foreignKeyName: "purchase_allocations_reporting_budget_line_id_fkey"; columns: ["reporting_budget_line_id"]; isOneToOne: false; referencedRelation: "project_budget_lines"; referencedColumns: ["id"] }
         ];

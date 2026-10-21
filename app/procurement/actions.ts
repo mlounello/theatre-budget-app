@@ -528,7 +528,9 @@ export async function createProcurementOrderAction(
     if (budgetTracked && line) {
       const { error: allocationError } = await supabase.from("purchase_allocations").insert({
         purchase_id: purchase.id,
+        project_id: projectId,
         reporting_budget_line_id: line.id,
+        organization_id: projectMeta?.organizationId ?? explicitOrganizationId,
         account_code_id: bannerAccountCodeId || line.account_code_id,
         production_category_id: productionCategoryId,
         amount: orderValue,
@@ -618,9 +620,10 @@ export async function createProcurementBatchAction(
 
     let budgetTracked = true;
     let explicitOrganizationId: string | null = null;
+    let projectMeta: Awaited<ReturnType<typeof getProjectMeta>> | null = null;
     if (projectId) {
       await ensureProjectCreateAccess(supabase, user.id, projectId);
-      const projectMeta = await getProjectMeta(supabase, projectId);
+      projectMeta = await getProjectMeta(supabase, projectId);
       if (projectMeta.fiscalYearId !== fiscalYearId) return err("Project must belong to the selected fiscal year.");
       budgetTracked = !projectMeta.isExternal;
       explicitOrganizationId = projectMeta.isExternal ? organizationId || null : null;
@@ -710,7 +713,9 @@ export async function createProcurementBatchAction(
       if (budgetTracked && line) {
         const { error: allocationError } = await supabase.from("purchase_allocations").insert({
           purchase_id: purchase.id,
+          project_id: projectId,
           reporting_budget_line_id: line.id,
+          organization_id: projectMeta?.organizationId ?? explicitOrganizationId,
           account_code_id: bannerAccountCodeId || line.account_code_id,
           production_category_id: productionCategoryId,
           amount: entry.amount,
@@ -894,8 +899,9 @@ export async function updateProcurementAction(
     }
 
     const resolvedAllocations: Array<{
+      project_id: string | null;
       reporting_budget_line_id: string | null;
-      organization_id: string | null;
+      organization_id: string;
       account_code_id: string;
       production_category_id: string | null;
       amount: number;
@@ -908,11 +914,12 @@ export async function updateProcurementAction(
         return err(`Allocations must total the PO value. Allocated $${allocationTotal.toFixed(2)} of $${nextRequested.toFixed(2)}.`);
       }
       for (const [index, allocation] of requestedAllocations.entries()) {
-        if (Boolean(allocation.projectId) === Boolean(allocation.organizationId)) {
-          return err(`Allocation ${index + 1} must choose exactly one project or organization budget.`);
-        }
+        if (!allocation.organizationId) return err(`Allocation ${index + 1} needs an organization.`);
         if (!allocation.accountCodeId) return err(`Allocation ${index + 1} needs a Banner account.`);
         if (!Number.isFinite(allocation.amount) || allocation.amount <= 0) return err(`Allocation ${index + 1} needs an amount greater than zero.`);
+        const allocationOrganizationId = allocation.organizationId;
+        if (!nextFiscalYearId) return err("Fiscal year is required for budget allocations.");
+        const membership = await validateOrganizationFiscalYear(supabase, allocationOrganizationId, nextFiscalYearId);
         if (allocation.projectId) {
           if (!allocation.productionCategoryId) return err(`Allocation ${index + 1} needs a production category.`);
           await requireProjectRole(allocation.projectId, ["admin", "project_manager"], {
@@ -921,26 +928,28 @@ export async function updateProcurementAction(
           });
           const allocationProject = await getProjectMeta(supabase, allocation.projectId);
           if (allocationProject.fiscalYearId !== nextFiscalYearId) return err(`Allocation ${index + 1} uses a project outside this PO's fiscal year.`);
+          if (allocationProject.organizationId !== allocationOrganizationId) {
+            return err(`Allocation ${index + 1}'s project must belong to its selected organization.`);
+          }
           const { data: allocationLineId, error: allocationLineError } = await supabase.rpc("ensure_project_category_line", {
             p_project_id: allocation.projectId,
             p_production_category_id: allocation.productionCategoryId
           });
           if (allocationLineError || !allocationLineId) return err(allocationLineError?.message ?? `Could not resolve allocation ${index + 1}.`);
           resolvedAllocations.push({
+            project_id: allocation.projectId,
             reporting_budget_line_id: allocationLineId as string,
-            organization_id: null,
+            organization_id: allocationOrganizationId,
             account_code_id: allocation.accountCodeId,
             production_category_id: allocation.productionCategoryId,
             amount: allocation.amount,
             note: allocation.note
           });
         } else {
-          const allocationOrganizationId = allocation.organizationId as string;
-          if (!nextFiscalYearId) return err("Fiscal year is required for organization-budget allocations.");
           await ensureOrganizationPmOrAdminAccess(allocationOrganizationId, nextFiscalYearId);
-          const membership = await validateOrganizationFiscalYear(supabase, allocationOrganizationId, nextFiscalYearId);
           if (membership.projectTrackingRequired) return err(`Allocation ${index + 1} must use a theatre project for that organization.`);
           resolvedAllocations.push({
+            project_id: null,
             reporting_budget_line_id: null,
             organization_id: allocationOrganizationId,
             account_code_id: allocation.accountCodeId,
@@ -1031,7 +1040,9 @@ export async function updateProcurementAction(
                 : nextRequestedAmount;
         const { error: createAllocationError } = await supabase.from("purchase_allocations").insert({
           purchase_id: id,
+          project_id: nextProjectId || null,
           reporting_budget_line_id: verifiedBudgetLine.id,
+          organization_id: nextProjectId ? (await getProjectMeta(supabase, nextProjectId)).organizationId : explicitOrganizationId,
           account_code_id: bannerAccountCodeId || verifiedBudgetLine.account_code_id,
           production_category_id: productionCategoryId,
           amount: allocationAmount,
@@ -1565,7 +1576,9 @@ export async function bulkUpdateProcurementAction(
                 : nextRequestedAmount;
         const { error: insertAllocError } = await supabase.from("purchase_allocations").insert({
           purchase_id: rowId,
+          project_id: nextProjectId || null,
           reporting_budget_line_id: verifiedBudgetLine.id,
+          organization_id: nextProjectId ? (await getProjectMeta(supabase, nextProjectId)).organizationId : nextOrganizationId || null,
           account_code_id: nextBannerAccountCodeId || verifiedBudgetLine.account_code_id,
           production_category_id: nextProductionCategoryId,
           amount: allocationAmount,

@@ -98,6 +98,26 @@ test("overview actuals honor each split allocation's organization without breaki
   assert.match(migration, /p\.project_id,/);
 });
 
+test("each PO allocation is a complete child budget record", async () => {
+  const migration = await read("supabase/migrations/20261021210000_complete_purchase_allocation_children.sql");
+  const table = await read("app/procurement/procurement-table.tsx");
+  const actions = await read("app/procurement/actions.ts");
+  const db = await read("lib/db.ts");
+
+  assert.match(migration, /add column if not exists project_id uuid/);
+  assert.match(migration, /purchase_allocations_project_id_fkey/);
+  assert.match(migration, /new\.project_id/);
+  assert.match(migration, /new\.organization_id/);
+  assert.match(migration, /v_actuals_by_category/);
+  assert.match(migration, /v_actuals_by_banner_code/);
+  assert.match(table, /Organization \/ Budget/);
+  assert.match(table, /\n\s+Project\n/);
+  assert.match(table, /No project/);
+  assert.match(actions, /project_id: allocation\.projectId/);
+  assert.match(actions, /organization_id: allocationOrganizationId/);
+  assert.match(db, /id, purchase_id, project_id, reporting_budget_line_id, organization_id/);
+});
+
 test("supporting records are restricted to purchases on the current page", async () => {
   const db = await read("lib/db.ts");
   assert.match(db, /currentPagePurchaseIds/);

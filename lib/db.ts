@@ -1596,7 +1596,7 @@ export async function getProcurementData(
           .order("created_at", { ascending: false }),
         supabase
           .from("purchase_allocations")
-          .select("id, purchase_id, reporting_budget_line_id, organization_id, production_category_id, account_code_id, amount, note, project_budget_lines(project_id)")
+          .select("id, purchase_id, project_id, reporting_budget_line_id, organization_id, production_category_id, account_code_id, amount, note, project_budget_lines(project_id)")
           .in("purchase_id", currentPagePurchaseIds)
           .order("created_at", { ascending: true })
       ])
@@ -1811,7 +1811,7 @@ export async function getProcurementData(
     return {
       id: row.id as string,
       purchaseId: row.purchase_id as string,
-      projectId: (reportingLine?.project_id as string | null) ?? null,
+      projectId: (row.project_id as string | null) ?? (reportingLine?.project_id as string | null) ?? null,
       organizationId: (row.organization_id as string | null) ?? null,
       productionCategoryId: (row.production_category_id as string | null) ?? null,
       accountCodeId: (row.account_code_id as string | null) ?? null,

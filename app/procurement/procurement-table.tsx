@@ -814,26 +814,43 @@ export function ProcurementTable({
                       <legend>Allocation {index + 1}</legend>
                       <div className="drawerFieldGrid">
                         <label>
-                          Charge To
+                          Organization / Budget
                           <select
-                            value={allocation.projectId ? `project:${allocation.projectId}` : allocation.organizationId ? `organization:${allocation.organizationId}` : ""}
+                            value={allocation.organizationId}
                             onChange={(event) => {
-                              const [scopeType, scopeId] = event.target.value.split(":");
+                              const organizationId = event.target.value;
+                              const selectedProject = projectOptions.find((project) => project.id === allocation.projectId);
                               updateAllocation(allocation.id, {
-                                projectId: scopeType === "project" ? scopeId : "",
-                                organizationId: scopeType === "organization" ? scopeId : "",
-                                productionCategoryId: ""
+                                organizationId,
+                                projectId: selectedProject && selectedProject.organizationId === organizationId ? allocation.projectId : "",
+                                productionCategoryId: selectedProject && selectedProject.organizationId === organizationId ? allocation.productionCategoryId : ""
                               });
                             }}
                             required={editBudgetTracked}
                           >
-                            <option value="">Select project or organization budget</option>
-                            <optgroup label="Theatre Projects">
-                              {projectOptions.map((project) => <option key={project.id} value={`project:${project.id}`}>{project.label}</option>)}
-                            </optgroup>
-                            <optgroup label="Organization Budgets">
-                              {organizationOptions.filter((organization) => !organization.projectTrackingRequired).map((organization) => <option key={organization.id} value={`organization:${organization.id}`}>{organization.label}</option>)}
-                            </optgroup>
+                            <option value="">Select organization</option>
+                            {organizationOptions.map((organization) => <option key={organization.id} value={organization.id}>{organization.label}</option>)}
+                          </select>
+                        </label>
+                        <label>
+                          Project
+                          <select
+                            value={allocation.projectId}
+                            onChange={(event) => {
+                              const projectId = event.target.value;
+                              const selectedProject = projectOptions.find((project) => project.id === projectId);
+                              updateAllocation(allocation.id, {
+                                projectId,
+                                organizationId: selectedProject?.organizationId ?? allocation.organizationId,
+                                productionCategoryId: ""
+                              });
+                            }}
+                            disabled={!allocation.organizationId}
+                          >
+                            <option value="">No project</option>
+                            {projectOptions
+                              .filter((project) => !allocation.organizationId || project.organizationId === allocation.organizationId)
+                              .map((project) => <option key={project.id} value={project.id}>{project.label}</option>)}
                           </select>
                         </label>
                         <label>
