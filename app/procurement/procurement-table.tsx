@@ -819,11 +819,8 @@ export function ProcurementTable({
                             value={allocation.organizationId}
                             onChange={(event) => {
                               const organizationId = event.target.value;
-                              const selectedProject = projectOptions.find((project) => project.id === allocation.projectId);
                               updateAllocation(allocation.id, {
-                                organizationId,
-                                projectId: selectedProject && selectedProject.organizationId === organizationId ? allocation.projectId : "",
-                                productionCategoryId: selectedProject && selectedProject.organizationId === organizationId ? allocation.productionCategoryId : ""
+                                organizationId
                               });
                             }}
                             required={editBudgetTracked}
@@ -841,16 +838,14 @@ export function ProcurementTable({
                               const selectedProject = projectOptions.find((project) => project.id === projectId);
                               updateAllocation(allocation.id, {
                                 projectId,
-                                organizationId: selectedProject?.organizationId ?? allocation.organizationId,
+                                organizationId: allocation.organizationId || selectedProject?.organizationId || "",
                                 productionCategoryId: ""
                               });
                             }}
                             disabled={!allocation.organizationId}
                           >
                             <option value="">No project</option>
-                            {projectOptions
-                              .filter((project) => !allocation.organizationId || project.organizationId === allocation.organizationId)
-                              .map((project) => <option key={project.id} value={project.id}>{project.label}</option>)}
+                            {projectOptions.map((project) => <option key={project.id} value={project.id}>{project.label}</option>)}
                           </select>
                         </label>
                         <label>

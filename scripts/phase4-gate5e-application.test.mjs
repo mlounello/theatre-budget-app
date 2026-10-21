@@ -100,6 +100,7 @@ test("overview actuals honor each split allocation's organization without breaki
 
 test("each PO allocation is a complete child budget record", async () => {
   const migration = await read("supabase/migrations/20261021210000_complete_purchase_allocation_children.sql");
+  const independentScopeMigration = await read("supabase/migrations/20261021220000_independent_purchase_allocation_scope.sql");
   const table = await read("app/procurement/procurement-table.tsx");
   const actions = await read("app/procurement/actions.ts");
   const db = await read("lib/db.ts");
@@ -110,9 +111,12 @@ test("each PO allocation is a complete child budget record", async () => {
   assert.match(migration, /new\.organization_id/);
   assert.match(migration, /v_actuals_by_category/);
   assert.match(migration, /v_actuals_by_banner_code/);
+  assert.match(independentScopeMigration, /project's reporting classification and an allocation's funding organization\s+-- are independent/);
+  assert.doesNotMatch(independentScopeMigration, /new\.organization_id is distinct from v_project_organization_id/);
   assert.match(table, /Organization \/ Budget/);
   assert.match(table, /\n\s+Project\n/);
   assert.match(table, /No project/);
+  assert.doesNotMatch(table, /project\.organizationId === allocation\.organizationId/);
   assert.match(actions, /project_id: allocation\.projectId/);
   assert.match(actions, /organization_id: allocationOrganizationId/);
   assert.match(db, /id, purchase_id, project_id, reporting_budget_line_id, organization_id/);

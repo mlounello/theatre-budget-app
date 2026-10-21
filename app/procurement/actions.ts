@@ -929,7 +929,7 @@ export async function updateProcurementAction(
           const allocationProject = await getProjectMeta(supabase, allocation.projectId);
           if (allocationProject.fiscalYearId !== nextFiscalYearId) return err(`Allocation ${index + 1} uses a project outside this PO's fiscal year.`);
           if (allocationProject.organizationId !== allocationOrganizationId) {
-            return err(`Allocation ${index + 1}'s project must belong to its selected organization.`);
+            await ensureOrganizationPmOrAdminAccess(allocationOrganizationId, nextFiscalYearId);
           }
           const { data: allocationLineId, error: allocationLineError } = await supabase.rpc("ensure_project_category_line", {
             p_project_id: allocation.projectId,
