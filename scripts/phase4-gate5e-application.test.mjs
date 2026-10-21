@@ -85,7 +85,7 @@ test("purchase orders support balanced split allocations across budgets, categor
   assert.match(migration, /v_monthly_actuals_by_org_account/);
 });
 
-test("overview actuals honor each split allocation's organization and project", async () => {
+test("overview actuals honor each split allocation's organization without breaking project embeds", async () => {
   const migration = await read("supabase/migrations/20261021170000_fix_split_allocation_actuals_views.sql");
   assert.match(migration, /v_actuals_by_category/);
   assert.match(migration, /v_actuals_by_banner_code/);
@@ -95,10 +95,7 @@ test("overview actuals honor each split allocation's organization and project", 
     migration,
     /coalesce\(pa\.organization_id, allocation_project\.organization_id, p\.organization_id, header_project\.organization_id\)/,
   );
-  assert.match(
-    migration,
-    /case\s+when pa\.organization_id is not null then null\s+else coalesce\(allocation_line\.project_id, p\.project_id\)\s+end as project_id/,
-  );
+  assert.match(migration, /p\.project_id,/);
 });
 
 test("supporting records are restricted to purchases on the current page", async () => {

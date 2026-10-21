@@ -5,10 +5,7 @@ create or replace view app_theatre_budget.v_actuals_by_category as
 with alloc_raw as (
   select
     p.id as purchase_id,
-    case
-      when pa.organization_id is not null then null
-      else coalesce(allocation_line.project_id, p.project_id)
-    end as project_id,
+    p.project_id,
     coalesce(pa.organization_id, allocation_project.organization_id, p.organization_id, header_project.organization_id) as organization_id,
     coalesce(
       p.fiscal_year_id,
@@ -82,10 +79,7 @@ create or replace view app_theatre_budget.v_actuals_by_banner_code as
 with alloc_raw as (
   select
     p.id as purchase_id,
-    case
-      when pa.organization_id is not null then null
-      else coalesce(allocation_line.project_id, p.project_id)
-    end as project_id,
+    p.project_id,
     coalesce(pa.organization_id, allocation_project.organization_id, p.organization_id, header_project.organization_id) as organization_id,
     coalesce(
       p.fiscal_year_id,
