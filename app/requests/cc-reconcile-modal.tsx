@@ -152,6 +152,7 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
                 <label>
                   Amount
                   <input name="amountReceived" type="number" step="0.01" placeholder="0.00" required />
+                  <span className="helperText">Use a negative amount for a return or credit.</span>
                 </label>
                 <label>
                   Note
@@ -199,6 +200,7 @@ export function CcReconcileModal({ purchase, receipts }: { purchase: PurchaseRow
                         }
                         required
                       />
+                      <span className="helperText">Use a negative amount for a return or credit.</span>
                     </label>
                     <label>
                       Note

@@ -1103,7 +1103,7 @@ export async function addProcurementReceiptAction(
     const organizationId = scopeType === "organization" ? scopeId : projectId ? "" : isCardExpense ? "" : String(purchase.organization_id ?? "");
     if (isCardExpense) {
       if (!note) return err("Receipt description is required.");
-      if (amountReceived <= 0) return err("Receipt amount must be greater than zero.");
+      if (amountReceived === 0) return err("Receipt amount must be non-zero. Use a negative amount for a return or credit.");
       if (!receiptDate) return err("Receipt date is required.");
       if (!projectId && !organizationId) return err("Choose the budget this receipt should charge.");
       if (projectId && !productionCategoryId) return err("Choose a Production Category for this receipt.");

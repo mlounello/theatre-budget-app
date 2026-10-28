@@ -1112,7 +1112,8 @@ export function ProcurementTable({
                 </label>
                 <label>
                   Receipt Amount
-                  <input name="amountReceived" type="number" min="0.01" step="0.01" required />
+                  <input name="amountReceived" type="number" step="0.01" required />
+                  <span className="helperText">Use a negative amount for a return or credit.</span>
                 </label>
                 <label>
                   Receipt Date

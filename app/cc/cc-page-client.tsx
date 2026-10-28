@@ -458,7 +458,7 @@ export function CcPageClient({
               <form action={attentionReceiptAction} className="requestForm">
                 <input type="hidden" name="purchaseId" value={activeAttentionPurchase.id} />
                 <label>Receipt Description<input name="note" placeholder="Vendor or purchase description" required /></label>
-                <label>Receipt Amount<input name="amountReceived" type="number" min="0.01" step="0.01" required /></label>
+                <label>Receipt Amount<input name="amountReceived" type="number" step="0.01" required /><span className="helperText">Use a negative amount for a return or credit.</span></label>
                 <label>Receipt Date<input name="receiptDate" type="date" required /></label>
                 <label>
                   Charge To
@@ -483,7 +483,7 @@ export function CcPageClient({
                       <form action={receiptEditAction} className="drawerFieldGrid">
                         <input type="hidden" name="receiptId" value={receipt.id} />
                         <label>Description<input name="note" defaultValue={receipt.note ?? ""} required /></label>
-                        <label>Amount<input name="amountReceived" type="number" min="0.01" step="0.01" defaultValue={receipt.amount.toFixed(2)} required /></label>
+                        <label>Amount<input name="amountReceived" type="number" step="0.01" defaultValue={receipt.amount.toFixed(2)} required /><span className="helperText">Use a negative amount for a return or credit.</span></label>
                         <label>Date<input name="receiptDate" type="date" defaultValue={receipt.receiptDate.slice(0, 10)} required /></label>
                         <label>Charge To<select name="chargeTo" defaultValue={receipt.projectId ? `project:${receipt.projectId}` : receipt.organizationId ? `organization:${receipt.organizationId}` : ""} required><option value="">Select budget</option><optgroup label="Theatre Projects">{scopedProjects.map((project) => <option key={project.id} value={`project:${project.id}`}>{project.name}{project.season ? ` (${project.season})` : ""}</option>)}</optgroup><optgroup label="Organization Budgets">{organizationOptions.map((organization) => <option key={organization.id} value={`organization:${organization.id}`}>{organization.orgCode} | {organization.name}</option>)}</optgroup></select></label>
                         <label>Production Category<select name="productionCategoryId" defaultValue={receipt.productionCategoryId ?? ""}><option value="">Not used for organization budgets</option>{productionCategoryOptions.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>

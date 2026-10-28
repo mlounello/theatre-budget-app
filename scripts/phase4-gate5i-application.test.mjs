@@ -162,6 +162,24 @@ test("Monthly card finalization creates a complete allocation child", async () =
   assert.match(migration, /v_receipt\.account_code_id/);
 });
 
+test("Receipt entry and monthly finalization support returns and credits", async () => {
+  const procurement = await read("app/procurement/actions.ts");
+  const procurementTable = await read("app/procurement/procurement-table.tsx");
+  const ccActions = await read("app/cc/actions.ts");
+  const ccClient = await read("app/cc/cc-page-client.tsx");
+  const migration = await read(
+    "supabase/migrations/20261028130000_allow_negative_cc_receipts.sql"
+  );
+  assert.match(procurement, /amountReceived === 0/);
+  assert.match(ccActions, /amount === 0/);
+  assert.doesNotMatch(procurementTable, /name="amountReceived"[^>]*min="0\.01"/);
+  assert.doesNotMatch(ccClient, /name="amountReceived"[^>]*min="0\.01"/);
+  assert.match(procurementTable, /negative amount for a return or credit/);
+  assert.match(ccClient, /negative amount for a return or credit/);
+  assert.match(migration, /if v_amount = 0/);
+  assert.match(migration, /Every receipt amount must be non-zero/);
+});
+
 test("Procurement receipt entry captures the complete staged receipt and finalization binds an unassigned card", async () => {
   const table = await read("app/procurement/procurement-table.tsx");
   const migration = await read("supabase/migrations/20260930120000_append_receipts_to_monthly_claim.sql");

@@ -855,7 +855,9 @@ export async function updateStagedReceiptAction(
     const projectId = scopeType === "project" ? scopeId : "";
     const organizationId = scopeType === "organization" ? scopeId : "";
 
-    if (!receiptId || !note || !receiptDate || amount <= 0) return err("Description, date, and amount are required.");
+    if (!receiptId || !note || !receiptDate || amount === 0) {
+      return err("Description, date, and a non-zero amount are required. Use a negative amount for a return or credit.");
+    }
     if (!projectId && !organizationId) return err("Choose a project or organization budget.");
     if (projectId && !productionCategoryId) return err("Choose a Production Category.");
     if (!accountCodeId) return err("Choose a Banner account / FOAP.");
@@ -1077,7 +1079,7 @@ export async function reconcileCcPurchaseToReceiptsAction(
     if (!receiptRows?.length) return err("Add at least one receipt before reconciling this expense.");
     const receiptTotal = receiptRows.reduce((sum, row) => sum + Number(row.amount_received ?? 0), 0);
     const previousCap = Number(purchase.pending_cc_amount ?? 0);
-    if (receiptTotal <= 0) return err("Receipt total must be greater than zero.");
+    if (receiptTotal === 0) return err("Receipts net to zero. Add a non-zero total before reconciling.");
     if (receiptTotal > previousCap + 0.005) {
       return err("Receipt total is above the authorized cap. Increase the cap or document the overage first.");
     }
