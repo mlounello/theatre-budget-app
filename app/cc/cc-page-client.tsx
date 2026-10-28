@@ -345,13 +345,13 @@ export function CcPageClient({
         onClose={() => setOpenDrawer(null)}
         eyebrow="Monthly reconciliation"
         title="Finalize Selected Receipts"
-        description={selectedStatement ? `Create one monthly Expense Claim for ${selectedStatement.statementMonth.slice(0, 7)} on ${selectedStatement.creditCardName}. Each receipt becomes its own EX Expense.` : undefined}
+        description={selectedStatement ? `Create one monthly Expense Claim for ${selectedStatement.statementMonth.slice(0, 7)} on ${selectedStatement.creditCardName}. Receipts may share an EX Expense when they use the same funding request and budget destination.` : undefined}
       >
         <form action={finalizeAction} className="requestForm">
           {finalizeState.message ? <p className={finalizeState.ok ? "successNote" : "errorNote"}>{finalizeState.message}</p> : null}
           <input type="hidden" name="statementMonthId" value={selectedStatement?.id ?? ""} />
           <label>Monthly Expense Claim Number<input name="claimNumber" pattern="EC[0-9]{6}" placeholder="EC######" required /></label>
-          <p className="helperText">This EC is the collection for this card and month. Enter the final EX number assigned to each receipt.</p>
+          <p className="helperText">This EC is the collection for this card and month. Enter the final EX number assigned to each receipt; repeat an EX number to combine related receipts and refunds.</p>
           <div className="expenseLinesEditor">
             {selectedReceipts.map((receipt, index) => (
               <fieldset className="expenseLineCard" key={receipt.id}>
@@ -619,7 +619,7 @@ export function CcPageClient({
               {!selectedStatement.postedAt ? (
                 <>
                   <div className="requestForm">
-                    <p className="helperText">Select this card&apos;s staged receipts for the month, then finalize them into one monthly EC with one EX per receipt.</p>
+                    <p className="helperText">Select this card&apos;s staged receipts for the month, then finalize them into one monthly EC. Related receipts and refunds may share an EX number.</p>
                     <div className="checkboxStack">
                       {unassignedCandidates.map((receipt) => (
                         <div key={receipt.id} className="ccCandidateRow">

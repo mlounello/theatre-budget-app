@@ -128,7 +128,7 @@ test("Existing Expenses can move their final budget destination without changing
   assert.match(migration, /Expense budget destination updated/);
 });
 
-test("Card receipts stage against funding requests and finalize as one monthly EC with one EX per receipt", async () => {
+test("Card receipts stage against funding requests and finalize as one monthly EC with receipt-level EX assignments", async () => {
   const client = await read("app/cc/cc-page-client.tsx");
   const ccActions = await read("app/cc/actions.ts");
   const procurementActions = await read("app/procurement/actions.ts");
@@ -178,6 +178,19 @@ test("Receipt entry and monthly finalization support returns and credits", async
   assert.match(ccClient, /negative amount for a return or credit/);
   assert.match(migration, /if v_amount = 0/);
   assert.match(migration, /Every receipt amount must be non-zero/);
+});
+
+test("Multiple related receipts and refunds can share one EX Expense", async () => {
+  const client = await read("app/cc/cc-page-client.tsx");
+  const migration = await read(
+    "supabase/migrations/20261028140000_group_cc_receipts_by_expense.sql"
+  );
+  assert.match(client, /repeat an EX number to combine related receipts and refunds/);
+  assert.match(migration, /purchase\.expense_number = v_expense_number/);
+  assert.match(migration, /pending_cc_amount = coalesce\(pending_cc_amount, 0\) \+ v_amount/);
+  assert.match(migration, /set amount = coalesce\(amount, 0\) \+ v_amount/);
+  assert.match(migration, /if not \(v_purchase_id = any\(v_purchase_ids\)\) then/);
+  assert.match(migration, /same Expense Claim, funding request, and budget destination/);
 });
 
 test("Procurement receipt entry captures the complete staged receipt and finalization binds an unassigned card", async () => {
