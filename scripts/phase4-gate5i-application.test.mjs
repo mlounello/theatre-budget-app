@@ -149,6 +149,19 @@ test("Card receipts stage against funding requests and finalize as one monthly E
   assert.match(migration, /set purchase_id = v_purchase_id/);
 });
 
+test("Monthly card finalization creates a complete allocation child", async () => {
+  const migration = await read(
+    "supabase/migrations/20261028120000_fix_cc_reconciliation_allocation_scope.sql"
+  );
+  assert.match(
+    migration,
+    /purchase_id, reporting_budget_line_id, project_id, organization_id/
+  );
+  assert.match(migration, /v_receipt\.project_id/);
+  assert.match(migration, /v_project\.organization_id/);
+  assert.match(migration, /v_receipt\.account_code_id/);
+});
+
 test("Procurement receipt entry captures the complete staged receipt and finalization binds an unassigned card", async () => {
   const table = await read("app/procurement/procurement-table.tsx");
   const migration = await read("supabase/migrations/20260930120000_append_receipts_to_monthly_claim.sql");
