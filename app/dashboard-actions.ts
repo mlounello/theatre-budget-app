@@ -45,7 +45,7 @@ function parseStatus(value: FormDataEntryValue | null): RequisitionProcurementSt
 
 function toBudgetStatus(procurementStatus: RequisitionProcurementStatus): PurchaseStatus {
   if (procurementStatus === "requested") return "requested";
-  if (procurementStatus === "paid") return "posted";
+  if (procurementStatus === "invoice_received" || procurementStatus === "paid") return "posted";
   if (procurementStatus === "cancelled") return "cancelled";
   return "encumbered";
 }
@@ -152,7 +152,7 @@ export async function updateDashboardRequisitionStatusAction(
     const { data: existing, error: existingError } = await db
       .from("purchases")
       .select(
-        "id, fiscal_year_id, project_id, organization_id, request_type, is_credit_card, status, procurement_status, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, budget_tracked, production_category_id, banner_account_code_id"
+        "id, fiscal_year_id, project_id, organization_id, request_type, is_credit_card, status, procurement_status, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, posted_date, budget_tracked, production_category_id, banner_account_code_id"
       )
       .eq("id", purchaseId)
       .single();
@@ -192,7 +192,10 @@ export async function updateDashboardRequisitionStatusAction(
         encumbered_amount: nextEncumberedAmount,
         pending_cc_amount: 0,
         posted_amount: nextPostedAmount,
-        posted_date: nextBudgetStatus === "posted" ? new Date().toISOString().slice(0, 10) : null
+        posted_date:
+          nextBudgetStatus === "posted"
+            ? ((existing.posted_date as string | null) ?? new Date().toISOString().slice(0, 10))
+            : null
       })
       .eq("id", purchaseId)
       .select("id")

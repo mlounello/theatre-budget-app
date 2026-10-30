@@ -196,7 +196,7 @@ function toBudgetStatus(procurementStatus: ProcurementStatus, isCreditCardPurcha
     return "pending_cc";
   }
   if (procurementStatus === "requested") return "requested";
-  if (procurementStatus === "paid") return "posted";
+  if (procurementStatus === "invoice_received" || procurementStatus === "paid") return "posted";
   if (procurementStatus === "cancelled") return "cancelled";
   return "encumbered";
 }
@@ -790,7 +790,7 @@ export async function updateProcurementAction(
     const { data: existing, error: existingError } = await supabase
       .from("purchases")
       .select(
-        "id, fiscal_year_id, project_id, organization_id, status, procurement_status, request_type, is_credit_card, reference_number, expense_number, expense_stage, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, budget_tracked, budget_line_id, ordered_on, received_on, paid_on"
+        "id, fiscal_year_id, project_id, organization_id, status, procurement_status, request_type, is_credit_card, reference_number, expense_number, expense_stage, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, posted_date, budget_tracked, budget_line_id, ordered_on, received_on, paid_on"
       )
       .eq("id", id)
       .single();
@@ -865,6 +865,7 @@ export async function updateProcurementAction(
     const existingOrderedOn = (existing.ordered_on as string | null) ?? null;
     const existingReceivedOn = (existing.received_on as string | null) ?? null;
     const existingPaidOn = (existing.paid_on as string | null) ?? null;
+    const existingPostedDate = (existing.posted_date as string | null) ?? null;
     const autoDate = todayIsoDate();
     const nextOrderedOn =
       orderedOn || (procurementStatusChanged && procurementStatus === "ordered" && !existingOrderedOn ? autoDate : existingOrderedOn);
@@ -1009,7 +1010,7 @@ export async function updateProcurementAction(
         encumbered_amount: nextEncumberedAmount,
         pending_cc_amount: nextPendingCcAmount,
         posted_amount: nextPostedAmount,
-        posted_date: nextBudgetStatus === "posted" ? nextPaidOn || nextReceivedOn || todayIsoDate() : null,
+        posted_date: nextBudgetStatus === "posted" ? existingPostedDate || todayIsoDate() : null,
         cc_workflow_status: nextCcWorkflowStatus
       })
       .eq("id", id)
@@ -1370,7 +1371,7 @@ export async function bulkUpdateProcurementAction(
     const { data: rows, error: rowsError } = await supabase
       .from("purchases")
       .select(
-        "id, project_id, organization_id, budget_tracked, budget_line_id, production_category_id, banner_account_code_id, status, procurement_status, request_type, is_credit_card, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, reference_number, requisition_number, po_number, invoice_number, vendor_id, notes, ordered_on, received_on, paid_on"
+        "id, project_id, organization_id, budget_tracked, budget_line_id, production_category_id, banner_account_code_id, status, procurement_status, request_type, is_credit_card, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, posted_date, reference_number, requisition_number, po_number, invoice_number, vendor_id, notes, ordered_on, received_on, paid_on"
       )
       .in("id", ids);
     if (rowsError) return err(rowsError.message);
@@ -1512,6 +1513,7 @@ export async function bulkUpdateProcurementAction(
       const existingOrderedOn = (existing.ordered_on as string | null) ?? null;
       const existingReceivedOn = (existing.received_on as string | null) ?? null;
       const existingPaidOn = (existing.paid_on as string | null) ?? null;
+      const existingPostedDate = (existing.posted_date as string | null) ?? null;
       const autoDate = todayIsoDate();
       const nextOrderedOn = applyOrderedOn
         ? targetOrderedOn || null
@@ -1554,7 +1556,7 @@ export async function bulkUpdateProcurementAction(
           encumbered_amount: nextEncumberedAmount,
           pending_cc_amount: nextPendingCcAmount,
           posted_amount: nextPostedAmount,
-          posted_date: nextBudgetStatus === "posted" ? nextPaidOn || nextReceivedOn || todayIsoDate() : null,
+          posted_date: nextBudgetStatus === "posted" ? existingPostedDate || todayIsoDate() : null,
           cc_workflow_status: nextCcWorkflowStatus
         })
         .eq("id", rowId)
