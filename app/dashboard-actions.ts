@@ -45,7 +45,7 @@ function parseStatus(value: FormDataEntryValue | null): RequisitionProcurementSt
 
 function toBudgetStatus(procurementStatus: RequisitionProcurementStatus): PurchaseStatus {
   if (procurementStatus === "requested") return "requested";
-  if (procurementStatus === "invoice_received" || procurementStatus === "paid") return "posted";
+  if (procurementStatus === "paid") return "posted";
   if (procurementStatus === "cancelled") return "cancelled";
   return "encumbered";
 }
