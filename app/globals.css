@@ -943,13 +943,29 @@ th {
 }
 
 .status-partial_paid {
-  background: #fff0b5;
-  color: #6b5300;
+  background: #eef9eb;
+  color: #35652d;
+  box-shadow: inset 0 0 0 1px #cfe8c9;
 }
 
 .status-paid {
-  background: #dbf3d8;
-  color: #1f5f1e;
+  background: #cfecca;
+  color: #194f1b;
+}
+
+.status-receipts_uploaded {
+  background: #dff4fb;
+  color: #005a73;
+}
+
+.status-statement_paid {
+  background: #e7e9ff;
+  color: #3e438c;
+}
+
+.status-posted_to_account {
+  background: #d8f1e8;
+  color: #155d49;
 }
 
 .status-cancelled {

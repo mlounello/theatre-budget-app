@@ -26,6 +26,14 @@ import { SideDrawer } from "@/components/ui/side-drawer";
 import { StatusPill } from "@/components/ui/status-controls";
 import { formatCurrency } from "@/lib/format";
 
+function ccWorkflowLabel(value: string | null): string {
+  if (!value) return "Not started";
+  if (value === "receipts_uploaded") return "Receipts Uploaded";
+  if (value === "statement_paid") return "Statement Paid";
+  if (value === "posted_to_account") return "Posted To Account";
+  return value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
 type StatementMonthRow = {
   id: string;
   fiscalYearId: string;
@@ -817,7 +825,11 @@ export function CcPageClient({
                   <td>
                     {purchase.receiptCount} | {formatCurrency(purchase.receiptTotal)}
                   </td>
-                  <td>{purchase.ccWorkflowStatus ?? "-"}</td>
+                  <td>
+                    <span className={`statusChip status-${purchase.ccWorkflowStatus ?? "requested"}`}>
+                      {ccWorkflowLabel(purchase.ccWorkflowStatus)}
+                    </span>
+                  </td>
                   <td>{purchase.statementMonthLabel ?? "-"}</td>
                   <td>{purchase.assignmentState}</td>
                   <td><button type="button" className="tinyButton" onClick={() => setActiveAttentionPurchase(purchase.id)}>Review &amp; Edit</button></td>

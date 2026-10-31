@@ -58,6 +58,19 @@ test("partially paid is available without collapsing the YTD and ENC buckets", a
   assert.match(migration, /posted_amount > 0[\s\S]*encumbered_amount > 0/);
 });
 
+test("partial-payment and receipt workflows render as distinct pills", async () => {
+  const [styles, ccPage] = await Promise.all([
+    read("app/globals.css"),
+    read("app/cc/cc-page-client.tsx")
+  ]);
+  assert.match(styles, /\.status-partial_paid/);
+  assert.match(styles, /\.status-receipts_uploaded/);
+  assert.match(styles, /\.status-statement_paid/);
+  assert.match(styles, /\.status-posted_to_account/);
+  assert.match(ccPage, /statusChip status-\$\{purchase\.ccWorkflowStatus/);
+  assert.match(ccPage, /ccWorkflowLabel\(purchase\.ccWorkflowStatus\)/);
+});
+
 test("rollups count simultaneous YTD and encumbrance instead of choosing one status bucket", async () => {
   const [db, institutional] = await Promise.all([
     read("lib/db.ts"),
