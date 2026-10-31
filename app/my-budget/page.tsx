@@ -18,6 +18,7 @@ function labelForStatus(value: string): string {
   if (value === "fully_received") return "Fully Received";
   if (value === "invoice_sent") return "Invoice Sent";
   if (value === "invoice_received") return "Invoice Received";
+  if (value === "partial_paid") return "Partially Paid";
   if (value === "pending_cc") return "Pending CC";
   return value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }

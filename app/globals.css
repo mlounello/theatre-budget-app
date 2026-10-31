@@ -942,6 +942,11 @@ th {
   color: #004f78;
 }
 
+.status-partial_paid {
+  background: #fff0b5;
+  color: #6b5300;
+}
+
 .status-paid {
   background: #dbf3d8;
   color: #1f5f1e;

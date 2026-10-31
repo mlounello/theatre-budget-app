@@ -44,6 +44,20 @@ test("transaction manager supports continuous keyboard entry", async () => {
   assert.match(table, /Enter<\/kbd> save and start the next line/);
 });
 
+test("partially paid is available without collapsing the YTD and ENC buckets", async () => {
+  const [table, actions, dashboardActions, migration] = await Promise.all([
+    read("app/procurement/procurement-table.tsx"),
+    read("app/procurement/actions.ts"),
+    read("app/dashboard-actions.ts"),
+    read("supabase/migrations/20261030210000_partial_paid_procurement_status.sql")
+  ]);
+  assert.match(table, /value: "partial_paid", label: "Partially Paid"/);
+  assert.match(actions, /"partial_paid"/);
+  assert.match(dashboardActions, /"partial_paid"/);
+  assert.match(migration, /'partial_paid'/);
+  assert.match(migration, /posted_amount > 0[\s\S]*encumbered_amount > 0/);
+});
+
 test("rollups count simultaneous YTD and encumbrance instead of choosing one status bucket", async () => {
   const [db, institutional] = await Promise.all([
     read("lib/db.ts"),

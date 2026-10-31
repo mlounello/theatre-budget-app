@@ -13,6 +13,7 @@ const REQUISITION_PROCUREMENT_STATUSES = [
   "fully_received",
   "invoice_sent",
   "invoice_received",
+  "partial_paid",
   "paid",
   "cancelled"
 ] as const;

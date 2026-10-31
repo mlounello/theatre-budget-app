@@ -12,6 +12,7 @@ const REQUISITION_PROCUREMENT_STATUSES = [
   { value: "fully_received", label: "Fully Received" },
   { value: "invoice_sent", label: "Invoice Sent" },
   { value: "invoice_received", label: "Invoice Received" },
+  { value: "partial_paid", label: "Partially Paid" },
   { value: "paid", label: "Paid" },
   { value: "cancelled", label: "Cancelled" }
 ] as const;
@@ -23,6 +24,11 @@ type ActionState = {
 };
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };
+
+function requisitionStatusLabel(value: string): string {
+  return REQUISITION_PROCUREMENT_STATUSES.find((status) => status.value === value)?.label
+    ?? value.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
 
 type DashboardRequisitionTableProps = {
   openRequisitions: DashboardOpenRequisition[];
@@ -70,7 +76,7 @@ export function DashboardRequisitionTable({ openRequisitions }: DashboardRequisi
                 <td>{row.vendorName ?? "-"}</td>
                 <td>{formatCurrency(row.orderValue)}</td>
                 <td>
-                  <span className={`statusChip status-${row.procurementStatus}`}>{row.procurementStatus}</span>
+                  <span className={`statusChip status-${row.procurementStatus}`}>{requisitionStatusLabel(row.procurementStatus)}</span>
                 </td>
                 <td>
                   <form action={formAction} className="inlineEditForm">

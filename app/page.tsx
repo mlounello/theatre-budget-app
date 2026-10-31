@@ -26,6 +26,7 @@ const REQUISITION_PROCUREMENT_STATUSES = [
   { value: "fully_received", label: "Fully Received" },
   { value: "invoice_sent", label: "Invoice Sent" },
   { value: "invoice_received", label: "Invoice Received" },
+  { value: "partial_paid", label: "Partially Paid" },
   { value: "paid", label: "Paid" },
   { value: "cancelled", label: "Cancelled" }
 ] as const;

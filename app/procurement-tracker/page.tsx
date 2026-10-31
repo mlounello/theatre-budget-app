@@ -8,6 +8,7 @@ function procurementStatusLabel(value: string): string {
   if (value === "fully_received") return "Fully Received";
   if (value === "invoice_sent") return "Invoice Sent";
   if (value === "invoice_received") return "Invoice Received";
+  if (value === "partial_paid") return "Partially Paid";
   if (value === "receipts_uploaded") return "Receipts Uploaded";
   if (value === "statement_paid") return "Statement Paid";
   if (value === "posted_to_account") return "Posted To Account";

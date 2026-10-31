@@ -167,6 +167,7 @@ export default async function ProcurementPage({
                 <option value="fully_received">Fully Received</option>
                 <option value="invoice_sent">Invoice Sent</option>
                 <option value="invoice_received">Invoice Received</option>
+                <option value="partial_paid">Partially Paid</option>
                 <option value="paid">Paid</option>
                 <option value="cancelled">Cancelled</option>
                 <option value="receipts_uploaded">Receipts Uploaded</option>
