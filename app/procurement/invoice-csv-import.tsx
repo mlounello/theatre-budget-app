@@ -7,13 +7,13 @@ import {
 } from "@/app/procurement/actions";
 import { formatCurrency } from "@/lib/format";
 
-type AllocationChoice = {
+export type AllocationChoice = {
   id: string;
   label: string;
   accountCode: string | null;
 };
 
-type CsvInvoiceRow = {
+export type CsvInvoiceRow = {
   sourceLineKey: string;
   documentNumber: string;
   transactionDate: string;
@@ -72,7 +72,7 @@ function normalizeKeyPart(value: string): string {
   return value.trim().replaceAll("|", "/").replace(/\s+/g, " ").toUpperCase();
 }
 
-function rowsFromBannerCsv(text: string, allocations: AllocationChoice[]): CsvInvoiceRow[] {
+export function rowsFromBannerCsv(text: string, allocations: AllocationChoice[] = []): CsvInvoiceRow[] {
   const parsed = parseCsv(text);
   if (parsed.length < 2) throw new Error("The CSV does not contain any transaction lines.");
   const headers = parsed[0].map((header) => header.trim().toUpperCase().replace(/^\uFEFF/, ""));

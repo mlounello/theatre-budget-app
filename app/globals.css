@@ -2238,6 +2238,140 @@ th {
   justify-self: start;
 }
 
+.bannerReconciliationUpload {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.bannerReconciliationSummary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+  margin: 0.9rem 0;
+}
+
+.bannerReconciliationSummary button {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.65rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 11px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.bannerReconciliationSummary button.active {
+  border-color: var(--siena-green);
+  background: #f1f8f3;
+  box-shadow: inset 0 0 0 1px var(--siena-green);
+}
+
+.bannerReconciliationSummary strong {
+  color: var(--green-900);
+  font-size: 1.15rem;
+}
+
+.bannerReconciliationSummary span {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.bannerReconciliationRows {
+  display: grid;
+  gap: 0.6rem;
+  padding-bottom: 5.5rem;
+}
+
+.bannerReconciliationRow {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.bannerReconciliationRow.isDuplicate {
+  border-color: #edbfd5;
+  background: #fff8fb;
+}
+
+.bannerReconciliationRow > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.bannerReconciliationRow > header span {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.bannerReconciliationRow > header small,
+.bannerReconciliationRow > p,
+.bannerSkippedLabel {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.bannerReconciliationRow > p {
+  margin: 0;
+}
+
+.bannerReconciliationControls {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(240px, 1.7fr);
+  align-items: end;
+  gap: 0.65rem;
+}
+
+.bannerReconciliationControls label {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.bannerReconciliationControls select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.bannerDuplicateNotice,
+.bannerExpenseNotice {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 10px;
+  background: #f7f8f7;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.bannerReconciliationFooter {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.8rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 96%);
+  box-shadow: 0 -8px 24px rgb(15 61 46 / 10%);
+  backdrop-filter: blur(8px);
+}
+
 .invoiceKeyboardHint {
   margin: 0;
   color: var(--text-muted);
@@ -2356,6 +2490,15 @@ th {
   .invoiceCsvRow select,
   .invoiceCsvAutoAllocation {
     grid-column: 2 / -1;
+  }
+
+  .bannerReconciliationSummary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bannerReconciliationControls,
+  .bannerReconciliationFooter {
+    display: grid;
   }
 }
 

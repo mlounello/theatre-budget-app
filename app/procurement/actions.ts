@@ -1291,7 +1291,6 @@ export async function importPurchaseInvoiceTransactionsAction(
       const { data: existing, error: existingError } = await supabase
         .from("purchase_invoice_transactions")
         .select("source_line_key")
-        .eq("purchase_id", purchaseId)
         .in("source_line_key", keys);
       if (existingError) return err(existingError.message);
       for (const entry of existing ?? []) {
@@ -1336,6 +1335,133 @@ export async function importPurchaseInvoiceTransactionsAction(
     return ok(`${importedCount} CSV line${importedCount === 1 ? "" : "s"} imported.${duplicateMessage}`);
   } catch (error) {
     return err(getErrorMessage(error, "Could not import the invoice CSV lines."));
+  }
+}
+
+type ReconciledBannerTransaction = ImportedInvoiceTransaction & {
+  purchaseId: string;
+};
+
+export async function importBannerAccountReconciliationAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) return err("You must be signed in.");
+    const rowsJson = String(formData.get("rowsJson") ?? "").trim();
+    if (!rowsJson) return err("Choose at least one Banner line to keep.");
+
+    let rawRows: unknown;
+    try {
+      rawRows = JSON.parse(rowsJson);
+    } catch {
+      return err("The reviewed Banner lines could not be read.");
+    }
+    if (!Array.isArray(rawRows) || rawRows.length === 0) return err("Choose at least one Banner line to keep.");
+    if (rawRows.length > 2000) return err("Import no more than 2,000 lines at once.");
+
+    const rows: ReconciledBannerTransaction[] = [];
+    for (const rawRow of rawRows) {
+      if (!rawRow || typeof rawRow !== "object") return err("One of the reviewed Banner lines is invalid.");
+      const candidate = rawRow as Record<string, unknown>;
+      const purchaseId = String(candidate.purchaseId ?? "").trim();
+      const purchaseAllocationId = String(candidate.purchaseAllocationId ?? "").trim();
+      const sourceLineKey = String(candidate.sourceLineKey ?? "").trim().slice(0, 1500);
+      const documentNumber = String(candidate.documentNumber ?? "").trim().toUpperCase();
+      const transactionDate = parseDateInput(String(candidate.transactionDate ?? ""));
+      const description = String(candidate.description ?? "").trim();
+      const amount = Number(candidate.amount);
+      if (!purchaseId || !purchaseAllocationId || !sourceLineKey || !documentNumber || !transactionDate || !Number.isFinite(amount) || amount === 0) {
+        return err("Every kept line needs a matching PO, document number, date, amount, and allocation.");
+      }
+      rows.push({
+        purchaseId,
+        purchaseAllocationId,
+        sourceLineKey,
+        documentNumber,
+        transactionDate,
+        description: description || undefined,
+        amount: Math.round(amount * 100) / 100
+      });
+    }
+
+    const purchaseIds = [...new Set(rows.map((row) => row.purchaseId))];
+    for (const purchaseId of purchaseIds) await ensurePurchasePmOrAdminAccess(supabase, user.id, purchaseId);
+    const { data: purchases, error: purchasesError } = await supabase
+      .from("purchases")
+      .select("id, request_type, procurement_status, project_id")
+      .in("id", purchaseIds);
+    if (purchasesError) return err(purchasesError.message);
+    if ((purchases ?? []).length !== purchaseIds.length) return err("One or more selected POs are unavailable.");
+    for (const purchase of purchases ?? []) {
+      if (purchase.request_type !== "requisition") return err("Banner account lines can only be assigned to requisition POs.");
+      if (["paid", "cancelled"].includes(String(purchase.procurement_status))) return err("A selected PO is already fully paid or cancelled.");
+    }
+
+    const allocationIds = [...new Set(rows.map((row) => row.purchaseAllocationId))];
+    const { data: allocations, error: allocationsError } = await supabase
+      .from("purchase_allocations")
+      .select("id, purchase_id")
+      .in("id", allocationIds);
+    if (allocationsError) return err(allocationsError.message);
+    const allocationPurchase = new Map((allocations ?? []).map((allocation) => [allocation.id as string, allocation.purchase_id as string]));
+    if (allocationPurchase.size !== allocationIds.length || rows.some((row) => allocationPurchase.get(row.purchaseAllocationId) !== row.purchaseId)) {
+      return err("One or more selected allocations do not belong to the chosen PO.");
+    }
+
+    const existingKeys = new Set<string>();
+    for (let index = 0; index < rows.length; index += 25) {
+      const keys = rows.slice(index, index + 25).map((row) => row.sourceLineKey);
+      const { data: existing, error: existingError } = await supabase
+        .from("purchase_invoice_transactions")
+        .select("source_line_key")
+        .in("source_line_key", keys);
+      if (existingError) return err(existingError.message);
+      for (const entry of existing ?? []) if (entry.source_line_key) existingKeys.add(entry.source_line_key as string);
+    }
+
+    let importedCount = 0;
+    let duplicateCount = rows.filter((row) => existingKeys.has(row.sourceLineKey)).length;
+    const affectedPurchaseIds = new Set<string>();
+    for (const row of rows.filter((entry) => !existingKeys.has(entry.sourceLineKey))) {
+      const { error } = await supabase.from("purchase_invoice_transactions").insert({
+        purchase_id: row.purchaseId,
+        purchase_allocation_id: row.purchaseAllocationId,
+        document_number: row.documentNumber,
+        transaction_date: row.transactionDate,
+        description: row.description ?? null,
+        amount: row.amount,
+        source_line_key: row.sourceLineKey,
+        created_by_user_id: user.id
+      });
+      if (error?.code === "23505") {
+        duplicateCount += 1;
+        continue;
+      }
+      if (error) return err(`Imported ${importedCount} line${importedCount === 1 ? "" : "s"}, then stopped: ${error.message}`);
+      importedCount += 1;
+      affectedPurchaseIds.add(row.purchaseId);
+    }
+
+    for (const purchaseId of affectedPurchaseIds) {
+      const institutionalSyncError = await syncInstitutionalBudget(supabase, purchaseId, user.id);
+      if (institutionalSyncError) return institutionalSyncError;
+    }
+    revalidatePath("/procurement");
+    revalidatePath("/requests");
+    revalidatePath("/");
+    for (const purchase of purchases ?? []) if (purchase.project_id) revalidatePath(`/projects/${purchase.project_id as string}`);
+    const duplicateMessage = duplicateCount > 0
+      ? ` ${duplicateCount} duplicate line${duplicateCount === 1 ? " was" : "s were"} already imported and skipped.`
+      : "";
+    return ok(`${importedCount} Banner line${importedCount === 1 ? "" : "s"} assigned to POs.${duplicateMessage}`);
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not reconcile the Banner account lines."));
   }
 }
 

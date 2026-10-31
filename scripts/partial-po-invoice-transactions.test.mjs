@@ -74,6 +74,28 @@ test("invoice entry and CSV controls use the app's rounded field styling", async
   assert.match(styles, /\.invoiceCsvUpload input::file-selector-button/);
 });
 
+test("full Banner account exports reconcile line by line to matching unpaid POs", async () => {
+  const [page, reconciliation, actions, db] = await Promise.all([
+    read("app/procurement/page.tsx"),
+    read("app/procurement/banner-account-reconciliation.tsx"),
+    read("app/procurement/actions.ts"),
+    read("lib/db.ts")
+  ]);
+  assert.match(page, /BannerAccountReconciliation/);
+  assert.match(reconciliation, /Reconcile Banner CSV/);
+  assert.match(page, /getBannerAccountReconciliationData/);
+  assert.match(reconciliation, /Match Banner Lines to POs/);
+  assert.match(reconciliation, /Keep and attach to PO/);
+  assert.match(reconciliation, /Skip this line/);
+  assert.match(reconciliation, /Duplicates/);
+  assert.match(reconciliation, /\^\(EX\|EC\)/);
+  assert.match(actions, /importBannerAccountReconciliationAction/);
+  assert.match(actions, /already imported and skipped/);
+  assert.match(db, /request_type", "requisition"/);
+  assert.match(db, /procurement_status", "in", "\(paid,cancelled\)"/);
+  assert.match(reconciliation, /candidate\.accountCode/);
+});
+
 test("partially paid is available without collapsing the YTD and ENC buckets", async () => {
   const [table, actions, dashboardActions, migration] = await Promise.all([
     read("app/procurement/procurement-table.tsx"),

@@ -236,6 +236,27 @@ export type ProcurementInvoiceTransactionRow = {
   createdAt: string;
 };
 
+export type BannerPoMatchCandidate = {
+  purchaseId: string;
+  purchaseAllocationId: string;
+  title: string;
+  poNumber: string;
+  requisitionNumber: string | null;
+  accountCode: string;
+  allocationAmount: number;
+  projectName: string | null;
+  productionCategoryName: string | null;
+  label: string;
+};
+
+export type BannerImportDuplicate = {
+  sourceLineKey: string;
+  purchaseId: string;
+  title: string;
+  poNumber: string | null;
+  documentNumber: string;
+};
+
 export type ProcurementReceiptRow = {
   id: string;
   purchaseId: string;
@@ -1886,6 +1907,80 @@ export async function getProcurementData(
       all: allCountResponse.count ?? 0
     }
   };
+}
+
+export async function getBannerAccountReconciliationData(fiscalYearId: string): Promise<{
+  candidates: BannerPoMatchCandidate[];
+  duplicates: BannerImportDuplicate[];
+}> {
+  const supabase = await getSupabaseServerClient();
+  const [purchasesResponse, duplicatesResponse] = await Promise.all([
+    supabase
+      .from("purchases")
+      .select(
+        "id, title, po_number, requisition_number, procurement_status, purchase_allocations(id, account_code_id, amount, account_codes(code), projects(name, season), production_categories(name))"
+      )
+      .eq("fiscal_year_id", fiscalYearId)
+      .eq("request_type", "requisition")
+      .not("po_number", "is", null)
+      .not("procurement_status", "in", "(paid,cancelled)")
+      .order("title", { ascending: true }),
+    supabase
+      .from("purchase_invoice_transactions")
+      .select("source_line_key, purchase_id, document_number, purchases!inner(title, po_number, fiscal_year_id)")
+      .not("source_line_key", "is", null)
+      .is("voided_at", null)
+      .eq("purchases.fiscal_year_id", fiscalYearId)
+  ]);
+  if (purchasesResponse.error) throw purchasesResponse.error;
+  if (duplicatesResponse.error) throw duplicatesResponse.error;
+
+  const candidates: BannerPoMatchCandidate[] = [];
+  for (const purchase of purchasesResponse.data ?? []) {
+    const allocations = (purchase.purchase_allocations ?? []) as Array<{
+      id?: string;
+      account_code_id?: string | null;
+      amount?: string | number | null;
+      account_codes?: { code?: string } | Array<{ code?: string }> | null;
+      projects?: { name?: string; season?: string | null } | Array<{ name?: string; season?: string | null }> | null;
+      production_categories?: { name?: string } | Array<{ name?: string }> | null;
+    }>;
+    for (const allocation of allocations) {
+      const account = Array.isArray(allocation.account_codes) ? allocation.account_codes[0] : allocation.account_codes;
+      const project = Array.isArray(allocation.projects) ? allocation.projects[0] : allocation.projects;
+      const category = Array.isArray(allocation.production_categories) ? allocation.production_categories[0] : allocation.production_categories;
+      const accountCode = account?.code ?? "";
+      if (!allocation.id || !accountCode) continue;
+      const projectName = project?.name ? `${project.name}${project.season ? ` (${project.season})` : ""}` : null;
+      const detail = [projectName, category?.name, accountCode].filter(Boolean).join(" · ");
+      candidates.push({
+        purchaseId: purchase.id as string,
+        purchaseAllocationId: allocation.id,
+        title: purchase.title as string,
+        poNumber: purchase.po_number as string,
+        requisitionNumber: (purchase.requisition_number as string | null) ?? null,
+        accountCode,
+        allocationAmount: asNumber(allocation.amount ?? null),
+        projectName,
+        productionCategoryName: category?.name ?? null,
+        label: `${purchase.po_number as string} · ${purchase.title as string}${detail ? ` · ${detail}` : ""}`
+      });
+    }
+  }
+
+  const duplicates: BannerImportDuplicate[] = (duplicatesResponse.data ?? []).flatMap((row) => {
+    const purchase = Array.isArray(row.purchases) ? row.purchases[0] : row.purchases;
+    const sourceLineKey = (row.source_line_key as string | null) ?? null;
+    if (!sourceLineKey) return [];
+    return [{
+      sourceLineKey,
+      purchaseId: row.purchase_id as string,
+      title: purchase?.title ?? "Existing PO",
+      poNumber: (purchase?.po_number as string | null) ?? null,
+      documentNumber: row.document_number as string
+    }];
+  });
+  return { candidates, duplicates };
 }
 
 export async function getProcurementTrackerData(): Promise<{

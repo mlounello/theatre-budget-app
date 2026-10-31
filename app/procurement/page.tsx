@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { ProcurementCreateDrawers } from "@/app/procurement/procurement-create-drawers";
 import { ProcurementTable } from "@/app/procurement/procurement-table";
+import { BannerAccountReconciliation } from "@/app/procurement/banner-account-reconciliation";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { FilterToolbar } from "@/components/ui/toolbars";
-import { getFiscalYearOptions, getProcurementData } from "@/lib/db";
+import { getBannerAccountReconciliationData, getFiscalYearOptions, getProcurementData } from "@/lib/db";
 import { getAccessContext } from "@/lib/access";
 import { resolveRequestedFiscalYearId } from "@/lib/fiscal-year-context";
 import { redirect } from "next/navigation";
@@ -43,6 +44,19 @@ export default async function ProcurementPage({
   const requestTypeFilter = (resolvedSearchParams?.pr_type ?? "").trim();
   const sortFilter = (resolvedSearchParams?.pr_sort ?? "").trim();
   const sortDirection = (resolvedSearchParams?.pr_dir ?? "").trim();
+  const [procurementData, bannerReconciliation] = await Promise.all([
+    getProcurementData({
+      fiscalYearId: selectedFiscalYearId,
+      page: requestedPage,
+      pageSize: 25,
+      queue: requestedQueue,
+      query: searchQuery,
+      projectId: projectFilter,
+      procurementStatus: procurementStatusFilter,
+      requestType: requestTypeFilter
+    }),
+    getBannerAccountReconciliationData(selectedFiscalYearId)
+  ]);
   const {
     purchases,
     receipts,
@@ -60,16 +74,7 @@ export default async function ProcurementPage({
     page,
     pageSize,
     queueCounts
-  } = await getProcurementData({
-    fiscalYearId: selectedFiscalYearId,
-    page: requestedPage,
-    pageSize: 25,
-    queue: requestedQueue,
-    query: searchQuery,
-    projectId: projectFilter,
-    procurementStatus: procurementStatusFilter,
-    requestType: requestTypeFilter
-  });
+  } = procurementData;
   const defaultFiscalYearId = selectedFiscalYearId;
   const totalPages = Math.max(Math.ceil(totalCount / pageSize), 1);
   const buildHref = (overrides: Record<string, string>) => {
@@ -114,6 +119,12 @@ export default async function ProcurementPage({
             vendors={vendors}
             accountCodeOptions={accountCodeOptions}
             productionCategoryOptions={productionCategoryOptions}
+          />
+        ) : null}
+        {canManageProcurement ? (
+          <BannerAccountReconciliation
+            candidates={bannerReconciliation.candidates}
+            duplicates={bannerReconciliation.duplicates}
           />
         ) : null}
       </div>
