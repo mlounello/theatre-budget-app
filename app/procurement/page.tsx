@@ -48,6 +48,7 @@ export default async function ProcurementPage({
     receipts,
     receivingDocs,
     allocations,
+    invoiceTransactions,
     budgetLineOptions,
     projectOptions,
     organizationOptions,
@@ -204,6 +205,7 @@ export default async function ProcurementPage({
         receipts={receipts}
         receivingDocs={receivingDocs}
         allocations={allocations}
+        invoiceTransactions={invoiceTransactions}
         vendors={vendors}
         projectOptions={projectOptions}
         organizationOptions={organizationOptions}

@@ -152,7 +152,7 @@ export async function updateDashboardRequisitionStatusAction(
     const { data: existing, error: existingError } = await db
       .from("purchases")
       .select(
-        "id, fiscal_year_id, project_id, organization_id, request_type, is_credit_card, status, procurement_status, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, posted_date, budget_tracked, production_category_id, banner_account_code_id"
+        "id, fiscal_year_id, project_id, organization_id, request_type, is_credit_card, invoice_tracking_enabled, status, procurement_status, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, posted_date, budget_tracked, production_category_id, banner_account_code_id"
       )
       .eq("id", purchaseId)
       .single();
@@ -169,7 +169,10 @@ export async function updateDashboardRequisitionStatusAction(
     else if (organizationId && fiscalYearId) await ensureOrganizationPmOrAdminAccess(organizationId, fiscalYearId);
     else throw new Error("Purchase has no budget scope.");
 
-    const currentValue = getStatusAmount(existing.status as string, {
+    const invoiceTrackingEnabled = Boolean(existing.invoice_tracking_enabled as boolean | null);
+    const currentValue = invoiceTrackingEnabled
+      ? asNumber(existing.estimated_amount as string | number | null)
+      : getStatusAmount(existing.status as string, {
       estimated: asNumber(existing.estimated_amount as string | number | null),
       requested: asNumber(existing.requested_amount as string | number | null),
       encumbered: asNumber(existing.encumbered_amount as string | number | null),
@@ -177,10 +180,21 @@ export async function updateDashboardRequisitionStatusAction(
       posted: asNumber(existing.posted_amount as string | number | null)
     });
 
-    const nextBudgetStatus = toBudgetStatus(nextProcurementStatus);
-    const nextRequestedAmount = nextBudgetStatus === "requested" ? currentValue : 0;
-    const nextEncumberedAmount = nextBudgetStatus === "encumbered" ? currentValue : 0;
-    const nextPostedAmount = nextBudgetStatus === "posted" ? currentValue : 0;
+    const mappedBudgetStatus = toBudgetStatus(nextProcurementStatus);
+    const trackedEncumbered = asNumber(existing.encumbered_amount as string | number | null);
+    const trackedPosted = asNumber(existing.posted_amount as string | number | null);
+    const nextBudgetStatus = invoiceTrackingEnabled
+      ? nextProcurementStatus === "cancelled"
+        ? "cancelled"
+        : trackedEncumbered > 0 ? "encumbered" : trackedPosted !== 0 ? "posted" : "encumbered"
+      : mappedBudgetStatus;
+    const nextRequestedAmount = invoiceTrackingEnabled ? 0 : nextBudgetStatus === "requested" ? currentValue : 0;
+    const nextEncumberedAmount = invoiceTrackingEnabled
+      ? nextProcurementStatus === "cancelled" ? 0 : trackedEncumbered
+      : nextBudgetStatus === "encumbered" ? currentValue : 0;
+    const nextPostedAmount = invoiceTrackingEnabled
+      ? nextProcurementStatus === "cancelled" ? 0 : trackedPosted
+      : nextBudgetStatus === "posted" ? currentValue : 0;
 
     const { data: updated, error: updateError } = await db
       .from("purchases")
@@ -211,7 +225,7 @@ export async function updateDashboardRequisitionStatusAction(
       .order("created_at", { ascending: true });
     if (allocationsError) throw new Error(allocationsError.message);
 
-    if (Boolean(existing.budget_tracked) && (allocations ?? []).length > 0) {
+    if (!invoiceTrackingEnabled && Boolean(existing.budget_tracked) && (allocations ?? []).length > 0) {
       const nextTotal =
         nextBudgetStatus === "encumbered" ? nextEncumberedAmount : nextBudgetStatus === "posted" ? nextPostedAmount : nextRequestedAmount;
       const currentTotal = (allocations ?? []).reduce((sum, row) => sum + asNumber(row.amount as string | number | null), 0);

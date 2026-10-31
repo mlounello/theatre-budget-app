@@ -5,11 +5,13 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   addProcurementReceivingDocAction,
   addProcurementReceiptAction,
+  addPurchaseInvoiceTransactionAction,
   bulkDeleteProcurementAction,
   bulkUpdateProcurementAction,
   deleteProcurementReceivingDocAction,
   deleteProcurementAction,
   deleteProcurementReceiptAction,
+  voidPurchaseInvoiceTransactionAction,
   updateProcurementAction,
   type ActionState
 } from "@/app/procurement/actions";
@@ -21,6 +23,7 @@ import type {
   OrganizationOption,
   ProcurementProjectOption,
   ProcurementAllocationRow,
+  ProcurementInvoiceTransactionRow,
   ProcurementReceivingDocRow,
   ProcurementReceiptRow,
   ProcurementRow,
@@ -273,6 +276,7 @@ export function ProcurementTable({
   receipts,
   receivingDocs,
   allocations,
+  invoiceTransactions,
   vendors,
   projectOptions,
   organizationOptions,
@@ -284,6 +288,7 @@ export function ProcurementTable({
   receipts: ProcurementReceiptRow[];
   receivingDocs: ProcurementReceivingDocRow[];
   allocations: ProcurementAllocationRow[];
+  invoiceTransactions: ProcurementInvoiceTransactionRow[];
   vendors: VendorOption[];
   projectOptions: ProcurementProjectOption[];
   organizationOptions: OrganizationOption[];
@@ -295,6 +300,7 @@ export function ProcurementTable({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [invoiceManagerOpen, setInvoiceManagerOpen] = useState(false);
   const sortFromUrl = searchParams.get("pr_sort");
   const dirFromUrl = searchParams.get("pr_dir");
   const [sortKey, setSortKey] = useState<SortKey>(
@@ -361,6 +367,8 @@ export function ProcurementTable({
   const [deleteReceivingState, deleteReceivingAction] = useActionState(deleteProcurementReceivingDocAction, initialState);
   const [addReceiptState, addReceiptAction] = useActionState(addProcurementReceiptAction, initialState);
   const [deleteReceiptState, deleteReceiptAction] = useActionState(deleteProcurementReceiptAction, initialState);
+  const [addInvoiceTransactionState, addInvoiceTransactionAction] = useActionState(addPurchaseInvoiceTransactionAction, initialState);
+  const [voidInvoiceTransactionState, voidInvoiceTransactionAction] = useActionState(voidPurchaseInvoiceTransactionAction, initialState);
 
   const openEdit = useCallback(
     (id: string) => {
@@ -377,6 +385,7 @@ export function ProcurementTable({
     params.delete("pr_edit");
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     setEditingId(null);
+    setInvoiceManagerOpen(false);
   }, [pathname, router, searchParams]);
 
   const openBulkEdit = useCallback(() => {
@@ -462,6 +471,36 @@ export function ProcurementTable({
   }
 
   const allocationTotal = editAllocations.reduce((sum, allocation) => sum + (Number.parseFloat(allocation.amount) || 0), 0);
+  const editingAllocations = useMemo(
+    () => editingPurchase ? allocations.filter((allocation) => allocation.purchaseId === editingPurchase.id) : [],
+    [allocations, editingPurchase]
+  );
+  const editingInvoiceTransactions = useMemo(
+    () => editingPurchase ? invoiceTransactions.filter((transaction) => transaction.purchaseId === editingPurchase.id) : [],
+    [invoiceTransactions, editingPurchase]
+  );
+  const groupedInvoiceTransactions = useMemo(() => {
+    const grouped = new Map<string, ProcurementInvoiceTransactionRow[]>();
+    for (const transaction of editingInvoiceTransactions) {
+      const existing = grouped.get(transaction.documentNumber) ?? [];
+      existing.push(transaction);
+      grouped.set(transaction.documentNumber, existing);
+    }
+    return [...grouped.entries()].sort((a, b) => {
+      const aDate = a[1][0]?.transactionDate ?? "";
+      const bDate = b[1][0]?.transactionDate ?? "";
+      return bDate.localeCompare(aDate) || a[0].localeCompare(b[0]);
+    });
+  }, [editingInvoiceTransactions]);
+
+  const allocationLabel = useCallback((allocation: ProcurementAllocationRow): string => {
+    const project = projectOptions.find((option) => option.id === allocation.projectId);
+    const organization = organizationOptions.find((option) => option.id === allocation.organizationId);
+    const category = productionCategoryOptions.find((option) => option.id === allocation.productionCategoryId);
+    const account = accountCodeOptions.find((option) => option.id === allocation.accountCodeId);
+    const destination = project?.label ?? organization?.label ?? "Budget allocation";
+    return [destination, category?.name, account?.code, formatCurrency(allocation.amount)].filter(Boolean).join(" · ");
+  }, [accountCodeOptions, organizationOptions, productionCategoryOptions, projectOptions]);
 
   useEffect(() => {
     if (!deleteState.ok || !deleteState.message) return;
@@ -696,7 +735,7 @@ export function ProcurementTable({
         </table>
       </div>
 
-      {editingPurchase ? (
+      {editingPurchase && !invoiceManagerOpen ? (
         <SideDrawer
           open
           onClose={closeEdit}
@@ -1041,6 +1080,32 @@ export function ProcurementTable({
               </div>
             </form>
 
+            {editingPurchase.requestType === "requisition" ? (
+              <article className="panel poFinancialSummary">
+                <div className="poFinancialSummaryHeader">
+                  <div>
+                    <p className="eyebrow">Financial posting</p>
+                    <h2>Invoices &amp; Credits</h2>
+                    <p className="helperText">Post each Banner debit or credit to the allocation it belongs to. The PO can be YTD and encumbered at the same time.</p>
+                  </div>
+                  <button
+                    type="button"
+                    className="buttonLink buttonPrimary"
+                    onClick={() => setInvoiceManagerOpen(true)}
+                    disabled={editingAllocations.length === 0}
+                  >
+                    Manage transactions
+                  </button>
+                </div>
+                <div className="poFinancialTotals">
+                  <div><span>PO total</span><strong>{formatCurrency(editingPurchase.estimatedAmount)}</strong></div>
+                  <div><span>YTD posted</span><strong>{formatCurrency(editingPurchase.postedAmount)}</strong></div>
+                  <div><span>Still encumbered</span><strong>{formatCurrency(editingPurchase.encumberedAmount)}</strong></div>
+                </div>
+                {editingAllocations.length === 0 ? <p className="errorNote">Save at least one budget allocation before adding invoice lines.</p> : null}
+              </article>
+            ) : null}
+
             {editingPurchase.requestType === "requisition" ? <article className="panel">
               <h2>Receiving Docs</h2>
               {addReceivingState.message ? (
@@ -1171,6 +1236,129 @@ export function ProcurementTable({
                 {receipts.filter((receipt) => receipt.purchaseId === editingPurchase.id).length === 0 ? <li>(none)</li> : null}
               </ul>
             </article> : null}
+        </SideDrawer>
+      ) : null}
+
+      {editingPurchase && invoiceManagerOpen ? (
+        <SideDrawer
+          open
+          onClose={() => setInvoiceManagerOpen(false)}
+          eyebrow="PO financial activity"
+          title="Invoices & Credits"
+          description={`${editingPurchase.title} · ${editingPurchase.poNumber ?? editingPurchase.requisitionNumber ?? "PO"}`}
+          closeLabel="Return to procurement order"
+        >
+          <div className="poFinancialTotals poFinancialTotalsDrawer">
+            <div><span>Authorized PO</span><strong>{formatCurrency(editingPurchase.estimatedAmount)}</strong></div>
+            <div><span>YTD posted</span><strong>{formatCurrency(editingPurchase.postedAmount)}</strong></div>
+            <div><span>Remaining ENC</span><strong>{formatCurrency(editingPurchase.encumberedAmount)}</strong></div>
+          </div>
+
+          <article className="panel invoiceTransactionEntry">
+            <div className="invoiceTransactionEntryHeader">
+              <div>
+                <h3>Add Banner line</h3>
+                <p className="helperText">Enter one debit or credit at a time. The form stays here so large invoices can be entered quickly.</p>
+              </div>
+            </div>
+            {addInvoiceTransactionState.message ? (
+              <p className={addInvoiceTransactionState.ok ? "successNote" : "errorNote"} key={addInvoiceTransactionState.timestamp}>
+                {addInvoiceTransactionState.message}
+              </p>
+            ) : null}
+            <form action={addInvoiceTransactionAction} className="invoiceTransactionForm">
+              <input type="hidden" name="purchaseId" value={editingPurchase.id} />
+              <label>
+                Invoice / Credit #
+                <input name="documentNumber" placeholder="I0547893" required />
+              </label>
+              <label>
+                Date
+                <input name="transactionDate" type="date" required />
+              </label>
+              <label>
+                Type
+                <select name="transactionType" defaultValue="debit">
+                  <option value="debit">Debit / invoice</option>
+                  <option value="credit">Credit / return</option>
+                </select>
+              </label>
+              <label>
+                Amount
+                <input name="amount" type="number" min="0.01" step="0.01" required />
+              </label>
+              <label className="invoiceTransactionAllocationField">
+                Budget allocation
+                <select name="purchaseAllocationId" required>
+                  <option value="">Select project, category, and account</option>
+                  {editingAllocations.map((allocation) => (
+                    <option key={allocation.id} value={allocation.id}>{allocationLabel(allocation)}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="invoiceTransactionDescriptionField">
+                Description
+                <input name="description" placeholder="Vendor or line-item note" />
+              </label>
+              <button type="submit" className="buttonLink buttonPrimary">Add line</button>
+            </form>
+          </article>
+
+          <section className="invoiceTransactionHistory" aria-labelledby="invoice-transaction-history-title">
+            <div className="invoiceTransactionHistoryHeader">
+              <div>
+                <h3 id="invoice-transaction-history-title">Posted documents</h3>
+                <p className="helperText">Grouped by invoice or credit number so large orders stay compact.</p>
+              </div>
+              <span className="statusChip">{editingInvoiceTransactions.length} line{editingInvoiceTransactions.length === 1 ? "" : "s"}</span>
+            </div>
+            {voidInvoiceTransactionState.message ? (
+              <p className={voidInvoiceTransactionState.ok ? "successNote" : "errorNote"} key={voidInvoiceTransactionState.timestamp}>
+                {voidInvoiceTransactionState.message}
+              </p>
+            ) : null}
+            {groupedInvoiceTransactions.length === 0 ? (
+              <div className="emptyStateCompact">No invoice or credit lines have been entered. Until the first line is added, this PO keeps its existing all-or-nothing budget behavior.</div>
+            ) : groupedInvoiceTransactions.map(([documentNumber, transactions], groupIndex) => {
+              const documentTotal = transactions.reduce((sum, transaction) => sum + transaction.amount, 0);
+              return (
+                <details className="invoiceDocumentGroup" key={documentNumber} open={groupIndex === 0}>
+                  <summary>
+                    <span><strong>{documentNumber}</strong><small>{transactions[0]?.transactionDate} · {transactions.length} line{transactions.length === 1 ? "" : "s"}</small></span>
+                    <strong className={documentTotal < 0 ? "creditAmount" : ""}>{formatCurrency(documentTotal)}</strong>
+                  </summary>
+                  <div className="invoiceTransactionTableWrap">
+                    <table className="invoiceTransactionTable">
+                      <thead><tr><th>Description</th><th>Allocation</th><th>Amount</th><th>Action</th></tr></thead>
+                      <tbody>
+                        {transactions.map((transaction) => {
+                          const allocation = editingAllocations.find((entry) => entry.id === transaction.purchaseAllocationId);
+                          return (
+                            <tr key={transaction.id}>
+                              <td>{transaction.description ?? "Banner line"}</td>
+                              <td>{allocation ? allocationLabel(allocation) : "Allocation unavailable"}</td>
+                              <td className={transaction.amount < 0 ? "creditAmount" : ""}>{formatCurrency(transaction.amount)}</td>
+                              <td>
+                                <form
+                                  action={voidInvoiceTransactionAction}
+                                  onSubmit={(event) => {
+                                    if (!window.confirm("Void this financial line? The PO YTD and encumbrance totals will be recalculated.")) event.preventDefault();
+                                  }}
+                                >
+                                  <input type="hidden" name="id" value={transaction.id} />
+                                  <button type="submit" className="tinyButton dangerButton">Void</button>
+                                </form>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              );
+            })}
+          </section>
         </SideDrawer>
       ) : null}
 

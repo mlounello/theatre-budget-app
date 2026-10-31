@@ -205,6 +205,7 @@ export type ProcurementRow = {
   requisitionNumber: string | null;
   poNumber: string | null;
   invoiceNumber: string | null;
+  invoiceTrackingEnabled: boolean;
   estimatedAmount: number;
   requestedAmount: number;
   encumberedAmount: number;
@@ -221,6 +222,17 @@ export type ProcurementRow = {
   vendorId: string | null;
   vendorName: string | null;
   notes: string | null;
+  createdAt: string;
+};
+
+export type ProcurementInvoiceTransactionRow = {
+  id: string;
+  purchaseId: string;
+  purchaseAllocationId: string;
+  documentNumber: string;
+  transactionDate: string;
+  description: string | null;
+  amount: number;
   createdAt: string;
 };
 
@@ -967,16 +979,16 @@ export async function getDashboardOrganizationBudgets(
     const organizationId = `${purchase.fiscal_year_id as string}:${purchase.organization_id as string}`;
     const totals = totalsByOrganization.get(organizationId) ?? { requested: 0, held: 0, enc: 0, pending: 0, ytd: 0 };
     const status = String(purchase.status ?? "").toLowerCase();
-    if (status === "requested") {
+    if (status === "cancelled") {
+      // Cancelled rows do not consume budget.
+    } else if (status === "requested") {
       const requested = asNumber(purchase.requested_amount as string | number | null);
       totals.requested += requested !== 0 ? requested : asNumber(purchase.estimated_amount as string | number | null);
     } else if (status === "held") {
       totals.held += asNumber(purchase.estimated_amount as string | number | null);
-    } else if (status === "encumbered") {
+    } else {
       totals.enc += asNumber(purchase.encumbered_amount as string | number | null);
-    } else if (status === "pending_cc") {
       totals.pending += asNumber(purchase.pending_cc_amount as string | number | null);
-    } else if (status === "posted") {
       totals.ytd += asNumber(purchase.posted_amount as string | number | null);
     }
     totalsByOrganization.set(organizationId, totals);
@@ -1468,6 +1480,7 @@ export async function getProcurementData(
   receipts: ProcurementReceiptRow[];
   receivingDocs: ProcurementReceivingDocRow[];
   allocations: ProcurementAllocationRow[];
+  invoiceTransactions: ProcurementInvoiceTransactionRow[];
   budgetLineOptions: ProcurementBudgetLineOption[];
   projectOptions: ProcurementProjectOption[];
   organizationOptions: OrganizationOption[];
@@ -1491,7 +1504,7 @@ export async function getProcurementData(
   let purchasesQuery = supabase
     .from("purchases")
     .select(
-      "id, fiscal_year_id, project_id, organization_id, budget_line_id, production_category_id, banner_account_code_id, budget_tracked, title, reference_number, expense_number, expense_stage, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, procurement_status, ordered_on, received_on, paid_on, vendor_id, notes, created_at, organizations(name, org_code), projects(name, season, organization_id, organizations(name, org_code)), production_categories(name), account_codes(code), project_budget_lines(budget_code, category, line_name), vendors(id, name)",
+      "id, fiscal_year_id, project_id, organization_id, budget_line_id, production_category_id, banner_account_code_id, budget_tracked, title, reference_number, expense_number, expense_stage, requisition_number, po_number, invoice_number, invoice_tracking_enabled, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, status, request_type, is_credit_card, cc_workflow_status, procurement_status, ordered_on, received_on, paid_on, vendor_id, notes, created_at, organizations(name, org_code), projects(name, season, organization_id, organizations(name, org_code)), production_categories(name), account_codes(code), project_budget_lines(budget_code, category, line_name), vendors(id, name)",
       { count: "exact" }
     )
     .is("expense_claim_id", null)
@@ -1582,7 +1595,7 @@ export async function getProcurementData(
   if (needsAttentionCountResponse.error) throw needsAttentionCountResponse.error;
 
   const currentPagePurchaseIds = (purchasesResponse.data ?? []).map((row) => row.id as string);
-  const [receiptsResponse, receivingDocsResponse, allocationsResponse] = currentPagePurchaseIds.length > 0
+  const [receiptsResponse, receivingDocsResponse, allocationsResponse, invoiceTransactionsResponse] = currentPagePurchaseIds.length > 0
     ? await Promise.all([
         supabase
           .from("purchase_receipts")
@@ -1598,9 +1611,17 @@ export async function getProcurementData(
           .from("purchase_allocations")
           .select("id, purchase_id, project_id, reporting_budget_line_id, organization_id, production_category_id, account_code_id, amount, note, project_budget_lines(project_id)")
           .in("purchase_id", currentPagePurchaseIds)
-          .order("created_at", { ascending: true })
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("purchase_invoice_transactions")
+          .select("id, purchase_id, purchase_allocation_id, document_number, transaction_date, description, amount, created_at")
+          .in("purchase_id", currentPagePurchaseIds)
+          .is("voided_at", null)
+          .order("transaction_date", { ascending: false })
+          .order("created_at", { ascending: false })
       ])
     : [
+        { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null },
         { data: [], error: null }
@@ -1608,6 +1629,7 @@ export async function getProcurementData(
   if (receiptsResponse.error) throw receiptsResponse.error;
   if (receivingDocsResponse.error) throw receivingDocsResponse.error;
   if (allocationsResponse.error) throw allocationsResponse.error;
+  if (invoiceTransactionsResponse.error) throw invoiceTransactionsResponse.error;
 
   const procurementAttachmentUrls = await resolveAttachmentUrls(
     supabase,
@@ -1660,6 +1682,7 @@ export async function getProcurementData(
       requisitionNumber: (row.requisition_number as string | null) ?? null,
       poNumber: (row.po_number as string | null) ?? null,
       invoiceNumber: (row.invoice_number as string | null) ?? null,
+      invoiceTrackingEnabled: Boolean(row.invoice_tracking_enabled as boolean | null),
       estimatedAmount: asNumber(row.estimated_amount as string | number | null),
       requestedAmount: asNumber(row.requested_amount as string | number | null),
       encumberedAmount: asNumber(row.encumbered_amount as string | number | null),
@@ -1820,6 +1843,17 @@ export async function getProcurementData(
     };
   });
 
+  const invoiceTransactions: ProcurementInvoiceTransactionRow[] = (invoiceTransactionsResponse.data ?? []).map((row) => ({
+    id: row.id as string,
+    purchaseId: row.purchase_id as string,
+    purchaseAllocationId: row.purchase_allocation_id as string,
+    documentNumber: row.document_number as string,
+    transactionDate: row.transaction_date as string,
+    description: (row.description as string | null) ?? null,
+    amount: asNumber(row.amount as string | number | null),
+    createdAt: row.created_at as string
+  }));
+
   const receivingDocs: ProcurementReceivingDocRow[] = (receivingDocsResponse.data ?? []).map((row) => ({
     id: row.id as string,
     purchaseId: row.purchase_id as string,
@@ -1834,6 +1868,7 @@ export async function getProcurementData(
     receipts,
     receivingDocs,
     allocations,
+    invoiceTransactions,
     budgetLineOptions,
     projectOptions: normalizedProjectOptions,
     organizationOptions,
@@ -3744,9 +3779,9 @@ function resolvedPurchaseAmount(row: {
   const pendingCc = asNumber((row.pending_cc_amount as string | number | null) ?? 0);
   const posted = asNumber((row.posted_amount as string | number | null) ?? 0);
 
-  if (status === "posted") return posted;
-  if (status === "pending_cc") return pendingCc;
-  if (status === "encumbered") return encumbered;
+  if (status === "cancelled") return 0;
+  const financialActivity = encumbered + pendingCc + posted;
+  if (financialActivity !== 0) return financialActivity;
   if (status === "requested") return requested !== 0 ? requested : estimated;
   return posted || pendingCc || encumbered || requested || estimated;
 }
@@ -3978,10 +4013,18 @@ export async function getMyBudgetData(params: { fiscalYearId?: string } = {}): P
     const requestType = ((row.request_type as string | null) ?? "requisition").toLowerCase() as MyBudgetEntry["requestType"];
 
     if (requestType === "request") card.heldTotal += amount;
-    else if (status === "posted") card.ytdTotal += amount;
-    else if (status === "pending_cc") card.pendingCcTotal += amount;
-    else if (status === "encumbered") card.encTotal += amount;
-    else if (status === "requested") card.requestedOpenTotal += amount;
+    else if (status !== "cancelled") {
+      const postedAmount = asNumber(row.posted_amount as string | number | null);
+      const pendingAmount = asNumber(row.pending_cc_amount as string | number | null);
+      const encumberedAmount = asNumber(row.encumbered_amount as string | number | null);
+      if (postedAmount !== 0 || pendingAmount !== 0 || encumberedAmount !== 0) {
+        card.ytdTotal += postedAmount;
+        card.pendingCcTotal += pendingAmount;
+        card.encTotal += encumberedAmount;
+      } else if (status === "requested") {
+        card.requestedOpenTotal += amount;
+      }
+    }
 
     const authorizationId = (row.authorization_purchase_id as string | null) ?? null;
     const authorization = authorizationId ? purchasesById.get(authorizationId) ?? null : null;

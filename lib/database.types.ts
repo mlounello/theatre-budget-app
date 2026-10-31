@@ -1656,6 +1656,59 @@ export type Database = {
           { foreignKeyName: "purchase_events_purchase_id_fkey"; columns: ["purchase_id"]; isOneToOne: false; referencedRelation: "purchases"; referencedColumns: ["id"] }
         ];
       };
+      "purchase_invoice_transactions": {
+        Row: {
+          "id": string;
+          "purchase_id": string;
+          "purchase_allocation_id": string;
+          "document_number": string;
+          "transaction_date": string;
+          "description": string | null;
+          "amount": number | string;
+          "source_line_key": string | null;
+          "created_by_user_id": string | null;
+          "voided_at": string | null;
+          "voided_by_user_id": string | null;
+          "created_at": string;
+          "updated_at": string;
+        };
+        Insert: {
+          "id"?: string;
+          "purchase_id": string;
+          "purchase_allocation_id": string;
+          "document_number": string;
+          "transaction_date": string;
+          "description"?: string | null;
+          "amount": number | string;
+          "source_line_key"?: string | null;
+          "created_by_user_id"?: string | null;
+          "voided_at"?: string | null;
+          "voided_by_user_id"?: string | null;
+          "created_at"?: string;
+          "updated_at"?: string;
+        };
+        Update: {
+          "id"?: string;
+          "purchase_id"?: string;
+          "purchase_allocation_id"?: string;
+          "document_number"?: string;
+          "transaction_date"?: string;
+          "description"?: string | null;
+          "amount"?: number | string;
+          "source_line_key"?: string | null;
+          "created_by_user_id"?: string | null;
+          "voided_at"?: string | null;
+          "voided_by_user_id"?: string | null;
+          "created_at"?: string;
+          "updated_at"?: string;
+        };
+        Relationships: [
+          { foreignKeyName: "purchase_invoice_transactions_purchase_id_fkey"; columns: ["purchase_id"]; isOneToOne: false; referencedRelation: "purchases"; referencedColumns: ["id"] },
+          { foreignKeyName: "purchase_invoice_transactions_purchase_allocation_id_fkey"; columns: ["purchase_allocation_id"]; isOneToOne: false; referencedRelation: "purchase_allocations"; referencedColumns: ["id"] },
+          { foreignKeyName: "purchase_invoice_transactions_created_by_user_id_fkey"; columns: ["created_by_user_id"]; isOneToOne: false; referencedRelation: "users"; referencedColumns: ["id"] },
+          { foreignKeyName: "purchase_invoice_transactions_voided_by_user_id_fkey"; columns: ["voided_by_user_id"]; isOneToOne: false; referencedRelation: "users"; referencedColumns: ["id"] }
+        ];
+      };
       "purchase_receipts": {
         Row: {
           "id": string;
@@ -1776,6 +1829,7 @@ export type Database = {
           "requisition_number": string | null;
           "po_number": string | null;
           "invoice_number": string | null;
+          "invoice_tracking_enabled": boolean;
           "procurement_status": string;
           "ordered_on": string | null;
           "received_on": string | null;
@@ -1819,6 +1873,7 @@ export type Database = {
           "requisition_number"?: string | null;
           "po_number"?: string | null;
           "invoice_number"?: string | null;
+          "invoice_tracking_enabled"?: boolean;
           "procurement_status"?: string;
           "ordered_on"?: string | null;
           "received_on"?: string | null;
@@ -1862,6 +1917,7 @@ export type Database = {
           "requisition_number"?: string | null;
           "po_number"?: string | null;
           "invoice_number"?: string | null;
+          "invoice_tracking_enabled"?: boolean;
           "procurement_status"?: string;
           "ordered_on"?: string | null;
           "received_on"?: string | null;

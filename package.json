@@ -23,7 +23,8 @@
     "test:phase4-gate5h": "node --test scripts/phase4-gate5h-application.test.mjs",
     "test:phase4-gate5i": "node --test scripts/phase4-gate5i-application.test.mjs",
     "test:phase4-gate5j": "node --test scripts/phase4-gate5j-application.test.mjs",
-    "test:phase5a-integrations": "node --test scripts/phase5a-integration-boundaries.test.mjs"
+    "test:phase5a-integrations": "node --test scripts/phase5a-integration-boundaries.test.mjs",
+    "test:partial-po": "node --test scripts/partial-po-invoice-transactions.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

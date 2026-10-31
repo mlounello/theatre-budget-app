@@ -293,9 +293,11 @@ async function resolveInstitutionalAccountCodeId(
 function activeCommitmentAmount(purchase: PurchaseForInstitutionalBudget): number {
   const status = String(purchase.status ?? "").toLowerCase();
   if (status === "cancelled") return 0;
-  if (status === "posted") return asNumber(purchase.posted_amount);
-  if (status === "pending_cc") return asNumber(purchase.pending_cc_amount);
-  if (status === "encumbered") return asNumber(purchase.encumbered_amount);
+  const financialActivity =
+    asNumber(purchase.posted_amount) +
+    asNumber(purchase.pending_cc_amount) +
+    asNumber(purchase.encumbered_amount);
+  if (financialActivity !== 0) return financialActivity;
   if (status === "requested") {
     const requested = asNumber(purchase.requested_amount);
     return requested !== 0 ? requested : asNumber(purchase.estimated_amount);

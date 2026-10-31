@@ -128,6 +128,7 @@ function parseMoney(value: FormDataEntryValue | null): number {
 }
 
 type ProcurementAllocationInput = {
+  id: string | null;
   projectId: string | null;
   organizationId: string | null;
   productionCategoryId: string | null;
@@ -141,6 +142,7 @@ function parseProcurementAllocations(value: FormDataEntryValue | null): Procurem
   const parsed = JSON.parse(value) as Array<Record<string, unknown>>;
   if (!Array.isArray(parsed)) return [];
   return parsed.map((row) => ({
+    id: String(row.id ?? "").trim() || null,
     projectId: String(row.projectId ?? "").trim() || null,
     organizationId: String(row.organizationId ?? "").trim() || null,
     productionCategoryId: String(row.productionCategoryId ?? "").trim() || null,
@@ -790,7 +792,7 @@ export async function updateProcurementAction(
     const { data: existing, error: existingError } = await supabase
       .from("purchases")
       .select(
-        "id, fiscal_year_id, project_id, organization_id, status, procurement_status, request_type, is_credit_card, reference_number, expense_number, expense_stage, requisition_number, po_number, invoice_number, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, posted_date, budget_tracked, budget_line_id, ordered_on, received_on, paid_on"
+        "id, fiscal_year_id, project_id, organization_id, status, procurement_status, request_type, is_credit_card, reference_number, expense_number, expense_stage, requisition_number, po_number, invoice_number, invoice_tracking_enabled, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, posted_date, budget_tracked, budget_line_id, ordered_on, received_on, paid_on"
       )
       .eq("id", id)
       .single();
@@ -837,6 +839,9 @@ export async function updateProcurementAction(
     if (isExpensePurchase && !expenseStage) {
       return err("Choose whether this is a card funding request, reconciliation expense, or reimbursement.");
     }
+    if (Boolean(existing.invoice_tracking_enabled as boolean | null) && !requestedBudgetTracked) {
+      return err("This PO has invoice lines. Keep it budget-tracked so every line retains its allocation.");
+    }
     const procurementStatus = parseStatus(formData.get("procurementStatus"), isCreditCardPurchase);
     const existingProcurementStatus = parseStatus((existing.procurement_status as string | null) ?? "requested", isCreditCardPurchase);
     const procurementStatusChanged = existingProcurementStatus !== procurementStatus;
@@ -848,11 +853,27 @@ export async function updateProcurementAction(
       posted: Number(existing.posted_amount ?? 0)
     });
     const nextRequested = orderValueRaw !== "" ? orderValue : existingOrderValue;
-    const nextBudgetStatus = toBudgetStatus(procurementStatus, isCreditCardPurchase);
-    const nextRequestedAmount = nextBudgetStatus === "requested" ? nextRequested : 0;
-    const nextEncumberedAmount = nextBudgetStatus === "encumbered" ? nextRequested : 0;
-    const nextPendingCcAmount = nextBudgetStatus === "pending_cc" ? nextRequested : 0;
-    const nextPostedAmount = nextBudgetStatus === "posted" ? nextRequested : 0;
+    const invoiceTrackingEnabled = Boolean(existing.invoice_tracking_enabled as boolean | null);
+    const existingTrackedEncumbered = Number(existing.encumbered_amount ?? 0);
+    const existingTrackedPosted = Number(existing.posted_amount ?? 0);
+    const mappedBudgetStatus = toBudgetStatus(procurementStatus, isCreditCardPurchase);
+    const nextBudgetStatus = invoiceTrackingEnabled
+      ? procurementStatus === "cancelled"
+        ? "cancelled"
+        : existingTrackedEncumbered > 0
+          ? "encumbered"
+          : existingTrackedPosted !== 0
+            ? "posted"
+            : "encumbered"
+      : mappedBudgetStatus;
+    const nextRequestedAmount = invoiceTrackingEnabled ? 0 : nextBudgetStatus === "requested" ? nextRequested : 0;
+    const nextEncumberedAmount = invoiceTrackingEnabled
+      ? procurementStatus === "cancelled" ? 0 : existingTrackedEncumbered
+      : nextBudgetStatus === "encumbered" ? nextRequested : 0;
+    const nextPendingCcAmount = invoiceTrackingEnabled ? 0 : nextBudgetStatus === "pending_cc" ? nextRequested : 0;
+    const nextPostedAmount = invoiceTrackingEnabled
+      ? procurementStatus === "cancelled" ? 0 : existingTrackedPosted
+      : nextBudgetStatus === "posted" ? nextRequested : 0;
     const nextCcWorkflowStatus = isCreditCardPurchase
       ? procurementStatus === "posted_to_account"
         ? "posted_to_account"
@@ -900,6 +921,7 @@ export async function updateProcurementAction(
     }
 
     const resolvedAllocations: Array<{
+      id: string | null;
       project_id: string | null;
       reporting_budget_line_id: string | null;
       organization_id: string;
@@ -938,6 +960,7 @@ export async function updateProcurementAction(
           });
           if (allocationLineError || !allocationLineId) return err(allocationLineError?.message ?? `Could not resolve allocation ${index + 1}.`);
           resolvedAllocations.push({
+            id: allocation.id,
             project_id: allocation.projectId,
             reporting_budget_line_id: allocationLineId as string,
             organization_id: allocationOrganizationId,
@@ -950,6 +973,7 @@ export async function updateProcurementAction(
           await ensureOrganizationPmOrAdminAccess(allocationOrganizationId, nextFiscalYearId);
           if (membership.projectTrackingRequired) return err(`Allocation ${index + 1} must use a theatre project for that organization.`);
           resolvedAllocations.push({
+            id: allocation.id,
             project_id: null,
             reporting_budget_line_id: null,
             organization_id: allocationOrganizationId,
@@ -1023,14 +1047,60 @@ export async function updateProcurementAction(
       const { error: deleteAllocationsError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", id);
       if (deleteAllocationsError) return err(deleteAllocationsError.message);
     } else {
-      const { error: deleteAllocationsError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", id);
-      if (deleteAllocationsError) return err(deleteAllocationsError.message);
       if (resolvedAllocations.length > 0) {
-        const { error: createAllocationError } = await supabase.from("purchase_allocations").insert(
-          resolvedAllocations.map((allocation) => ({ purchase_id: id, reporting_bucket: "direct", ...allocation }))
-        );
-        if (createAllocationError) return err(createAllocationError.message);
+        const { data: existingAllocationRows, error: existingAllocationsError } = await supabase
+          .from("purchase_allocations")
+          .select("id")
+          .eq("purchase_id", id);
+        if (existingAllocationsError) return err(existingAllocationsError.message);
+        const existingAllocationIds = new Set((existingAllocationRows ?? []).map((row) => row.id as string));
+        const retainedAllocationIds = new Set<string>();
+
+        for (const allocation of resolvedAllocations) {
+          const payload = {
+            purchase_id: id,
+            reporting_bucket: "direct",
+            project_id: allocation.project_id,
+            reporting_budget_line_id: allocation.reporting_budget_line_id,
+            organization_id: allocation.organization_id,
+            account_code_id: allocation.account_code_id,
+            production_category_id: allocation.production_category_id,
+            amount: allocation.amount,
+            note: allocation.note
+          };
+          if (allocation.id && existingAllocationIds.has(allocation.id)) {
+            const { error: updateAllocationError } = await supabase
+              .from("purchase_allocations")
+              .update(payload)
+              .eq("id", allocation.id)
+              .eq("purchase_id", id);
+            if (updateAllocationError) return err(updateAllocationError.message);
+            retainedAllocationIds.add(allocation.id);
+          } else {
+            const { data: insertedAllocation, error: insertAllocationError } = await supabase
+              .from("purchase_allocations")
+              .insert(payload)
+              .select("id")
+              .single();
+            if (insertAllocationError || !insertedAllocation) return err(insertAllocationError?.message ?? "Could not add PO allocation.");
+            retainedAllocationIds.add(insertedAllocation.id as string);
+          }
+        }
+
+        const removedAllocationIds = [...existingAllocationIds].filter((allocationId) => !retainedAllocationIds.has(allocationId));
+        if (removedAllocationIds.length > 0) {
+          const { error: deleteAllocationsError } = await supabase
+            .from("purchase_allocations")
+            .delete()
+            .in("id", removedAllocationIds)
+            .eq("purchase_id", id);
+          if (deleteAllocationsError) {
+            return err("An allocation with invoice lines cannot be removed. Void or move those lines first.");
+          }
+        }
       } else if (verifiedBudgetLine) {
+        const { error: deleteAllocationsError } = await supabase.from("purchase_allocations").delete().eq("purchase_id", id);
+        if (deleteAllocationsError) return err(deleteAllocationsError.message);
         const allocationAmount =
           nextBudgetStatus === "encumbered"
             ? nextEncumberedAmount
@@ -1064,6 +1134,121 @@ export async function updateProcurementAction(
     return ok("Procurement details updated.");
   } catch (error) {
     return err(getErrorMessage(error, "Could not update procurement details."));
+  }
+}
+
+export async function addPurchaseInvoiceTransactionAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) return err("You must be signed in.");
+
+    const purchaseId = String(formData.get("purchaseId") ?? "").trim();
+    const purchaseAllocationId = String(formData.get("purchaseAllocationId") ?? "").trim();
+    const documentNumber = String(formData.get("documentNumber") ?? "").trim().toUpperCase();
+    const transactionDate = parseDateInput(formData.get("transactionDate"));
+    const description = String(formData.get("description") ?? "").trim();
+    const transactionType = String(formData.get("transactionType") ?? "debit").trim();
+    const enteredAmount = Math.abs(parseMoney(formData.get("amount")));
+
+    if (!purchaseId) return err("PO is required.");
+    if (!purchaseAllocationId) return err("Choose the allocation this line posts against.");
+    if (!documentNumber) return err("Invoice or credit document number is required.");
+    if (!transactionDate) return err("Transaction date is required.");
+    if (enteredAmount === 0) return err("Amount must be greater than zero.");
+    if (transactionType !== "debit" && transactionType !== "credit") return err("Choose debit or credit.");
+
+    await ensurePurchasePmOrAdminAccess(supabase, user.id, purchaseId);
+    const { data: purchase, error: purchaseError } = await supabase
+      .from("purchases")
+      .select("id, request_type, procurement_status, project_id")
+      .eq("id", purchaseId)
+      .single();
+    if (purchaseError || !purchase) return err("PO not found.");
+    if (purchase.request_type !== "requisition") return err("Invoice lines are available only for requisition POs.");
+    if (purchase.procurement_status === "cancelled") return err("Reopen this PO before adding a financial line.");
+
+    const { data: allocation, error: allocationError } = await supabase
+      .from("purchase_allocations")
+      .select("id, purchase_id")
+      .eq("id", purchaseAllocationId)
+      .eq("purchase_id", purchaseId)
+      .single();
+    if (allocationError || !allocation) return err("That allocation does not belong to this PO.");
+
+    const signedAmount = transactionType === "credit" ? -enteredAmount : enteredAmount;
+    const { error } = await supabase.from("purchase_invoice_transactions").insert({
+      purchase_id: purchaseId,
+      purchase_allocation_id: purchaseAllocationId,
+      document_number: documentNumber,
+      transaction_date: transactionDate,
+      description: description || null,
+      amount: signedAmount,
+      created_by_user_id: user.id
+    });
+    if (error) return err(error.message);
+
+    const institutionalSyncError = await syncInstitutionalBudget(supabase, purchaseId, user.id);
+    if (institutionalSyncError) return institutionalSyncError;
+
+    revalidatePath("/procurement");
+    revalidatePath("/requests");
+    revalidatePath("/");
+    if (purchase.project_id) revalidatePath(`/projects/${purchase.project_id as string}`);
+    return ok(`${transactionType === "credit" ? "Credit" : "Invoice line"} added.`);
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not add the invoice line."));
+  }
+}
+
+export async function voidPurchaseInvoiceTransactionAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) return err("You must be signed in.");
+
+    const id = String(formData.get("id") ?? "").trim();
+    if (!id) return err("Invoice line is required.");
+    const { data: transaction, error: transactionError } = await supabase
+      .from("purchase_invoice_transactions")
+      .select("id, purchase_id, voided_at, purchases(project_id)")
+      .eq("id", id)
+      .single();
+    if (transactionError || !transaction) return err("Invoice line not found.");
+    if (transaction.voided_at) return err("That line is already voided.");
+    const purchaseId = transaction.purchase_id as string;
+    await ensurePurchasePmOrAdminAccess(supabase, user.id, purchaseId);
+
+    const { error } = await supabase
+      .from("purchase_invoice_transactions")
+      .update({ voided_at: new Date().toISOString(), voided_by_user_id: user.id })
+      .eq("id", id)
+      .is("voided_at", null);
+    if (error) return err(error.message);
+
+    const institutionalSyncError = await syncInstitutionalBudget(supabase, purchaseId, user.id);
+    if (institutionalSyncError) return institutionalSyncError;
+
+    const purchaseJoin = Array.isArray(transaction.purchases) ? transaction.purchases[0] : transaction.purchases;
+    revalidatePath("/procurement");
+    revalidatePath("/requests");
+    revalidatePath("/");
+    if (purchaseJoin?.project_id) revalidatePath(`/projects/${purchaseJoin.project_id as string}`);
+    return ok("Invoice line voided. The PO totals were recalculated.");
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not void the invoice line."));
   }
 }
 
@@ -1371,11 +1556,14 @@ export async function bulkUpdateProcurementAction(
     const { data: rows, error: rowsError } = await supabase
       .from("purchases")
       .select(
-        "id, project_id, organization_id, budget_tracked, budget_line_id, production_category_id, banner_account_code_id, status, procurement_status, request_type, is_credit_card, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, posted_date, reference_number, requisition_number, po_number, invoice_number, vendor_id, notes, ordered_on, received_on, paid_on"
+        "id, project_id, organization_id, budget_tracked, budget_line_id, production_category_id, banner_account_code_id, status, procurement_status, request_type, is_credit_card, invoice_tracking_enabled, estimated_amount, requested_amount, encumbered_amount, pending_cc_amount, posted_amount, posted_date, reference_number, requisition_number, po_number, invoice_number, vendor_id, notes, ordered_on, received_on, paid_on"
       )
       .in("id", ids);
     if (rowsError) return err(rowsError.message);
     if (!rows || rows.length !== ids.length) return err("Some selected procurement rows were not found.");
+    if (rows.some((row) => Boolean(row.invoice_tracking_enabled as boolean | null))) {
+      return err("POs with invoice or credit lines must be edited individually so their allocation history is preserved.");
+    }
 
     const existingProjectIds = Array.from(new Set(rows.map((row) => row.project_id as string)));
     for (const projectId of existingProjectIds) {
