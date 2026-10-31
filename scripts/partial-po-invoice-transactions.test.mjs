@@ -65,7 +65,7 @@ test("partial-payment and receipt workflows render as distinct pills", async () 
   ]);
   assert.match(styles, /\.status-partial_paid/);
   assert.match(styles, /\.status-receipts_uploaded/);
-  assert.match(styles, /\.status-receipts_uploaded \{[\s\S]*background: #efe5ff;[\s\S]*color: #5d2f9e;/);
+  assert.match(styles, /\.status-receipts_uploaded \{[\s\S]*background: #fde7f3;[\s\S]*color: #8a1c55;/);
   assert.match(styles, /\.status-statement_paid/);
   assert.match(styles, /\.status-posted_to_account/);
   assert.match(ccPage, /statusChip status-\$\{purchase\.ccWorkflowStatus/);
