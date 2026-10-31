@@ -26,6 +26,7 @@ const PUBLIC_PATHS = [
   "/auth/denied",
   "/api/auth/magic-link",
   "/api/calendar/contracts",
+  "/api/cron/check-requests",
   "/api/integrations/production-management/budget-access-link"
 ];
 

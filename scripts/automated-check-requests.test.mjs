@@ -5,11 +5,12 @@ import test from "node:test";
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("automatic check requests are review-gated and scheduled", async () => {
-  const [action, cron, migration, vercel] = await Promise.all([
+  const [action, cron, migration, vercel, middleware] = await Promise.all([
     read("app/contracts/actions.ts"),
     read("app/api/cron/check-requests/route.ts"),
     read("supabase/migrations/20261031120000_automated_check_requests_payroll.sql"),
-    read("vercel.json")
+    read("vercel.json"),
+    read("middleware.ts")
   ]);
   assert.match(action, /workflow_status !== "siena_signed"/);
   assert.match(action, /union_signature_status !== "complete"/);
@@ -19,6 +20,7 @@ test("automatic check requests are review-gated and scheduled", async () => {
   assert.match(cron, /status: "check_request_submitted"/);
   assert.match(migration, /w9_attachment_path/);
   assert.match(vercel, /api\/cron\/check-requests/);
+  assert.match(middleware, /"\/api\/cron\/check-requests"/);
 });
 
 test("temporary employee schedules use equal biweekly payroll rows", async () => {
