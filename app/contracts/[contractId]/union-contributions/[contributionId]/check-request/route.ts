@@ -5,6 +5,7 @@ import { PDFCheckBox, PDFDocument, PDFTextField, StandardFonts, rgb } from "pdf-
 import { getAccessContext } from "@/lib/access";
 import { decryptSensitiveValue } from "@/lib/sensitive-encryption";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 
 export const runtime = "nodejs";
 
@@ -39,11 +40,13 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ contractId: string; contributionId: string }> }
 ) {
-  const access = await getAccessContext();
-  if (!access.userId) return NextResponse.redirect(new URL("/login", request.url));
-  if (!["admin", "project_manager"].includes(access.role)) return new NextResponse("Forbidden", { status: 403 });
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  const internal = Boolean(cronSecret && request.headers.get("authorization") === `Bearer ${cronSecret}`);
+  const access = internal ? null : await getAccessContext();
+  if (!internal && !access?.userId) return NextResponse.redirect(new URL("/login", request.url));
+  if (!internal && !["admin", "project_manager"].includes(access?.role ?? "")) return new NextResponse("Forbidden", { status: 403 });
   const { contractId, contributionId } = await params;
-  const supabase = await getSupabaseServerClient();
+  const supabase = internal ? createSupabaseAdminClient() : await getSupabaseServerClient();
   const { data, error } = await supabase
     .from("contract_union_contributions")
     .select(
@@ -63,7 +66,7 @@ export async function GET(
     account_code?: { code?: string | null } | null;
   } | null;
   const projectId = joined?.project_id ?? "";
-  if (access.role !== "admin" && !access.manageableProjectIds.has(projectId)) {
+  if (!internal && access?.role !== "admin" && !access?.manageableProjectIds.has(projectId)) {
     return new NextResponse("Forbidden", { status: 403 });
   }
 

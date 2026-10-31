@@ -363,6 +363,12 @@ export type Database = {
           "tax_id_encrypted": string | null;
           "tax_id_last4": string | null;
           "payment_channel": string;
+          "automation_status": string;
+          "automation_ready_at": string | null;
+          "automation_ready_by_user_id": string | null;
+          "automation_sent_at": string | null;
+          "automation_run_id": string | null;
+          "automation_last_error": string | null;
         };
         Insert: {
           "id"?: string;
@@ -387,6 +393,12 @@ export type Database = {
           "tax_id_encrypted"?: string | null;
           "tax_id_last4"?: string | null;
           "payment_channel"?: string;
+          "automation_status"?: string;
+          "automation_ready_at"?: string | null;
+          "automation_ready_by_user_id"?: string | null;
+          "automation_sent_at"?: string | null;
+          "automation_run_id"?: string | null;
+          "automation_last_error"?: string | null;
         };
         Update: {
           "id"?: string;
@@ -411,6 +423,12 @@ export type Database = {
           "tax_id_encrypted"?: string | null;
           "tax_id_last4"?: string | null;
           "payment_channel"?: string;
+          "automation_status"?: string;
+          "automation_ready_at"?: string | null;
+          "automation_ready_by_user_id"?: string | null;
+          "automation_sent_at"?: string | null;
+          "automation_run_id"?: string | null;
+          "automation_last_error"?: string | null;
         };
         Relationships: [
           { foreignKeyName: "contract_installments_check_request_foapal_id_fkey"; columns: ["check_request_foapal_id"]; isOneToOne: false; referencedRelation: "foapals"; referencedColumns: ["id"] },
@@ -468,6 +486,12 @@ export type Database = {
           "check_paid_on": string | null;
           "created_at": string;
           "updated_at": string;
+          "automation_status": string;
+          "automation_ready_at": string | null;
+          "automation_ready_by_user_id": string | null;
+          "automation_sent_at": string | null;
+          "automation_run_id": string | null;
+          "automation_last_error": string | null;
         };
         Insert: {
           "id"?: string;
@@ -497,6 +521,12 @@ export type Database = {
           "check_paid_on"?: string | null;
           "created_at"?: string;
           "updated_at"?: string;
+          "automation_status"?: string;
+          "automation_ready_at"?: string | null;
+          "automation_ready_by_user_id"?: string | null;
+          "automation_sent_at"?: string | null;
+          "automation_run_id"?: string | null;
+          "automation_last_error"?: string | null;
         };
         Update: {
           "id"?: string;
@@ -526,6 +556,12 @@ export type Database = {
           "check_paid_on"?: string | null;
           "created_at"?: string;
           "updated_at"?: string;
+          "automation_status"?: string;
+          "automation_ready_at"?: string | null;
+          "automation_ready_by_user_id"?: string | null;
+          "automation_sent_at"?: string | null;
+          "automation_run_id"?: string | null;
+          "automation_last_error"?: string | null;
         };
         Relationships: [
           { foreignKeyName: "contract_union_contributions_contract_id_fkey"; columns: ["contract_id"]; isOneToOne: false; referencedRelation: "contracts"; referencedColumns: ["id"] },
@@ -575,6 +611,11 @@ export type Database = {
           "compensation_basis": string;
           "hr_onboarding_status": string;
           "hr_onboarding_reference": string | null;
+          "w9_attachment_path": string | null;
+          "employment_start_date": string | null;
+          "employment_end_date": string | null;
+          "payroll_first_pay_date": string | null;
+          "payroll_frequency": string;
         };
         Insert: {
           "id"?: string;
@@ -615,6 +656,11 @@ export type Database = {
           "compensation_basis"?: string;
           "hr_onboarding_status"?: string;
           "hr_onboarding_reference"?: string | null;
+          "w9_attachment_path"?: string | null;
+          "employment_start_date"?: string | null;
+          "employment_end_date"?: string | null;
+          "payroll_first_pay_date"?: string | null;
+          "payroll_frequency"?: string;
         };
         Update: {
           "id"?: string;
@@ -655,6 +701,11 @@ export type Database = {
           "compensation_basis"?: string;
           "hr_onboarding_status"?: string;
           "hr_onboarding_reference"?: string | null;
+          "w9_attachment_path"?: string | null;
+          "employment_start_date"?: string | null;
+          "employment_end_date"?: string | null;
+          "payroll_first_pay_date"?: string | null;
+          "payroll_frequency"?: string;
         };
         Relationships: [
           { foreignKeyName: "contracts_banner_account_code_id_fkey"; columns: ["banner_account_code_id"]; isOneToOne: false; referencedRelation: "account_codes"; referencedColumns: ["id"] },

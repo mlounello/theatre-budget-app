@@ -243,7 +243,7 @@ export function CreateContractForm({
         <input name="contractorName" value={contractorName} onChange={(event) => setContractorName(event.target.value)} required />
       </label>
       <label>
-        Employee ID Number
+        Banner / Vendor ID
         <input name="contractorEmployeeId" value={contractorEmployeeId} onChange={(event) => setContractorEmployeeId(event.target.value)} />
       </label>
       <label>
@@ -277,7 +277,7 @@ export function CreateContractForm({
             if (next === "independent_contractor" && installmentCount > 2) setInstallmentCount(2);
           }}
         >
-          <option value="independent_contractor">Independent Contractor Agreement</option>
+          <option value="independent_contractor">ICA-B Independent Contractor Agreement</option>
           <option value="union_freelance_artist">Union + Freelance Artist Agreement</option>
           <option value="temporary_employee">Temporary Employee through HR</option>
         </select>
@@ -301,9 +301,16 @@ export function CreateContractForm({
             </select>
           </label>
           <label>HR Reference<input name="hrOnboardingReference" placeholder="Optional HR / payroll reference" /></label>
+          <label>Employment Start Date<input name="employmentStartDate" type="date" required /></label>
+          <label>Employment End Date<input name="employmentEndDate" type="date" required /></label>
+          <label>
+            First Biweekly Pay Date
+            <input name="payrollFirstPayDate" type="date" required />
+            <span className="helperText">The app creates equal paychecks every 14 days through the end date.</span>
+          </label>
         </>
       ) : null}
-      <label>
+      {engagementType !== "temporary_employee" ? <label>
         Payment Installments
         <select
           name="installmentCount"
@@ -315,7 +322,7 @@ export function CreateContractForm({
           {engagementType !== "independent_contractor" ? <option value="3">3</option> : null}
           {engagementType !== "independent_contractor" ? <option value="4">4</option> : null}
         </select>
-      </label>
+      </label> : null}
       <label>
         Contract Number
         <input name="contractNumber" placeholder="Optional contract reference" />
@@ -432,6 +439,13 @@ export function CreateContractForm({
         <SensitiveTextInput name="taxIdOrSsn" />
         <span className="helperText">Stored encrypted and only decrypted during check request PDF export.</span>
       </label>
+      {engagementType !== "temporary_employee" ? (
+        <label>
+          W-9 PDF
+          <input name="w9Attachment" type="file" accept="application/pdf,.pdf" />
+          <span className="helperText">Required before READY when no Banner / Vendor ID is assigned.</span>
+        </label>
+      ) : null}
       <div className="contractInstallmentDates">
         {Array.from({ length: installmentCount }, (_, index) => {
           const installmentNumber = index + 1;

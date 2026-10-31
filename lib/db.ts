@@ -362,6 +362,7 @@ export type UnionContributionType = "employer_paid" | "artist_withholding";
 export type HiringEngagementType = "independent_contractor" | "union_freelance_artist" | "temporary_employee";
 export type HiringCompensationBasis = "flat_fee" | "hourly";
 export type HrOnboardingStatus = "not_started" | "submitted_to_hr" | "onboarding" | "complete" | "not_required";
+export type CheckRequestAutomationStatus = "not_ready" | "ready" | "sending" | "sent" | "failed";
 
 export type ContractRow = {
   id: string;
@@ -408,6 +409,11 @@ export type ContractRow = {
   compensationBasis: HiringCompensationBasis;
   hrOnboardingStatus: HrOnboardingStatus;
   hrOnboardingReference: string | null;
+  w9AttachmentPath: string | null;
+  employmentStartDate: string | null;
+  employmentEndDate: string | null;
+  payrollFirstPayDate: string | null;
+  payrollFrequency: "biweekly";
   notes: string | null;
   createdAt: string;
 };
@@ -432,6 +438,9 @@ export type ContractInstallmentRow = {
   taxIdLast4: string | null;
   checkRequestSubmittedOn: string | null;
   checkPaidOn: string | null;
+  automationStatus: CheckRequestAutomationStatus;
+  automationSentAt: string | null;
+  automationLastError: string | null;
 };
 
 export type ContractUnionContributionRow = {
@@ -451,6 +460,9 @@ export type ContractUnionContributionRow = {
   taxIdLast4: string | null;
   checkRequestSubmittedOn: string | null;
   checkPaidOn: string | null;
+  automationStatus: CheckRequestAutomationStatus;
+  automationSentAt: string | null;
+  automationLastError: string | null;
 };
 
 export type FundOption = {
@@ -2107,7 +2119,7 @@ export async function getContractsData(): Promise<{
   let contractsResponse = (await supabase
     .from("contracts")
     .select(
-      "id, fiscal_year_id, organization_id, project_id, production_project_id, banner_account_code_id, guest_artist_id, contractor_name, contractor_employee_id, contractor_email, contractor_phone, contract_value, installment_count, contract_number, contract_role, contract_session, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, workflow_status, is_union, union_agreement_id, union_agreement_name_snapshot, union_signature_status, engagement_type, compensation_basis, hr_onboarding_status, hr_onboarding_reference, notes, created_at, fiscal_years(name), organizations(name, org_code), accounting_project:projects!contracts_project_id_fkey(name, season), production_project:projects!contracts_production_project_id_fkey(name, season), contract_productions(project_id, production:projects!contract_productions_project_id_fkey(name, season)), account_codes(code)"
+      "id, fiscal_year_id, organization_id, project_id, production_project_id, banner_account_code_id, guest_artist_id, contractor_name, contractor_employee_id, contractor_email, contractor_phone, contract_value, installment_count, contract_number, contract_role, contract_session, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, workflow_status, is_union, union_agreement_id, union_agreement_name_snapshot, union_signature_status, engagement_type, compensation_basis, hr_onboarding_status, hr_onboarding_reference, w9_attachment_path, employment_start_date, employment_end_date, payroll_first_pay_date, payroll_frequency, notes, created_at, fiscal_years(name), organizations(name, org_code), accounting_project:projects!contracts_project_id_fkey(name, season), production_project:projects!contracts_production_project_id_fkey(name, season), contract_productions(project_id, production:projects!contract_productions_project_id_fkey(name, season)), account_codes(code)"
     )
     .order("created_at", { ascending: false })
     .limit(200)) as DbListResponse;
@@ -2133,7 +2145,7 @@ export async function getContractsData(): Promise<{
   if (contractsResponse.error) throw contractsResponse.error;
   let installmentsResponse = (await supabase
     .from("contract_installments")
-    .select("id, contract_id, purchase_id, installment_number, installment_amount, payment_channel, status, due_date, ap_receive_by, mail_by, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, check_request_submitted_on, check_paid_on")
+    .select("id, contract_id, purchase_id, installment_number, installment_amount, payment_channel, status, due_date, ap_receive_by, mail_by, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, check_request_submitted_on, check_paid_on, automation_status, automation_sent_at, automation_last_error")
     .order("contract_id", { ascending: true })
     .order("installment_number", { ascending: true })) as DbListResponse;
 
@@ -2154,7 +2166,7 @@ export async function getContractsData(): Promise<{
   const { data: unionContributionRows, error: unionContributionsError } = await supabase
     .from("contract_union_contributions")
     .select(
-      "id, contract_id, purchase_id, fund_name_snapshot, vendor_number_snapshot, contribution_type, percentage, calculation_base, amount, due_date, ap_receive_by, mail_by, status, tax_id_last4_snapshot, check_request_submitted_on, check_paid_on"
+      "id, contract_id, purchase_id, fund_name_snapshot, vendor_number_snapshot, contribution_type, percentage, calculation_base, amount, due_date, ap_receive_by, mail_by, status, tax_id_last4_snapshot, check_request_submitted_on, check_paid_on, automation_status, automation_sent_at, automation_last_error"
     )
     .order("created_at", { ascending: true });
   if (unionContributionsError) throw unionContributionsError;
@@ -2239,6 +2251,11 @@ export async function getContractsData(): Promise<{
       compensationBasis: ((row.compensation_basis as string | null) ?? "flat_fee") as HiringCompensationBasis,
       hrOnboardingStatus: ((row.hr_onboarding_status as string | null) ?? "not_required") as HrOnboardingStatus,
       hrOnboardingReference: (row.hr_onboarding_reference as string | null) ?? null,
+      w9AttachmentPath: (row.w9_attachment_path as string | null) ?? null,
+      employmentStartDate: (row.employment_start_date as string | null) ?? null,
+      employmentEndDate: (row.employment_end_date as string | null) ?? null,
+      payrollFirstPayDate: (row.payroll_first_pay_date as string | null) ?? null,
+      payrollFrequency: "biweekly",
       notes: (row.notes as string | null) ?? null,
       createdAt: row.created_at as string
     };
@@ -2263,7 +2280,10 @@ export async function getContractsData(): Promise<{
     vendorAddress3: (row.vendor_address3 as string | null) ?? null,
     taxIdLast4: (row.tax_id_last4 as string | null) ?? null,
     checkRequestSubmittedOn: (row.check_request_submitted_on as string | null) ?? null,
-    checkPaidOn: (row.check_paid_on as string | null) ?? null
+    checkPaidOn: (row.check_paid_on as string | null) ?? null,
+    automationStatus: ((row.automation_status as string | null) ?? "not_ready") as CheckRequestAutomationStatus,
+    automationSentAt: (row.automation_sent_at as string | null) ?? null,
+    automationLastError: (row.automation_last_error as string | null) ?? null
   }));
 
   const unionContributions: ContractUnionContributionRow[] = (unionContributionRows ?? []).map((row) => ({
@@ -2282,7 +2302,10 @@ export async function getContractsData(): Promise<{
     status: ((row.status as string | null) ?? "planned") as ContractInstallmentStatus,
     taxIdLast4: (row.tax_id_last4_snapshot as string | null) ?? null,
     checkRequestSubmittedOn: (row.check_request_submitted_on as string | null) ?? null,
-    checkPaidOn: (row.check_paid_on as string | null) ?? null
+    checkPaidOn: (row.check_paid_on as string | null) ?? null,
+    automationStatus: ((row.automation_status as string | null) ?? "not_ready") as CheckRequestAutomationStatus,
+    automationSentAt: (row.automation_sent_at as string | null) ?? null,
+    automationLastError: (row.automation_last_error as string | null) ?? null
   }));
 
   const projectOptions: ProcurementProjectOption[] = projects.map((project) => ({

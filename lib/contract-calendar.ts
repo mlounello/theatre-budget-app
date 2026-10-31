@@ -10,6 +10,7 @@ type CalendarInstallment = {
   status: string | null;
   due_date: string | null;
   mail_by: string | null;
+  automation_status: string | null;
 };
 
 type CalendarContract = {
@@ -115,7 +116,11 @@ export function renderContractCalendar(
       const project = contractProjectLabel(contract);
       const installmentNumber = Number(installment.installment_number ?? 1);
       const details = [
-        `Put the check request in inter-office mail for ${contract.contractor_name}.`,
+        installment.automation_status === "ready"
+          ? `The reviewed check request for ${contract.contractor_name} is scheduled to be emailed automatically today.`
+          : installment.automation_status === "sent"
+            ? `The check request for ${contract.contractor_name} was sent automatically.`
+            : `Review this check request and mark it READY for automatic email submission.`,
         `Production: ${project}`,
         contract.contract_role ? `Role: ${contract.contract_role}` : null,
         `Installment: ${installmentNumber}`,
@@ -131,7 +136,7 @@ export function renderContractCalendar(
         `DTSTAMP:${stamp}`,
         `DTSTART;VALUE=DATE:${compactDate(installment.mail_by)}`,
         `DTEND;VALUE=DATE:${compactDate(addDaysYmd(installment.mail_by, 1))}`,
-        `SUMMARY:${escapeIcsText(`Mail check request: ${contract.contractor_name}`)}`,
+        `SUMMARY:${escapeIcsText(`${installment.automation_status === "ready" ? "Auto-send" : "Prepare"} check request: ${contract.contractor_name}`)}`,
         `DESCRIPTION:${escapeIcsText(details)}`,
         `CATEGORIES:${escapeIcsText("Contracts,Check Requests")}`,
         "TRANSP:TRANSPARENT",
@@ -149,7 +154,7 @@ export async function getContractCalendarFeed(): Promise<string> {
   const { data, error } = await supabase
     .from("contracts")
     .select(
-      "id, contractor_name, contract_role, project_id, projects!contracts_project_id_fkey(name, season), contract_installments(id, installment_number, status, due_date, mail_by)"
+      "id, contractor_name, contract_role, project_id, projects!contracts_project_id_fkey(name, season), contract_installments(id, installment_number, status, due_date, mail_by, automation_status)"
     )
     .order("created_at", { ascending: true });
 

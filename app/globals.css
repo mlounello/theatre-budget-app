@@ -4429,3 +4429,25 @@ th {
     content: none;
   }
 }
+.checkAutomationControl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .4rem;
+}
+
+.checkAutomationPill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: .3rem .65rem;
+  font-size: .76rem;
+  font-weight: 800;
+  background: #eef1ef;
+  color: #43524b;
+}
+
+.checkAutomationPill.is-ready { background: #fff2b8; color: #6c5300; }
+.checkAutomationPill.is-sending { background: #dcecff; color: #174a7b; }
+.checkAutomationPill.is-sent { background: #d9f4e3; color: #14613a; }
+.checkAutomationPill.is-failed { background: #ffe0e0; color: #9b2424; }

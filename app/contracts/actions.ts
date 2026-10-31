@@ -99,6 +99,47 @@ function parseInstallmentCount(value: FormDataEntryValue | null): number {
   return 1;
 }
 
+function payrollSchedule(formData: FormData, engagementType: EngagementType): string[] | null {
+  if (engagementType !== "temporary_employee") return null;
+  const start = nullableFormText(formData, "employmentStartDate");
+  const end = nullableFormText(formData, "employmentEndDate");
+  const firstPay = nullableFormText(formData, "payrollFirstPayDate");
+  if (!start || !end || !firstPay) throw new Error("Temporary employees require start, end, and first pay dates.");
+  if (end < start) throw new Error("Employment end date must be on or after the start date.");
+  if (firstPay < start || firstPay > end) throw new Error("The first pay date must fall within the employment dates.");
+  const dates: string[] = [];
+  const cursor = new Date(`${firstPay}T12:00:00Z`);
+  const last = new Date(`${end}T12:00:00Z`);
+  while (cursor <= last && dates.length < 40) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 14);
+  }
+  if (dates.length === 0) throw new Error("The employment dates do not contain a payroll date.");
+  return dates;
+}
+
+async function uploadContractW9(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  contractId: string,
+  formData: FormData,
+  existingPath: string | null = null
+): Promise<string | null> {
+  const file = formData.get("w9Attachment");
+  if (!(file instanceof File) || file.size === 0) return existingPath;
+  if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+    throw new Error("The W-9 must be uploaded as a PDF.");
+  }
+  if (file.size > 10 * 1024 * 1024) throw new Error("The W-9 PDF must be 10 MB or smaller.");
+  const path = `${contractId}/${Date.now()}-w9.pdf`;
+  const { error } = await supabase.storage.from("contract-w9s").upload(path, file, {
+    contentType: "application/pdf",
+    upsert: false
+  });
+  if (error) throw new Error(`W-9 upload failed: ${error.message}`);
+  if (existingPath && existingPath !== path) await supabase.storage.from("contract-w9s").remove([existingPath]);
+  return path;
+}
+
 function parseWorkflowStatus(value: FormDataEntryValue | null): ContractWorkflowStatus {
   const raw = String(value ?? "w9_requested").trim().toLowerCase();
   if (raw === "contract_sent" || raw === "contract_signed_returned" || raw === "siena_signed") return raw;
@@ -640,7 +681,8 @@ export async function createContractAction(
     const contractValue = parseMoney(formData.get("contractValue"));
     const engagementType = parseEngagementType(formData.get("engagementType"));
     const compensationBasis = parseCompensationBasis(formData.get("compensationBasis"));
-    const installmentCount = parseInstallmentCount(formData.get("installmentCount"));
+    const payrollDates = payrollSchedule(formData, engagementType);
+    const installmentCount = payrollDates?.length ?? parseInstallmentCount(formData.get("installmentCount"));
     const notes = String(formData.get("notes") ?? "").trim();
     const guestTax = guestArtist
       ? { encrypted: guestArtist.tax_id_encrypted, last4: guestArtist.tax_id_last4 }
@@ -724,23 +766,34 @@ export async function createContractAction(
         compensation_basis: compensationBasis,
         hr_onboarding_status: parseHrOnboardingStatus(formData.get("hrOnboardingStatus"), engagementType),
         hr_onboarding_reference: nullableFormText(formData, "hrOnboardingReference"),
+        employment_start_date: nullableFormText(formData, "employmentStartDate"),
+        employment_end_date: nullableFormText(formData, "employmentEndDate"),
+        payroll_first_pay_date: nullableFormText(formData, "payrollFirstPayDate"),
+        payroll_frequency: "biweekly",
         union_agreement_id: unionCalculation?.agreementId ?? null,
         union_agreement_name_snapshot: unionCalculation?.agreementName ?? null,
         union_signature_status: "not_started",
         ...contractCheckRequestValues,
         workflow_status: "w9_requested",
         notes: notes || null
-      })
+      } as never)
       .select("id")
       .single();
     if (contractError || !contract) return err(contractError?.message ?? "Could not create contract.");
+    const w9AttachmentPath = await uploadContractW9(supabase, contract.id as string, formData);
+    if (w9AttachmentPath) {
+      const { error: w9UpdateError } = await supabase.from("contracts").update({ w9_attachment_path: w9AttachmentPath } as never).eq("id", contract.id as string);
+      if (w9UpdateError) return err(w9UpdateError.message);
+    }
     await syncContractProductions(supabase, contract.id as string, productionProjectIds);
 
     for (let index = 0; index < installmentAmounts.length; index += 1) {
       const installmentNumber = index + 1;
       const installmentAmount = installmentAmounts[index];
       const installmentTitle = `${contractorName} Contract Payment ${installmentNumber}/${installmentCount}`;
-      const scheduleValues = installmentScheduleValues(formData, installmentNumber);
+      const scheduleValues = payrollDates
+        ? { due_date: payrollDates[index], ap_receive_by: null, mail_by: null }
+        : installmentScheduleValues(formData, installmentNumber);
 
       const { data: purchase, error: purchaseError } = await supabase
         .from("purchases")
@@ -907,7 +960,8 @@ export async function updateContractDetailsAction(
     const contractValue = parseMoney(formData.get("contractValue"));
     const engagementType = parseEngagementType(formData.get("engagementType"));
     const compensationBasis = parseCompensationBasis(formData.get("compensationBasis"));
-    const installmentCount = parseInstallmentCount(formData.get("installmentCount"));
+    const payrollDates = payrollSchedule(formData, engagementType);
+    const installmentCount = payrollDates?.length ?? parseInstallmentCount(formData.get("installmentCount"));
     const notes = String(formData.get("notes") ?? "").trim();
 
     if (!contractId) return err("Contract id is required.");
@@ -925,7 +979,7 @@ export async function updateContractDetailsAction(
 
     const { data: existing, error: existingError } = await supabase
       .from("contracts")
-      .select("id, project_id, installment_count, production_category_id, tax_id_encrypted, tax_id_last4, is_union, union_agreement_id")
+      .select("id, project_id, installment_count, production_category_id, tax_id_encrypted, tax_id_last4, is_union, union_agreement_id, w9_attachment_path")
       .eq("id", contractId)
       .single();
     if (existingError || !existing) return err("Contract not found.");
@@ -961,6 +1015,12 @@ export async function updateContractDetailsAction(
     const checkDefaults = guestCheckDefaults(guestArtist);
     const contractCheckRequestValues = checkRequestValues(formData, taxSource, checkDefaults);
     const installmentCheckRequestDefaults = installmentCheckRequestValues(formData, taxSource, checkDefaults);
+    const w9AttachmentPath = await uploadContractW9(
+      supabase,
+      contractId,
+      formData,
+      (existing.w9_attachment_path as string | null) ?? null
+    );
 
     const { data: reportingBudgetLineId, error: lineError } = await supabase.rpc("ensure_project_category_line", {
       p_project_id: projectId,
@@ -1045,11 +1105,16 @@ export async function updateContractDetailsAction(
         compensation_basis: compensationBasis,
         hr_onboarding_status: parseHrOnboardingStatus(formData.get("hrOnboardingStatus"), engagementType),
         hr_onboarding_reference: nullableFormText(formData, "hrOnboardingReference"),
+        w9_attachment_path: w9AttachmentPath,
+        employment_start_date: nullableFormText(formData, "employmentStartDate"),
+        employment_end_date: nullableFormText(formData, "employmentEndDate"),
+        payroll_first_pay_date: nullableFormText(formData, "payrollFirstPayDate"),
+        payroll_frequency: "biweekly",
         union_agreement_id: unionCalculation?.agreementId ?? null,
         union_agreement_name_snapshot: unionCalculation?.agreementName ?? null,
         ...contractCheckRequestValues,
         notes: notes || null
-      })
+      } as never)
       .eq("id", contractId)
       .select("id")
       .maybeSingle();
@@ -1079,7 +1144,9 @@ export async function updateContractDetailsAction(
       if (existingNumbers.has(installmentNumber)) continue;
       const installmentAmount = parts[installmentNumber - 1] ?? 0;
       const installmentTitle = `${contractorName} Contract Payment ${installmentNumber}/${installmentCount}`;
-      const scheduleValues = installmentScheduleValues(formData, installmentNumber);
+      const scheduleValues = payrollDates
+        ? { due_date: payrollDates[installmentNumber - 1], ap_receive_by: null, mail_by: null }
+        : installmentScheduleValues(formData, installmentNumber);
 
       const { data: purchase, error: purchaseError } = await supabase
         .from("purchases")
@@ -1157,8 +1224,22 @@ export async function updateContractDetailsAction(
       const installmentUpdate = {
         installment_amount: installmentAmount,
         payment_channel: engagementType === "temporary_employee" ? "payroll" : "check_request",
-        ...installmentScheduleValues(formData, Number(installment.installment_number ?? 1)),
-        ...installmentCheckRequestDefaults
+        ...(payrollDates
+          ? {
+              due_date: payrollDates[Number(installment.installment_number ?? 1) - 1] ?? null,
+              ap_receive_by: null,
+              mail_by: null
+            }
+          : installmentScheduleValues(formData, Number(installment.installment_number ?? 1))),
+        ...installmentCheckRequestDefaults,
+        ...(installmentStatus === "planned"
+          ? {
+              automation_status: "not_ready",
+              automation_ready_at: null,
+              automation_ready_by_user_id: null,
+              automation_last_error: null
+            }
+          : {})
       };
       const nextOrderDate = contractPaymentOrderDate(installmentUpdate);
       let { data: installmentUpdated, error: installmentUpdateError } = await supabase
@@ -1305,6 +1386,13 @@ export async function updateContractWorkflowAction(
     if (updateError) return err(updateError.message);
     if (!updated?.id) return err("Contract workflow update was not applied.");
 
+    if (workflowStatus !== "siena_signed") {
+      await Promise.all([
+        supabase.from("contract_installments").update({ automation_status: "not_ready", automation_ready_at: null, automation_ready_by_user_id: null }).eq("contract_id", contractId).eq("automation_status", "ready"),
+        supabase.from("contract_union_contributions").update({ automation_status: "not_ready", automation_ready_at: null, automation_ready_by_user_id: null }).eq("contract_id", contractId).eq("automation_status", "ready")
+      ]);
+    }
+
     revalidatePath("/contracts");
     return ok("Contract workflow updated.");
   } catch (error) {
@@ -1423,6 +1511,63 @@ export async function updateContractInstallmentStatusAction(
   }
 }
 
+export async function updateCheckRequestAutomationAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return err("You must be signed in.");
+    const kind = String(formData.get("kind") ?? "");
+    const itemId = String(formData.get("itemId") ?? "").trim();
+    const ready = String(formData.get("ready") ?? "false") === "true";
+    if (!itemId || !["installment", "union"].includes(kind)) return err("Payment item is required.");
+
+    const table = kind === "installment" ? "contract_installments" : "contract_union_contributions";
+    const { data: item, error: itemError } = await supabase
+      .from(table)
+      .select("id, status, mail_by, contracts!inner(id, project_id, workflow_status, union_signature_status, engagement_type, contractor_employee_id, w9_attachment_path)")
+      .eq("id", itemId)
+      .single();
+    if (itemError || !item) return err("Payment item was not found.");
+    const join = item.contracts as Record<string, unknown> | Array<Record<string, unknown>> | null;
+    const contract = Array.isArray(join) ? join[0] : join;
+    const projectId = String(contract?.project_id ?? "");
+    if (!projectId) return err("Project could not be resolved.");
+    await ensurePmOrAdmin(projectId, user.id);
+
+    if (ready) {
+      if (item.status !== "planned") return err("Only an unsubmitted check request can be marked READY.");
+      const engagement = String(contract?.engagement_type ?? "independent_contractor");
+      if (!["independent_contractor", "union_freelance_artist"].includes(engagement)) {
+        return err("Employees are paid through payroll and cannot be sent to Accounts Payable.");
+      }
+      if (contract?.workflow_status !== "siena_signed") return err("The agreement must be fully executed before this can be READY.");
+      if (engagement === "union_freelance_artist" && contract?.union_signature_status !== "complete") {
+        return err("The union agreement must be complete before this can be READY.");
+      }
+      if (!String(item.mail_by ?? "").trim()) return err("Add a check-request send date before marking this READY.");
+      if (!String(contract?.contractor_employee_id ?? "").trim() && !String(contract?.w9_attachment_path ?? "").trim()) {
+        return err("Upload the artist's W-9 because no Banner / Vendor ID is assigned.");
+      }
+    }
+
+    const { error: updateError } = await supabase.from(table).update({
+      automation_status: ready ? "ready" : "not_ready",
+      automation_ready_at: ready ? new Date().toISOString() : null,
+      automation_ready_by_user_id: ready ? user.id : null,
+      automation_last_error: null
+    }).eq("id", itemId);
+    if (updateError) return err(updateError.message);
+    revalidatePath("/contracts");
+    return ok(ready ? "Check request is READY and will send on its scheduled date." : "Automatic sending removed.");
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not update automatic sending."));
+  }
+}
+
 export async function updateUnionSignatureStatusAction(
   prevState: ActionState = emptyState,
   formData: FormData
@@ -1449,6 +1594,12 @@ export async function updateUnionSignatureStatusAction(
       .update({ union_signature_status: status })
       .eq("id", contractId);
     if (updateError) return err(updateError.message);
+    if (status !== "complete") {
+      await Promise.all([
+        supabase.from("contract_installments").update({ automation_status: "not_ready", automation_ready_at: null, automation_ready_by_user_id: null }).eq("contract_id", contractId).eq("automation_status", "ready"),
+        supabase.from("contract_union_contributions").update({ automation_status: "not_ready", automation_ready_at: null, automation_ready_by_user_id: null }).eq("contract_id", contractId).eq("automation_status", "ready")
+      ]);
+    }
     revalidatePath("/contracts");
     return ok("Union signature status updated.");
   } catch (error) {
@@ -1535,7 +1686,7 @@ export async function updateContractInstallmentCheckRequestAction(
 
     const { data: installment, error: installmentError } = await supabase
       .from("contract_installments")
-      .select("id, contract_id, purchase_id, tax_id_encrypted, tax_id_last4, contracts!inner(project_id)")
+      .select("id, contract_id, purchase_id, status, tax_id_encrypted, tax_id_last4, contracts!inner(project_id)")
       .eq("id", installmentId)
       .single();
     if (installmentError || !installment) return err("Installment not found.");
@@ -1552,7 +1703,15 @@ export async function updateContractInstallmentCheckRequestAction(
       ...installmentCheckRequestValues(formData, {
         encrypted: (installment.tax_id_encrypted as string | null) ?? null,
         last4: (installment.tax_id_last4 as string | null) ?? null
-      })
+      }),
+      ...(((installment.status as string | null) ?? "planned") === "planned"
+        ? {
+            automation_status: "not_ready",
+            automation_ready_at: null,
+            automation_ready_by_user_id: null,
+            automation_last_error: null
+          }
+        : {})
     };
 
     const { data: updated, error: updateError } = await supabase

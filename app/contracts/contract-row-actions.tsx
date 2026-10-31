@@ -335,7 +335,7 @@ export function ContractRowActions({
                         setEditIsUnion(next === "union_freelance_artist");
                       }}
                     >
-                      <option value="independent_contractor">Independent Contractor Agreement</option>
+                      <option value="independent_contractor">ICA-B Independent Contractor Agreement</option>
                       <option value="union_freelance_artist">Union + Freelance Artist Agreement</option>
                       <option value="temporary_employee">Temporary Employee through HR</option>
                     </select>
@@ -359,9 +359,16 @@ export function ContractRowActions({
                         </select>
                       </label>
                       <label>HR Reference<input name="hrOnboardingReference" value={editHrOnboardingReference} onChange={(event) => setEditHrOnboardingReference(event.target.value)} /></label>
+                      <label>Employment Start Date<input name="employmentStartDate" type="date" defaultValue={contract.employmentStartDate ?? ""} required /></label>
+                      <label>Employment End Date<input name="employmentEndDate" type="date" defaultValue={contract.employmentEndDate ?? ""} required /></label>
+                      <label>
+                        First Biweekly Pay Date
+                        <input name="payrollFirstPayDate" type="date" defaultValue={contract.payrollFirstPayDate ?? ""} required />
+                        <span className="helperText">Equal paychecks are scheduled every 14 days through the end date.</span>
+                      </label>
                     </>
                   ) : null}
-                  <label>
+                  {editEngagementType !== "temporary_employee" ? <label>
                     Payment Installments
                     <select
                       name="installmentCount"
@@ -373,7 +380,7 @@ export function ContractRowActions({
                       <option value="3">3</option>
                       <option value="4">4</option>
                     </select>
-                  </label>
+                  </label> : null}
                   <label>
                     Contract Number
                     <input
@@ -566,8 +573,17 @@ export function ContractRowActions({
                   <label className="checkboxLabel drawerFieldWide">
                     <input name="clearTaxId" type="checkbox" /> Clear saved Tax ID / SSN
                   </label>
+                  {editEngagementType !== "temporary_employee" ? (
+                    <label className="drawerFieldWide">
+                      W-9 PDF
+                      <input name="w9Attachment" type="file" accept="application/pdf,.pdf" />
+                      <span className="helperText">
+                        {contract.w9AttachmentPath ? "W-9 on file. Upload a new PDF to replace it." : "Required before READY when no Banner / Vendor ID is assigned."}
+                      </span>
+                    </label>
+                  ) : null}
                   <div className="contractInstallmentDates drawerFieldWide">
-                    {Array.from({ length: Number(editInstallmentCount) || 1 }, (_, index) => {
+                    {editEngagementType !== "temporary_employee" ? Array.from({ length: Number(editInstallmentCount) || 1 }, (_, index) => {
                       const installmentNumber = index + 1;
                       const dueDate = editDueDates[installmentNumber] ?? "";
                       const schedule = calculateCheckRequestSchedule(dueDate);
@@ -589,7 +605,7 @@ export function ContractRowActions({
                           ) : null}
                         </label>
                       );
-                    })}
+                    }) : <p className="helperText">Payroll dates are generated from the biweekly schedule after saving.</p>}
                   </div>
                 </div>
               </AccordionSection>

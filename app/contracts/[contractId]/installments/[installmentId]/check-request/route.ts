@@ -5,6 +5,7 @@ import { PDFCheckBox, PDFDocument, PDFTextField } from "pdf-lib";
 import { getAccessContext } from "@/lib/access";
 import { decryptSensitiveValue } from "@/lib/sensitive-encryption";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { createSupabaseAdminClient } from "@/lib/supabase-admin";
 
 export const runtime = "nodejs";
 
@@ -88,14 +89,16 @@ function buildDescription(params: {
 }
 
 export async function GET(_request: Request, { params }: RouteParams) {
-  const access = await getAccessContext();
-  if (!access.userId) return NextResponse.redirect(new URL("/login", _request.url));
-  if (!["admin", "project_manager"].includes(access.role)) {
+  const cronSecret = process.env.CRON_SECRET?.trim();
+  const internal = Boolean(cronSecret && _request.headers.get("authorization") === `Bearer ${cronSecret}`);
+  const access = internal ? null : await getAccessContext();
+  if (!internal && !access?.userId) return NextResponse.redirect(new URL("/login", _request.url));
+  if (!internal && !["admin", "project_manager"].includes(access?.role ?? "")) {
     return new NextResponse("Forbidden", { status: 403 });
   }
 
   const { contractId, installmentId } = await params;
-  const supabase = await getSupabaseServerClient();
+  const supabase = internal ? createSupabaseAdminClient() : await getSupabaseServerClient();
 
   let { data, error } = await supabase
     .from("contract_installments")
@@ -143,7 +146,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
       }
     | null;
   const projectId = contractJoin?.project_id ?? "";
-  if (access.role !== "admin" && !access.manageableProjectIds.has(projectId)) {
+  if (!internal && access?.role !== "admin" && !access?.manageableProjectIds.has(projectId)) {
     return new NextResponse("Forbidden", { status: 403 });
   }
 

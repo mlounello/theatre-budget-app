@@ -5,6 +5,7 @@ import { ContractCalendarSubscription } from "@/app/contracts/contract-calendar-
 import { ContractInstallmentControl, ContractWorkflowControl } from "@/app/contracts/contract-inline-actions";
 import { StatusPill, type StatusTone } from "@/components/ui/status-controls";
 import { InstallmentCheckRequestActions } from "@/app/contracts/installment-check-request-actions";
+import { CheckRequestAutomationControl } from "@/app/contracts/check-request-automation-control";
 import { UnionContributionStatusControl, UnionSignatureControl } from "@/app/contracts/union-controls";
 import { formatCurrency } from "@/lib/format";
 import { getContractsData } from "@/lib/db";
@@ -274,6 +275,7 @@ export default async function ContractsPage({
                     <StatusPill tone={installmentTone(installment.status)}>{installmentLabel(installment.status, installment.paymentChannel)}</StatusPill>
                     <div className="contractCheckActions">
                       {canManageContracts ? <ContractInstallmentControl installment={installment} /> : null}
+                      {canManageContracts && installment.paymentChannel !== "payroll" ? <CheckRequestAutomationControl kind="installment" itemId={installment.id} status={installment.automationStatus} sentAt={installment.automationSentAt} error={installment.automationLastError} /> : null}
                       {canManageContracts && installment.paymentChannel !== "payroll" ? <InstallmentCheckRequestActions installment={installment} foapalOptions={foapalOptions} /> : null}
                       {installment.paymentChannel !== "payroll" ? <a className="tinyButton" href={`/contracts/${contract.id}/installments/${installment.id}/check-request`}>PDF</a> : null}
                       <a className="tinyButton" href={`/contracts?fiscalYearId=${encodeURIComponent(selectedFiscalYearId)}&hiring_view=payments&ct_edit=${encodeURIComponent(contract.id)}`}>Open Hire</a>
@@ -300,6 +302,7 @@ export default async function ContractsPage({
                     <StatusPill tone={installmentTone(contribution.status)}>{installmentLabel(contribution.status)}</StatusPill>
                     <div className="contractCheckActions">
                       {canManageContracts ? <UnionContributionStatusControl contribution={contribution} /> : null}
+                      {canManageContracts ? <CheckRequestAutomationControl kind="union" itemId={contribution.id} status={contribution.automationStatus} sentAt={contribution.automationSentAt} error={contribution.automationLastError} /> : null}
                       <a className="tinyButton" href={`/contracts/${contract.id}/union-contributions/${contribution.id}/check-request`}>Separate PDF</a>
                       <a className="tinyButton" href={`/contracts?fiscalYearId=${encodeURIComponent(selectedFiscalYearId)}&hiring_view=payments&ct_edit=${encodeURIComponent(contract.id)}`}>Open Hire</a>
                     </div>
@@ -450,6 +453,7 @@ export default async function ContractsPage({
                                 <div className="contractCheckActions">
                                   <ContractInstallmentControl installment={row} />
                                   {contract.engagementType !== "temporary_employee" ? <>
+                                    <CheckRequestAutomationControl kind="installment" itemId={row.id} status={row.automationStatus} sentAt={row.automationSentAt} error={row.automationLastError} />
                                     <InstallmentCheckRequestActions installment={row} foapalOptions={foapalOptions} />
                                     <a className="tinyButton" href={`/contracts/${contract.id}/installments/${row.id}/check-request`}>PDF</a>
                                   </> : null}
@@ -483,6 +487,7 @@ export default async function ContractsPage({
                                   {canManageContracts ? (
                                     <div className="contractCheckActions">
                                       <UnionContributionStatusControl contribution={contribution} />
+                                      <CheckRequestAutomationControl kind="union" itemId={contribution.id} status={contribution.automationStatus} sentAt={contribution.automationSentAt} error={contribution.automationLastError} />
                                       <a
                                         className="tinyButton"
                                         href={`/contracts/${contract.id}/union-contributions/${contribution.id}/check-request`}
