@@ -1208,6 +1208,137 @@ export async function addPurchaseInvoiceTransactionAction(
   }
 }
 
+type ImportedInvoiceTransaction = {
+  sourceLineKey: string;
+  purchaseAllocationId: string;
+  documentNumber: string;
+  transactionDate: string;
+  description?: string;
+  amount: number;
+};
+
+export async function importPurchaseInvoiceTransactionsAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) return err("You must be signed in.");
+
+    const purchaseId = String(formData.get("purchaseId") ?? "").trim();
+    const rowsJson = String(formData.get("rowsJson") ?? "").trim();
+    if (!purchaseId) return err("PO is required.");
+    if (!rowsJson) return err("Choose at least one CSV line to import.");
+
+    let rawRows: unknown;
+    try {
+      rawRows = JSON.parse(rowsJson);
+    } catch {
+      return err("The selected CSV lines could not be read.");
+    }
+    if (!Array.isArray(rawRows) || rawRows.length === 0) return err("Choose at least one CSV line to import.");
+    if (rawRows.length > 2000) return err("Import no more than 2,000 lines at once.");
+
+    await ensurePurchasePmOrAdminAccess(supabase, user.id, purchaseId);
+    const { data: purchase, error: purchaseError } = await supabase
+      .from("purchases")
+      .select("id, request_type, procurement_status, project_id")
+      .eq("id", purchaseId)
+      .single();
+    if (purchaseError || !purchase) return err("PO not found.");
+    if (purchase.request_type !== "requisition") return err("Invoice lines are available only for requisition POs.");
+    if (purchase.procurement_status === "cancelled") return err("Reopen this PO before importing financial lines.");
+
+    const rows: ImportedInvoiceTransaction[] = [];
+    for (const rawRow of rawRows) {
+      if (!rawRow || typeof rawRow !== "object") return err("One of the selected CSV lines is invalid.");
+      const candidate = rawRow as Record<string, unknown>;
+      const sourceLineKey = String(candidate.sourceLineKey ?? "").trim().slice(0, 1500);
+      const purchaseAllocationId = String(candidate.purchaseAllocationId ?? "").trim();
+      const documentNumber = String(candidate.documentNumber ?? "").trim().toUpperCase();
+      const transactionDate = parseDateInput(String(candidate.transactionDate ?? ""));
+      const description = String(candidate.description ?? "").trim();
+      const amount = Number(candidate.amount);
+      if (!sourceLineKey || !purchaseAllocationId || !documentNumber || !transactionDate || !Number.isFinite(amount) || amount === 0) {
+        return err("Every selected CSV line needs a document number, date, amount, and budget allocation.");
+      }
+      rows.push({
+        sourceLineKey,
+        purchaseAllocationId,
+        documentNumber,
+        transactionDate,
+        description: description || undefined,
+        amount: Math.round(amount * 100) / 100
+      });
+    }
+
+    const allocationIds = [...new Set(rows.map((row) => row.purchaseAllocationId))];
+    const { data: allocations, error: allocationsError } = await supabase
+      .from("purchase_allocations")
+      .select("id")
+      .eq("purchase_id", purchaseId)
+      .in("id", allocationIds);
+    if (allocationsError) return err(allocationsError.message);
+    if ((allocations ?? []).length !== allocationIds.length) return err("One or more selected allocations do not belong to this PO.");
+
+    const existingKeys = new Set<string>();
+    for (let index = 0; index < rows.length; index += 25) {
+      const keys = rows.slice(index, index + 25).map((row) => row.sourceLineKey);
+      const { data: existing, error: existingError } = await supabase
+        .from("purchase_invoice_transactions")
+        .select("source_line_key")
+        .eq("purchase_id", purchaseId)
+        .in("source_line_key", keys);
+      if (existingError) return err(existingError.message);
+      for (const entry of existing ?? []) {
+        if (entry.source_line_key) existingKeys.add(entry.source_line_key as string);
+      }
+    }
+
+    const newRows = rows.filter((row) => !existingKeys.has(row.sourceLineKey));
+    let importedCount = 0;
+    let duplicateCount = rows.length - newRows.length;
+    for (const row of newRows) {
+      const { error } = await supabase.from("purchase_invoice_transactions").insert({
+        purchase_id: purchaseId,
+        purchase_allocation_id: row.purchaseAllocationId,
+        document_number: row.documentNumber,
+        transaction_date: row.transactionDate,
+        description: row.description ?? null,
+        amount: row.amount,
+        source_line_key: row.sourceLineKey,
+        created_by_user_id: user.id
+      });
+      if (error?.code === "23505") {
+        duplicateCount += 1;
+        continue;
+      }
+      if (error) return err(`Imported ${importedCount} line${importedCount === 1 ? "" : "s"}, then stopped: ${error.message}`);
+      importedCount += 1;
+    }
+
+    if (importedCount > 0) {
+      const institutionalSyncError = await syncInstitutionalBudget(supabase, purchaseId, user.id);
+      if (institutionalSyncError) return institutionalSyncError;
+    }
+
+    revalidatePath("/procurement");
+    revalidatePath("/requests");
+    revalidatePath("/");
+    if (purchase.project_id) revalidatePath(`/projects/${purchase.project_id as string}`);
+    const duplicateMessage = duplicateCount > 0
+      ? ` ${duplicateCount} duplicate line${duplicateCount === 1 ? " was" : "s were"} already present and skipped.`
+      : "";
+    return ok(`${importedCount} CSV line${importedCount === 1 ? "" : "s"} imported.${duplicateMessage}`);
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not import the invoice CSV lines."));
+  }
+}
+
 export async function voidPurchaseInvoiceTransactionAction(
   prevState: ActionState = emptyState,
   formData: FormData

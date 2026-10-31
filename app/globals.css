@@ -2076,12 +2076,165 @@ th {
   gap: 0.3rem;
 }
 
+.invoiceTransactionForm input:not([type="hidden"]),
+.invoiceTransactionForm select,
+.invoiceCsvUpload input,
+.invoiceCsvRow select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: inset 0 1px 2px rgb(15 61 46 / 5%);
+  font: inherit;
+}
+
+.invoiceTransactionForm input:focus,
+.invoiceTransactionForm select:focus,
+.invoiceCsvUpload input:focus,
+.invoiceCsvRow select:focus {
+  border-color: var(--siena-green);
+  box-shadow: 0 0 0 3px rgb(0 109 74 / 13%);
+  outline: none;
+}
+
 .invoiceTransactionAllocationField,
 .invoiceTransactionDescriptionField {
   grid-column: span 2;
 }
 
 .invoiceTransactionForm button {
+  justify-self: start;
+}
+
+.invoiceAutoAllocation {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #cbd9d1;
+  border-radius: 10px;
+  background: #f1f8f3;
+  color: var(--green-900);
+}
+
+.invoiceCsvImporter {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.invoiceCsvUpload {
+  display: grid;
+  gap: 0.3rem;
+  max-width: 520px;
+}
+
+.invoiceCsvUpload input {
+  padding: 0.35rem;
+}
+
+.invoiceCsvUpload input::file-selector-button {
+  margin-right: 0.65rem;
+  padding: 0.45rem 0.7rem;
+  border: 1px solid var(--siena-green);
+  border-radius: 8px;
+  background: #f1f8f3;
+  color: var(--green-900);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+
+.invoiceCsvToolbar,
+.invoiceCsvImportAction {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 82%, var(--page-background));
+}
+
+.invoiceCsvToolbar > div {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.invoiceCsvGroups {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.invoiceCsvGroup {
+  overflow: hidden;
+  border: 1px solid var(--surface-border);
+  border-radius: 11px;
+  background: var(--surface);
+}
+
+.invoiceCsvGroup > summary,
+.invoiceCsvGroup > summary label {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.invoiceCsvGroup > summary {
+  justify-content: space-between;
+  padding: 0.7rem 0.8rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.invoiceCsvGroup > summary::-webkit-details-marker {
+  display: none;
+}
+
+.invoiceCsvGroup > summary label {
+  cursor: pointer;
+}
+
+.invoiceCsvGroup > summary span,
+.invoiceCsvRow > span {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.invoiceCsvGroup small,
+.invoiceCsvRow small,
+.invoiceCsvAutoAllocation,
+.invoiceCsvImportAction > span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.invoiceCsvRows {
+  border-top: 1px solid var(--surface-border);
+}
+
+.invoiceCsvRow {
+  display: grid;
+  grid-template-columns: auto minmax(140px, 1fr) minmax(190px, 1.4fr) auto;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.8rem;
+}
+
+.invoiceCsvRow + .invoiceCsvRow {
+  border-top: 1px solid #edf1ee;
+}
+
+.invoiceCsvRow select {
+  min-height: 36px;
+  padding-block: 0.35rem;
+}
+
+.invoiceCsvAutoAllocation {
   justify-self: start;
 }
 
@@ -2189,6 +2342,20 @@ th {
   .invoiceTransactionAllocationField,
   .invoiceTransactionDescriptionField {
     grid-column: auto;
+  }
+
+  .invoiceCsvToolbar,
+  .invoiceCsvImportAction {
+    display: grid;
+  }
+
+  .invoiceCsvRow {
+    grid-template-columns: auto 1fr auto;
+  }
+
+  .invoiceCsvRow select,
+  .invoiceCsvAutoAllocation {
+    grid-column: 2 / -1;
   }
 }
 

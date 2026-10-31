@@ -38,10 +38,40 @@ test("transaction manager supports continuous keyboard entry", async () => {
   const table = await read("app/procurement/procurement-table.tsx");
   assert.match(table, /data-invoice-field/);
   assert.match(table, /handleInvoiceEntryKeyDown/);
-  assert.match(table, /invoiceDescriptionInputRef\.current\?\.focus/);
-  assert.match(table, /setInvoiceTransactionDraft\(\(current\) => \(\{ \.\.\.current, description: "", amount: "" \}\)\)/);
+  assert.match(table, /invoiceAmountInputRef\.current\?\.focus/);
+  assert.match(table, /setInvoiceTransactionDraft\(\(current\) => \(\{ \.\.\.current, amount: "" \}\)\)/);
+  assert.match(table, /blankInvoiceTransaction\(defaultInvoiceAllocationId\)/);
+  assert.match(table, /Invoice, date, type, description, and allocation stay in place/);
   assert.match(table, /Next line is ready/);
   assert.match(table, /Enter<\/kbd> save and start the next line/);
+});
+
+test("unsplit POs auto-select their allocation and CSV imports are duplicate-safe", async () => {
+  const [table, importer, actions, migration] = await Promise.all([
+    read("app/procurement/procurement-table.tsx"),
+    read("app/procurement/invoice-csv-import.tsx"),
+    read("app/procurement/actions.ts"),
+    read("supabase/migrations/20261030143000_partial_po_invoice_transactions.sql")
+  ]);
+  assert.match(table, /editingAllocations\.length === 1/);
+  assert.match(table, /invoiceAutoAllocation/);
+  assert.match(table, /<InvoiceCsvImport/);
+  assert.match(importer, /Import Banner CSV/);
+  assert.match(importer, /DOC_CODE/);
+  assert.match(importer, /Select all/);
+  assert.match(importer, /Choose allocation/);
+  assert.match(actions, /importPurchaseInvoiceTransactionsAction/);
+  assert.match(actions, /source_line_key/);
+  assert.match(actions, /error\?\.code === "23505"/);
+  assert.match(migration, /uq_purchase_invoice_transactions_source_line/);
+});
+
+test("invoice entry and CSV controls use the app's rounded field styling", async () => {
+  const styles = await read("app/globals.css");
+  assert.match(styles, /\.invoiceTransactionForm input:not\(\[type="hidden"\]\)/);
+  assert.match(styles, /\.invoiceCsvRow select/);
+  assert.match(styles, /border-radius: 10px/);
+  assert.match(styles, /\.invoiceCsvUpload input::file-selector-button/);
 });
 
 test("partially paid is available without collapsing the YTD and ENC buckets", async () => {

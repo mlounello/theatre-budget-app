@@ -18,6 +18,7 @@ import {
 import { formatCurrency } from "@/lib/format";
 import { SideDrawer } from "@/components/ui/side-drawer";
 import { BulkSelectionToolbar } from "@/components/ui/toolbars";
+import { InvoiceCsvImport } from "@/app/procurement/invoice-csv-import";
 import type {
   AccountCodeOption,
   OrganizationOption,
@@ -54,11 +55,11 @@ const blankAllocation = (): AllocationDraft => ({
   id: crypto.randomUUID(), projectId: "", organizationId: "", productionCategoryId: "", accountCodeId: "", amount: "", note: ""
 });
 
-const blankInvoiceTransaction = (): InvoiceTransactionDraft => ({
+const blankInvoiceTransaction = (purchaseAllocationId = ""): InvoiceTransactionDraft => ({
   documentNumber: "",
   transactionDate: "",
   transactionType: "debit",
-  purchaseAllocationId: "",
+  purchaseAllocationId,
   description: "",
   amount: ""
 });
@@ -499,6 +500,7 @@ export function ProcurementTable({
     () => editingPurchase ? allocations.filter((allocation) => allocation.purchaseId === editingPurchase.id) : [],
     [allocations, editingPurchase]
   );
+  const defaultInvoiceAllocationId = editingAllocations.length === 1 ? editingAllocations[0].id : "";
   const editingInvoiceTransactions = useMemo(
     () => editingPurchase ? invoiceTransactions.filter((transaction) => transaction.purchaseId === editingPurchase.id) : [],
     [invoiceTransactions, editingPurchase]
@@ -550,14 +552,14 @@ export function ProcurementTable({
     if (!addInvoiceTransactionState.ok || !addInvoiceTransactionState.timestamp) return;
     if (lastHandledInvoiceTimestampRef.current === addInvoiceTransactionState.timestamp) return;
     lastHandledInvoiceTimestampRef.current = addInvoiceTransactionState.timestamp;
-    setInvoiceTransactionDraft((current) => ({ ...current, description: "", amount: "" }));
-    window.requestAnimationFrame(() => invoiceDescriptionInputRef.current?.focus());
+    setInvoiceTransactionDraft((current) => ({ ...current, amount: "" }));
+    window.requestAnimationFrame(() => invoiceAmountInputRef.current?.focus());
   }, [addInvoiceTransactionState]);
 
   useEffect(() => {
-    setInvoiceTransactionDraft(blankInvoiceTransaction());
+    setInvoiceTransactionDraft(blankInvoiceTransaction(defaultInvoiceAllocationId));
     lastHandledInvoiceTimestampRef.current = 0;
-  }, [editingPurchase?.id]);
+  }, [editingPurchase?.id, defaultInvoiceAllocationId]);
 
   useEffect(() => {
     if (!deleteState.ok || !deleteState.message) return;
@@ -1315,7 +1317,7 @@ export function ProcurementTable({
             <div className="invoiceTransactionEntryHeader">
               <div>
                 <h3>Add Banner line</h3>
-                <p className="helperText">Enter one debit or credit at a time. Tab moves through the form, arrow keys move through choices, and Enter saves the line.</p>
+                <p className="helperText">Enter one debit or credit at a time. Invoice, date, type, description, and allocation stay in place for the next line; only the amount clears.</p>
               </div>
             </div>
             {addInvoiceTransactionState.message ? (
@@ -1362,18 +1364,25 @@ export function ProcurementTable({
               </label>
               <label className="invoiceTransactionAllocationField">
                 Budget allocation
-                <select
-                  data-invoice-field
-                  name="purchaseAllocationId"
-                  value={invoiceTransactionDraft.purchaseAllocationId}
-                  onChange={(event) => setInvoiceTransactionDraft((current) => ({ ...current, purchaseAllocationId: event.target.value }))}
-                  required
-                >
-                  <option value="">Select project, category, and account</option>
-                  {editingAllocations.map((allocation) => (
-                    <option key={allocation.id} value={allocation.id}>{allocationLabel(allocation)}</option>
-                  ))}
-                </select>
+                {editingAllocations.length === 1 ? (
+                  <>
+                    <input type="hidden" name="purchaseAllocationId" value={editingAllocations[0].id} />
+                    <span className="invoiceAutoAllocation">{allocationLabel(editingAllocations[0])}</span>
+                  </>
+                ) : (
+                  <select
+                    data-invoice-field
+                    name="purchaseAllocationId"
+                    value={invoiceTransactionDraft.purchaseAllocationId}
+                    onChange={(event) => setInvoiceTransactionDraft((current) => ({ ...current, purchaseAllocationId: event.target.value }))}
+                    required
+                  >
+                    <option value="">Select project, category, and account</option>
+                    {editingAllocations.map((allocation) => (
+                      <option key={allocation.id} value={allocation.id}>{allocationLabel(allocation)}</option>
+                    ))}
+                  </select>
+                )}
               </label>
               <label className="invoiceTransactionDescriptionField">
                 Description
@@ -1406,6 +1415,15 @@ export function ProcurementTable({
             </form>
             <p className="invoiceKeyboardHint"><kbd>Tab</kbd> next field <span aria-hidden="true">·</span> <kbd>Shift</kbd> + <kbd>Tab</kbd> previous <span aria-hidden="true">·</span> <kbd>↑</kbd>/<kbd>↓</kbd> choices or adjacent fields <span aria-hidden="true">·</span> <kbd>Enter</kbd> save and start the next line</p>
           </article>
+
+          <InvoiceCsvImport
+            purchaseId={editingPurchase.id}
+            allocations={editingAllocations.map((allocation) => ({
+              id: allocation.id,
+              label: allocationLabel(allocation),
+              accountCode: accountCodeOptions.find((option) => option.id === allocation.accountCodeId)?.code ?? null
+            }))}
+          />
 
           <section className="invoiceTransactionHistory" aria-labelledby="invoice-transaction-history-title">
             <div className="invoiceTransactionHistoryHeader">
