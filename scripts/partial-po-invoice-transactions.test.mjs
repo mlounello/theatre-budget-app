@@ -34,6 +34,16 @@ test("procurement exposes a compact grouped transaction manager", async () => {
   assert.match(actions, /invoiceTrackingEnabled/);
 });
 
+test("transaction manager supports continuous keyboard entry", async () => {
+  const table = await read("app/procurement/procurement-table.tsx");
+  assert.match(table, /data-invoice-field/);
+  assert.match(table, /handleInvoiceEntryKeyDown/);
+  assert.match(table, /invoiceDescriptionInputRef\.current\?\.focus/);
+  assert.match(table, /setInvoiceTransactionDraft\(\(current\) => \(\{ \.\.\.current, description: "", amount: "" \}\)\)/);
+  assert.match(table, /Next line is ready/);
+  assert.match(table, /Enter<\/kbd> save and start the next line/);
+});
+
 test("rollups count simultaneous YTD and encumbrance instead of choosing one status bucket", async () => {
   const [db, institutional] = await Promise.all([
     read("lib/db.ts"),

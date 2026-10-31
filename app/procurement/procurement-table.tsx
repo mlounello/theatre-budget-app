@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useActionState, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   addProcurementReceivingDocAction,
@@ -41,8 +41,26 @@ type AllocationDraft = {
   note: string;
 };
 
+type InvoiceTransactionDraft = {
+  documentNumber: string;
+  transactionDate: string;
+  transactionType: "debit" | "credit";
+  purchaseAllocationId: string;
+  description: string;
+  amount: string;
+};
+
 const blankAllocation = (): AllocationDraft => ({
   id: crypto.randomUUID(), projectId: "", organizationId: "", productionCategoryId: "", accountCodeId: "", amount: "", note: ""
+});
+
+const blankInvoiceTransaction = (): InvoiceTransactionDraft => ({
+  documentNumber: "",
+  transactionDate: "",
+  transactionType: "debit",
+  purchaseAllocationId: "",
+  description: "",
+  amount: ""
 });
 
 const PROCUREMENT_STATUSES = [
@@ -301,6 +319,11 @@ export function ProcurementTable({
   const searchParams = useSearchParams();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [invoiceManagerOpen, setInvoiceManagerOpen] = useState(false);
+  const invoiceDocumentInputRef = useRef<HTMLInputElement | null>(null);
+  const invoiceDescriptionInputRef = useRef<HTMLInputElement | null>(null);
+  const invoiceAmountInputRef = useRef<HTMLInputElement | null>(null);
+  const lastHandledInvoiceTimestampRef = useRef(0);
+  const [invoiceTransactionDraft, setInvoiceTransactionDraft] = useState<InvoiceTransactionDraft>(blankInvoiceTransaction);
   const sortFromUrl = searchParams.get("pr_sort");
   const dirFromUrl = searchParams.get("pr_dir");
   const [sortKey, setSortKey] = useState<SortKey>(
@@ -367,7 +390,7 @@ export function ProcurementTable({
   const [deleteReceivingState, deleteReceivingAction] = useActionState(deleteProcurementReceivingDocAction, initialState);
   const [addReceiptState, addReceiptAction] = useActionState(addProcurementReceiptAction, initialState);
   const [deleteReceiptState, deleteReceiptAction] = useActionState(deleteProcurementReceiptAction, initialState);
-  const [addInvoiceTransactionState, addInvoiceTransactionAction] = useActionState(addPurchaseInvoiceTransactionAction, initialState);
+  const [addInvoiceTransactionState, addInvoiceTransactionAction, addInvoiceTransactionPending] = useActionState(addPurchaseInvoiceTransactionAction, initialState);
   const [voidInvoiceTransactionState, voidInvoiceTransactionAction] = useActionState(voidPurchaseInvoiceTransactionAction, initialState);
 
   const openEdit = useCallback(
@@ -501,6 +524,39 @@ export function ProcurementTable({
     const destination = project?.label ?? organization?.label ?? "Budget allocation";
     return [destination, category?.name, account?.code, formatCurrency(allocation.amount)].filter(Boolean).join(" · ");
   }, [accountCodeOptions, organizationOptions, productionCategoryOptions, projectOptions]);
+
+  const handleInvoiceEntryKeyDown = useCallback((event: ReactKeyboardEvent<HTMLFormElement>) => {
+    if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    const target = event.target as HTMLElement;
+    if (target.tagName === "SELECT") return;
+    const fields = [...event.currentTarget.querySelectorAll<HTMLElement>("[data-invoice-field]")]
+      .filter((field) => !field.hasAttribute("disabled"));
+    const currentIndex = fields.indexOf(target);
+    if (currentIndex < 0) return;
+    const nextIndex = event.key === "ArrowDown" ? currentIndex + 1 : currentIndex - 1;
+    const nextField = fields[nextIndex];
+    if (!nextField) return;
+    event.preventDefault();
+    nextField.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!invoiceManagerOpen) return;
+    window.requestAnimationFrame(() => invoiceDocumentInputRef.current?.focus());
+  }, [invoiceManagerOpen]);
+
+  useEffect(() => {
+    if (!addInvoiceTransactionState.ok || !addInvoiceTransactionState.timestamp) return;
+    if (lastHandledInvoiceTimestampRef.current === addInvoiceTransactionState.timestamp) return;
+    lastHandledInvoiceTimestampRef.current = addInvoiceTransactionState.timestamp;
+    setInvoiceTransactionDraft((current) => ({ ...current, description: "", amount: "" }));
+    window.requestAnimationFrame(() => invoiceDescriptionInputRef.current?.focus());
+  }, [addInvoiceTransactionState]);
+
+  useEffect(() => {
+    setInvoiceTransactionDraft(blankInvoiceTransaction());
+    lastHandledInvoiceTimestampRef.current = 0;
+  }, [editingPurchase?.id]);
 
   useEffect(() => {
     if (!deleteState.ok || !deleteState.message) return;
@@ -1258,38 +1314,60 @@ export function ProcurementTable({
             <div className="invoiceTransactionEntryHeader">
               <div>
                 <h3>Add Banner line</h3>
-                <p className="helperText">Enter one debit or credit at a time. The form stays here so large invoices can be entered quickly.</p>
+                <p className="helperText">Enter one debit or credit at a time. Tab moves through the form, arrow keys move through choices, and Enter saves the line.</p>
               </div>
             </div>
             {addInvoiceTransactionState.message ? (
-              <p className={addInvoiceTransactionState.ok ? "successNote" : "errorNote"} key={addInvoiceTransactionState.timestamp}>
-                {addInvoiceTransactionState.message}
+              <p className={addInvoiceTransactionState.ok ? "successNote" : "errorNote"} key={addInvoiceTransactionState.timestamp} role="status" aria-live="polite">
+                {addInvoiceTransactionState.message}{addInvoiceTransactionState.ok ? " Next line is ready." : ""}
               </p>
             ) : null}
-            <form action={addInvoiceTransactionAction} className="invoiceTransactionForm">
+            <form action={addInvoiceTransactionAction} className="invoiceTransactionForm" onKeyDown={handleInvoiceEntryKeyDown}>
               <input type="hidden" name="purchaseId" value={editingPurchase.id} />
               <label>
                 Invoice / Credit #
-                <input name="documentNumber" placeholder="I0547893" required />
+                <input
+                  ref={invoiceDocumentInputRef}
+                  data-invoice-field
+                  name="documentNumber"
+                  value={invoiceTransactionDraft.documentNumber}
+                  onChange={(event) => setInvoiceTransactionDraft((current) => ({ ...current, documentNumber: event.target.value }))}
+                  placeholder="I0547893"
+                  required
+                />
               </label>
               <label>
                 Date
-                <input name="transactionDate" type="date" required />
+                <input
+                  data-invoice-field
+                  name="transactionDate"
+                  type="date"
+                  value={invoiceTransactionDraft.transactionDate}
+                  onChange={(event) => setInvoiceTransactionDraft((current) => ({ ...current, transactionDate: event.target.value }))}
+                  required
+                />
               </label>
               <label>
                 Type
-                <select name="transactionType" defaultValue="debit">
+                <select
+                  data-invoice-field
+                  name="transactionType"
+                  value={invoiceTransactionDraft.transactionType}
+                  onChange={(event) => setInvoiceTransactionDraft((current) => ({ ...current, transactionType: event.target.value as "debit" | "credit" }))}
+                >
                   <option value="debit">Debit / invoice</option>
                   <option value="credit">Credit / return</option>
                 </select>
               </label>
-              <label>
-                Amount
-                <input name="amount" type="number" min="0.01" step="0.01" required />
-              </label>
               <label className="invoiceTransactionAllocationField">
                 Budget allocation
-                <select name="purchaseAllocationId" required>
+                <select
+                  data-invoice-field
+                  name="purchaseAllocationId"
+                  value={invoiceTransactionDraft.purchaseAllocationId}
+                  onChange={(event) => setInvoiceTransactionDraft((current) => ({ ...current, purchaseAllocationId: event.target.value }))}
+                  required
+                >
                   <option value="">Select project, category, and account</option>
                   {editingAllocations.map((allocation) => (
                     <option key={allocation.id} value={allocation.id}>{allocationLabel(allocation)}</option>
@@ -1298,10 +1376,34 @@ export function ProcurementTable({
               </label>
               <label className="invoiceTransactionDescriptionField">
                 Description
-                <input name="description" placeholder="Vendor or line-item note" />
+                <input
+                  ref={invoiceDescriptionInputRef}
+                  data-invoice-field
+                  name="description"
+                  value={invoiceTransactionDraft.description}
+                  onChange={(event) => setInvoiceTransactionDraft((current) => ({ ...current, description: event.target.value }))}
+                  placeholder="Vendor or line-item note"
+                />
               </label>
-              <button type="submit" className="buttonLink buttonPrimary">Add line</button>
+              <label>
+                Amount
+                <input
+                  ref={invoiceAmountInputRef}
+                  data-invoice-field
+                  name="amount"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={invoiceTransactionDraft.amount}
+                  onChange={(event) => setInvoiceTransactionDraft((current) => ({ ...current, amount: event.target.value }))}
+                  required
+                />
+              </label>
+              <button data-invoice-field type="submit" className="buttonLink buttonPrimary" disabled={addInvoiceTransactionPending}>
+                {addInvoiceTransactionPending ? "Adding…" : "Add line"}
+              </button>
             </form>
+            <p className="invoiceKeyboardHint"><kbd>Tab</kbd> next field <span aria-hidden="true">·</span> <kbd>Shift</kbd> + <kbd>Tab</kbd> previous <span aria-hidden="true">·</span> <kbd>↑</kbd>/<kbd>↓</kbd> choices or adjacent fields <span aria-hidden="true">·</span> <kbd>Enter</kbd> save and start the next line</p>
           </article>
 
           <section className="invoiceTransactionHistory" aria-labelledby="invoice-transaction-history-title">

@@ -2064,6 +2064,26 @@ th {
   justify-self: start;
 }
 
+.invoiceKeyboardHint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.invoiceKeyboardHint kbd {
+  display: inline-block;
+  min-width: 1.45rem;
+  padding: 0.08rem 0.3rem;
+  border: 1px solid var(--surface-border);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 750;
+  text-align: center;
+}
+
 .invoiceTransactionHistory {
   margin-top: 1rem;
 }
