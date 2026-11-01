@@ -367,7 +367,7 @@ export function ProcurementTable({
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
   const [pendingBulkDeleteIds, setPendingBulkDeleteIds] = useState<string[]>([]);
-  const [visibleColumns, setVisibleColumns] = useState<OptionalColumn[]>(["department", "account"]);
+  const [visibleColumns, setVisibleColumns] = useState<OptionalColumn[]>(["department", "account", "receiving"]);
   const CONTRACT_PAYMENT_PROCUREMENT_STATUSES = [
     { value: "requested", label: "Unpaid" },
     { value: "paid", label: "Paid" }

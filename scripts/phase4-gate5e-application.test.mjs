@@ -137,6 +137,7 @@ test("department dashboards and running lists show requisition, PO, and receivin
   const dashboard = await read("app/page.tsx");
   const detail = await read("app/dashboard-requisition-table.tsx");
   const runningList = await read("app/my-budget/page.tsx");
+  const procurementTable = await read("app/procurement/procurement-table.tsx");
   assert.match(db, /receivingDocCodes: string\[\]/);
   assert.match(db, /from\("purchase_receiving_docs"\)/);
   assert.match(db, /receivingDocsByPurchaseId/);
@@ -144,6 +145,8 @@ test("department dashboards and running lists show requisition, PO, and receivin
   assert.match(detail, /Receiving #/);
   assert.match(runningList, /Receiving #/);
   assert.match(runningList, /row\.receivingDocCodes\.join\(", "\)/);
+  assert.match(procurementTable, /useState<OptionalColumn\[]>\(\["department", "account", "receiving"\]\)/);
+  assert.match(procurementTable, /receivingDocs\.filter\(\(doc\) => doc\.purchaseId === purchase\.id\)\.map\(\(doc\) => doc\.docCode\)\.join\(", "\)/);
 });
 
 test("single and batch creation use shared accessible drawers", async () => {
@@ -169,7 +172,7 @@ test("the default table is concise with optional columns and friendly labels", a
   const table = await read("app/procurement/procurement-table.tsx");
   assert.match(table, /const OPTIONAL_COLUMNS/);
   assert.match(table, /<summary>Columns<\/summary>/);
-  assert.match(table, /useState<OptionalColumn\[]>\(\["department", "account"\]\)/);
+  assert.match(table, /useState<OptionalColumn\[]>\(\["department", "account", "receiving"\]\)/);
   assert.match(table, /function procurementLabel/);
   assert.match(table, /function budgetStatusLabel/);
   assert.match(table, /Partially Received/);
