@@ -13,7 +13,10 @@ test("procurement exposes the four reviewed work queues", async () => {
   assert.match(page, /label: "All"/);
   assert.match(db, /queue\?: "needs_attention" \| "open" \| "paid" \| "all"/);
   assert.match(db, /needsAttentionFilter/);
-  assert.match(db, /\["paid", "posted_to_account"\]/);
+  assert.match(db, /openExcludedStatuses = "\(paid,statement_paid,posted_to_account,cancelled\)"/);
+  assert.match(db, /completedProcurementStatuses = \["paid", "statement_paid", "posted_to_account"\]/);
+  assert.match(db, /queue === "open"[\s\S]*?openExcludedStatuses/);
+  assert.match(db, /queue === "paid"[\s\S]*?completedProcurementStatuses/);
 });
 
 test("procurement filtering and pagination happen on the server", async () => {

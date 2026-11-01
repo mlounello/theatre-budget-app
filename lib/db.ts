@@ -1534,6 +1534,8 @@ export async function getProcurementData(
   const rangeTo = rangeFrom + pageSize - 1;
 
   const needsAttentionFilter = "and(procurement_status.eq.requested,requisition_number.is.null),and(procurement_status.eq.ordered,po_number.is.null),and(procurement_status.in.(partial_received,fully_received),invoice_number.is.null),and(procurement_status.eq.invoice_received,paid_on.is.null)";
+  const openExcludedStatuses = "(paid,statement_paid,posted_to_account,cancelled)";
+  const completedProcurementStatuses = ["paid", "statement_paid", "posted_to_account"];
   let purchasesQuery = supabase
     .from("purchases")
     .select(
@@ -1548,8 +1550,8 @@ export async function getProcurementData(
   else if (params.projectId) purchasesQuery = purchasesQuery.eq("project_id", params.projectId);
   if (params.procurementStatus) purchasesQuery = purchasesQuery.eq("procurement_status", params.procurementStatus);
   if (params.requestType) purchasesQuery = purchasesQuery.eq("request_type", params.requestType);
-  if (params.queue === "open") purchasesQuery = purchasesQuery.not("procurement_status", "in", "(paid,posted_to_account,cancelled)");
-  else if (params.queue === "paid") purchasesQuery = purchasesQuery.in("procurement_status", ["paid", "posted_to_account"]);
+  if (params.queue === "open") purchasesQuery = purchasesQuery.not("procurement_status", "in", openExcludedStatuses);
+  else if (params.queue === "paid") purchasesQuery = purchasesQuery.in("procurement_status", completedProcurementStatuses);
   else if (params.queue === "needs_attention") purchasesQuery = purchasesQuery.or(needsAttentionFilter);
   const normalizedQuery = (params.query ?? "").trim().replace(/[(),]/g, " ").slice(0, 120);
   if (normalizedQuery) {
@@ -1611,8 +1613,8 @@ export async function getProcurementData(
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true }),
     scopedCountQuery(),
-    scopedCountQuery().not("procurement_status", "in", "(paid,posted_to_account,cancelled)"),
-    scopedCountQuery().in("procurement_status", ["paid", "posted_to_account"]),
+    scopedCountQuery().not("procurement_status", "in", openExcludedStatuses),
+    scopedCountQuery().in("procurement_status", completedProcurementStatuses),
     scopedCountQuery().or(needsAttentionFilter)
   ]);
 
