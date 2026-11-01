@@ -1456,7 +1456,12 @@ export function ProcurementTable({
                           const allocation = editingAllocations.find((entry) => entry.id === transaction.purchaseAllocationId);
                           return (
                             <tr key={transaction.id}>
-                              <td>{transaction.description ?? "Banner line"}</td>
+                              <td>
+                                <span>{transaction.description ?? "Banner line"}</span>
+                                {!transaction.relievesEncumbrance ? (
+                                  <small className="invoiceAdjustmentLabel">{transaction.ruleClassCode ?? "Adjustment"} · Does not reduce ENC</small>
+                                ) : null}
+                              </td>
                               <td>{allocation ? allocationLabel(allocation) : "Allocation unavailable"}</td>
                               <td className={transaction.amount < 0 ? "creditAmount" : ""}>{formatCurrency(transaction.amount)}</td>
                               <td>

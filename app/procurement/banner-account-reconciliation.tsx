@@ -126,11 +126,12 @@ export function BannerAccountReconciliation({
                     <header>
                       <span>
                         <strong>{row.documentNumber}</strong>
-                        <small>{row.transactionDate} · Account {row.accountCode || "—"}</small>
+                        <small>{row.transactionDate} · Account {row.accountCode || "—"}{row.ruleClassCode ? ` · ${row.ruleClassCode}` : ""}</small>
                       </span>
                       <strong className={row.amount < 0 ? "creditAmount" : ""}>{formatCurrency(row.amount)}</strong>
                     </header>
                     <p>{row.description || "Banner transaction"}</p>
+                    {!row.relievesEncumbrance ? <p className="helperText"><strong>Adjustment:</strong> posts to YTD but does not reduce the PO’s ENC.</p> : null}
                     {duplicate ? (
                       <div className="bannerDuplicateNotice">
                         <span className="statusChip status-receipts_uploaded">Duplicate</span>

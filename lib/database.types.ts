@@ -1717,6 +1717,8 @@ export type Database = {
           "description": string | null;
           "amount": number | string;
           "source_line_key": string | null;
+          "rule_class_code": string | null;
+          "relieves_encumbrance": boolean;
           "created_by_user_id": string | null;
           "voided_at": string | null;
           "voided_by_user_id": string | null;
@@ -1732,6 +1734,8 @@ export type Database = {
           "description"?: string | null;
           "amount": number | string;
           "source_line_key"?: string | null;
+          "rule_class_code"?: string | null;
+          "relieves_encumbrance"?: boolean;
           "created_by_user_id"?: string | null;
           "voided_at"?: string | null;
           "voided_by_user_id"?: string | null;
@@ -1747,6 +1751,8 @@ export type Database = {
           "description"?: string | null;
           "amount"?: number | string;
           "source_line_key"?: string | null;
+          "rule_class_code"?: string | null;
+          "relieves_encumbrance"?: boolean;
           "created_by_user_id"?: string | null;
           "voided_at"?: string | null;
           "voided_by_user_id"?: string | null;

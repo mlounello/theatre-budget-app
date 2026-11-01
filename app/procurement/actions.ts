@@ -1215,6 +1215,8 @@ type ImportedInvoiceTransaction = {
   transactionDate: string;
   description?: string;
   amount: number;
+  ruleClassCode: string | null;
+  relievesEncumbrance: boolean;
 };
 
 export async function importPurchaseInvoiceTransactionsAction(
@@ -1263,6 +1265,8 @@ export async function importPurchaseInvoiceTransactionsAction(
       const transactionDate = parseDateInput(String(candidate.transactionDate ?? ""));
       const description = String(candidate.description ?? "").trim();
       const amount = Number(candidate.amount);
+      const ruleClassCode = String(candidate.ruleClassCode ?? "").trim().toUpperCase().slice(0, 40) || null;
+      const relievesEncumbrance = candidate.relievesEncumbrance !== false && !ruleClassCode?.startsWith("AD");
       if (!sourceLineKey || !purchaseAllocationId || !documentNumber || !transactionDate || !Number.isFinite(amount) || amount === 0) {
         return err("Every selected CSV line needs a document number, date, amount, and budget allocation.");
       }
@@ -1272,7 +1276,9 @@ export async function importPurchaseInvoiceTransactionsAction(
         documentNumber,
         transactionDate,
         description: description || undefined,
-        amount: Math.round(amount * 100) / 100
+        amount: Math.round(amount * 100) / 100,
+        ruleClassCode,
+        relievesEncumbrance
       });
     }
 
@@ -1310,6 +1316,8 @@ export async function importPurchaseInvoiceTransactionsAction(
         description: row.description ?? null,
         amount: row.amount,
         source_line_key: row.sourceLineKey,
+        rule_class_code: row.ruleClassCode,
+        relieves_encumbrance: row.relievesEncumbrance,
         created_by_user_id: user.id
       });
       if (error?.code === "23505") {
@@ -1376,6 +1384,8 @@ export async function importBannerAccountReconciliationAction(
       const transactionDate = parseDateInput(String(candidate.transactionDate ?? ""));
       const description = String(candidate.description ?? "").trim();
       const amount = Number(candidate.amount);
+      const ruleClassCode = String(candidate.ruleClassCode ?? "").trim().toUpperCase().slice(0, 40) || null;
+      const relievesEncumbrance = candidate.relievesEncumbrance !== false && !ruleClassCode?.startsWith("AD");
       if (!purchaseId || !purchaseAllocationId || !sourceLineKey || !documentNumber || !transactionDate || !Number.isFinite(amount) || amount === 0) {
         return err("Every kept line needs a matching PO, document number, date, amount, and allocation.");
       }
@@ -1386,7 +1396,9 @@ export async function importBannerAccountReconciliationAction(
         documentNumber,
         transactionDate,
         description: description || undefined,
-        amount: Math.round(amount * 100) / 100
+        amount: Math.round(amount * 100) / 100,
+        ruleClassCode,
+        relievesEncumbrance
       });
     }
 
@@ -1437,6 +1449,8 @@ export async function importBannerAccountReconciliationAction(
         description: row.description ?? null,
         amount: row.amount,
         source_line_key: row.sourceLineKey,
+        rule_class_code: row.ruleClassCode,
+        relieves_encumbrance: row.relievesEncumbrance,
         created_by_user_id: user.id
       });
       if (error?.code === "23505") {

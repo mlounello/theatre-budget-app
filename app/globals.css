@@ -2434,6 +2434,14 @@ th {
   overflow-x: auto;
 }
 
+.invoiceAdjustmentLabel {
+  display: block;
+  margin-top: 0.2rem;
+  color: #8a5a00;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
 .invoiceTransactionTable {
   width: 100%;
   min-width: 620px;

@@ -20,6 +20,8 @@ export type CsvInvoiceRow = {
   description: string;
   amount: number;
   accountCode: string;
+  ruleClassCode: string;
+  relievesEncumbrance: boolean;
   purchaseAllocationId: string;
 };
 
@@ -92,6 +94,8 @@ export function rowsFromBannerCsv(text: string, allocations: AllocationChoice[] 
     if (!documentNumber || !transactionDate || !Number.isFinite(rawAmount) || rawAmount === 0) continue;
     const amount = get("DR_CR_IND") === "-" ? -Math.abs(rawAmount) : rawAmount;
     const accountCode = get("ACCT_CODE").toUpperCase();
+    const ruleClassCode = get("RUCL_CODE").toUpperCase();
+    const relievesEncumbrance = !ruleClassCode.startsWith("AD");
     const matchingAllocations = allocations.filter((allocation) => allocation.accountCode?.toUpperCase() === accountCode);
     const purchaseAllocationId = allocations.length === 1
       ? allocations[0].id
@@ -112,6 +116,8 @@ export function rowsFromBannerCsv(text: string, allocations: AllocationChoice[] 
       description: get("TRANS_DESC"),
       amount: Math.round(amount * 100) / 100,
       accountCode,
+      ruleClassCode,
+      relievesEncumbrance,
       purchaseAllocationId
     });
   }
@@ -224,7 +230,10 @@ export function InvoiceCsvImport({
                           checked={selectedKeys.has(row.sourceLineKey)}
                           onChange={(event) => toggleRows([row.sourceLineKey], event.target.checked)}
                         />
-                        <span><strong>{row.description || "Banner line"}</strong><small>{row.accountCode || "No account code"}</small></span>
+                        <span>
+                          <strong>{row.description || "Banner line"}</strong>
+                          <small>{row.accountCode || "No account code"}{row.ruleClassCode ? ` · ${row.ruleClassCode}` : ""}{row.relievesEncumbrance ? "" : " · Adjustment — does not reduce ENC"}</small>
+                        </span>
                         {allocations.length > 1 ? (
                           <select
                             aria-label={`Budget allocation for ${row.documentNumber} ${row.description || "line"}`}

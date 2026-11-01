@@ -233,6 +233,8 @@ export type ProcurementInvoiceTransactionRow = {
   transactionDate: string;
   description: string | null;
   amount: number;
+  ruleClassCode: string | null;
+  relievesEncumbrance: boolean;
   createdAt: string;
 };
 
@@ -1649,7 +1651,7 @@ export async function getProcurementData(
           .order("created_at", { ascending: true }),
         supabase
           .from("purchase_invoice_transactions")
-          .select("id, purchase_id, purchase_allocation_id, document_number, transaction_date, description, amount, created_at")
+          .select("id, purchase_id, purchase_allocation_id, document_number, transaction_date, description, amount, rule_class_code, relieves_encumbrance, created_at")
           .in("purchase_id", currentPagePurchaseIds)
           .is("voided_at", null)
           .order("transaction_date", { ascending: false })
@@ -1886,6 +1888,8 @@ export async function getProcurementData(
     transactionDate: row.transaction_date as string,
     description: (row.description as string | null) ?? null,
     amount: asNumber(row.amount as string | number | null),
+    ruleClassCode: (row.rule_class_code as string | null) ?? null,
+    relievesEncumbrance: Boolean(row.relieves_encumbrance),
     createdAt: row.created_at as string
   }));
 
