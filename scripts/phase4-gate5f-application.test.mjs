@@ -29,12 +29,22 @@ test("only one selected or current statement renders its transaction workflow", 
 
 test("statement lifecycle actions remain in the current-statement workspace", async () => {
   const client = await read("app/cc/cc-page-client.tsx");
-  assert.match(client, /assignReceiptsToStatementAction/);
+  assert.match(client, /finalizeReceiptBatchAction/);
+  assert.match(client, /Finalize Selected Receipts/);
   assert.match(client, /unassignReceiptFromStatementAction/);
   assert.match(client, /submitStatementMonthAction/);
   assert.match(client, /postStatementMonthToBannerAction/);
   assert.match(client, /reopenStatementMonthAction/);
   assert.match(client, /unpostStatementMonthFromBannerAction/);
+});
+
+test("employee-issued card source purchases follow the full statement lifecycle", async () => {
+  const actions = await read("app/cc/actions.ts");
+  assert.match(actions, /syncEmployeeCardSourceWorkflow/);
+  assert.match(actions, /\.eq\("expense_stage", "employee_card"\)/);
+  assert.match(actions, /syncEmployeeCardSourceWorkflow\(supabase, statementMonthId, "receipts_uploaded"\)/);
+  assert.match(actions, /syncEmployeeCardSourceWorkflow\(supabase, statementMonthId, "statement_paid"\)/);
+  assert.match(actions, /syncEmployeeCardSourceWorkflow\(supabase, statementMonthId, "posted_to_account"\)/);
 });
 
 test("exceptions identify missing receipts, unassigned cards, and excluded records", async () => {

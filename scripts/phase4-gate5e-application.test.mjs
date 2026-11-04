@@ -90,6 +90,19 @@ test("employee-issued Siena card purchases defer EC and EX numbers until reconci
   assert.match(migration, /'authorization', 'employee_card', 'actual', 'reimbursement'/);
 });
 
+test("employee-card receipt status follows whether staged receipts exist", async () => {
+  const [actions, backfill] = await Promise.all([
+    read("app/procurement/actions.ts"),
+    read("supabase/migrations/20261104001500_sync_employee_card_statuses.sql")
+  ]);
+  assert.match(actions, /expenseStage === "employee_card"[\s\S]*?receiptCount[\s\S]*?"receipts_uploaded" : "requested"/);
+  assert.match(actions, /purchase\.expense_stage === "employee_card"[\s\S]*?procurement_status: "receipts_uploaded"/);
+  assert.match(actions, /purchase\.procurement_status === "receipts_uploaded"[\s\S]*?remainingReceiptCount[\s\S]*?procurement_status: "requested"/);
+  assert.match(backfill, /statement\.posted_to_banner_at is not null[\s\S]*?'posted_to_account'/);
+  assert.match(backfill, /statement\.posted_at is not null[\s\S]*?'statement_paid'/);
+  assert.match(backfill, /then 'receipts_uploaded'/);
+});
+
 test("purchase orders support balanced split allocations across budgets, categories, and accounts", async () => {
   const table = await read("app/procurement/procurement-table.tsx");
   const actions = await read("app/procurement/actions.ts");

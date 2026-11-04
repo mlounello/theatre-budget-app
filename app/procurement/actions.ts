@@ -848,7 +848,15 @@ export async function updateProcurementAction(
     if (Boolean(existing.invoice_tracking_enabled as boolean | null) && !requestedBudgetTracked) {
       return err("This PO has invoice lines. Keep it budget-tracked so every line retains its allocation.");
     }
-    const procurementStatus = parseStatus(formData.get("procurementStatus"), isCreditCardPurchase);
+    let procurementStatus = parseStatus(formData.get("procurementStatus"), isCreditCardPurchase);
+    if (isCreditCardPurchase && expenseStage === "employee_card" && (procurementStatus === "requested" || procurementStatus === "receipts_uploaded")) {
+      const { count: receiptCount, error: receiptCountError } = await supabase
+        .from("purchase_receipts")
+        .select("id", { count: "exact", head: true })
+        .eq("purchase_id", id);
+      if (receiptCountError) return err(receiptCountError.message);
+      procurementStatus = (receiptCount ?? 0) > 0 ? "receipts_uploaded" : "requested";
+    }
     const existingProcurementStatus = parseStatus((existing.procurement_status as string | null) ?? "requested", isCreditCardPurchase);
     const procurementStatusChanged = existingProcurementStatus !== procurementStatus;
     const existingOrderValue = getStatusAmount(existing.status as string, {
@@ -1589,6 +1597,18 @@ export async function addProcurementReceiptAction(
     });
     if (error) return err(error.message);
 
+    if (purchase.expense_stage === "employee_card") {
+      const { error: statusError } = await supabase
+        .from("purchases")
+        .update({
+          procurement_status: "receipts_uploaded",
+          cc_workflow_status: "receipts_uploaded"
+        })
+        .eq("id", purchaseId)
+        .eq("procurement_status", "requested");
+      if (statusError) return err(statusError.message);
+    }
+
     revalidatePath("/procurement");
     revalidatePath("/cc");
     revalidatePath("/");
@@ -1681,6 +1701,23 @@ export async function deleteProcurementReceiptAction(
 
     const { error } = await supabase.from("purchase_receipts").delete().eq("id", id);
     if (error) return err(error.message);
+
+    const [{ data: purchase, error: purchaseError }, { count: remainingReceiptCount, error: receiptCountError }] = await Promise.all([
+      supabase.from("purchases").select("expense_stage, procurement_status").eq("id", purchaseId).single(),
+      supabase.from("purchase_receipts").select("id", { count: "exact", head: true }).eq("purchase_id", purchaseId)
+    ]);
+    if (purchaseError) return err(purchaseError.message);
+    if (receiptCountError) return err(receiptCountError.message);
+    if (purchase.expense_stage === "employee_card" && purchase.procurement_status === "receipts_uploaded" && (remainingReceiptCount ?? 0) === 0) {
+      const { error: statusError } = await supabase
+        .from("purchases")
+        .update({
+          procurement_status: "requested",
+          cc_workflow_status: "requested"
+        })
+        .eq("id", purchaseId);
+      if (statusError) return err(statusError.message);
+    }
 
     revalidatePath("/procurement");
     revalidatePath("/cc");

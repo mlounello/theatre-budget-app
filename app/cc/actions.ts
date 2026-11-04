@@ -129,6 +129,52 @@ async function rescalePurchaseAllocations(
   }
 }
 
+async function syncEmployeeCardSourceWorkflow(
+  supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
+  statementMonthId: string,
+  workflowStatus: "receipts_uploaded" | "statement_paid" | "posted_to_account"
+): Promise<void> {
+  const [{ data: receiptRows, error: receiptError }, { data: directlyLinkedRows, error: directlyLinkedError }] = await Promise.all([
+    supabase
+      .from("purchase_receipts")
+      .select("authorization_purchase_id, purchase_id")
+      .eq("cc_statement_month_id", statementMonthId)
+      .or("authorization_purchase_id.not.is.null,purchase_id.not.is.null"),
+    supabase
+      .from("purchases")
+      .select("id")
+      .eq("cc_statement_month_id", statementMonthId)
+      .eq("expense_stage", "employee_card")
+  ]);
+  if (receiptError) throw new Error(receiptError.message);
+  if (directlyLinkedError) throw new Error(directlyLinkedError.message);
+
+  const candidateIds = Array.from(new Set([
+    ...(receiptRows ?? []).map((row) => String(row.authorization_purchase_id ?? "").trim()),
+    ...(receiptRows ?? []).map((row) => String(row.purchase_id ?? "").trim()),
+    ...(directlyLinkedRows ?? []).map((row) => String(row.id ?? "").trim())
+  ].filter(Boolean)));
+  if (candidateIds.length === 0) return;
+
+  const { data: employeeCardRows, error: employeeCardError } = await supabase
+    .from("purchases")
+    .select("id")
+    .in("id", candidateIds)
+    .eq("expense_stage", "employee_card");
+  if (employeeCardError) throw new Error(employeeCardError.message);
+  const employeeCardIds = (employeeCardRows ?? []).map((row) => String(row.id));
+  if (employeeCardIds.length === 0) return;
+
+  const { error: updateError } = await supabase
+    .from("purchases")
+    .update({
+      cc_workflow_status: workflowStatus,
+      procurement_status: workflowStatus
+    })
+    .in("id", employeeCardIds);
+  if (updateError) throw new Error(updateError.message);
+}
+
 async function getStatementMonthLinkedPurchaseTotals(
   supabase: Awaited<ReturnType<typeof getSupabaseServerClient>>,
   statementMonthId: string
@@ -1302,6 +1348,8 @@ export async function submitStatementMonthAction(
     if (monthUpdateError) return err(monthUpdateError.message);
     if (!monthUpdated?.id) return err("Statement month submit update was not applied.");
 
+    await syncEmployeeCardSourceWorkflow(supabase, statementMonthId, "statement_paid");
+
     revalidatePath("/cc");
     revalidatePath("/requests");
     revalidatePath("/");
@@ -1378,6 +1426,8 @@ export async function reopenStatementMonthAction(
       .maybeSingle();
     if (monthResetError) return err(monthResetError.message);
     if (!monthReset?.id) return err("Statement month reopen update was not applied.");
+
+    await syncEmployeeCardSourceWorkflow(supabase, statementMonthId, "receipts_uploaded");
 
     revalidatePath("/cc");
     revalidatePath("/requests");
@@ -1481,6 +1531,8 @@ export async function postStatementMonthToBannerAction(
     if (statementUpdateError) return err(statementUpdateError.message);
     if (!statementUpdated?.id) return err("Statement post-to-Banner update was not applied.");
 
+    await syncEmployeeCardSourceWorkflow(supabase, statementMonthId, "posted_to_account");
+
     revalidatePath("/cc");
     revalidatePath("/requests");
     revalidatePath("/");
@@ -1525,6 +1577,8 @@ export async function unpostStatementMonthFromBannerAction(
         .maybeSingle();
       if (statementUpdateError) return err(statementUpdateError.message);
       if (!statementUpdated?.id) return err("Statement unpost update was not applied.");
+
+      await syncEmployeeCardSourceWorkflow(supabase, statementMonthId, "statement_paid");
 
       revalidatePath("/cc");
       revalidatePath("/requests");
@@ -1587,6 +1641,8 @@ export async function unpostStatementMonthFromBannerAction(
       .maybeSingle();
     if (statementUpdateError) return err(statementUpdateError.message);
     if (!statementUpdated?.id) return err("Statement unpost update was not applied.");
+
+    await syncEmployeeCardSourceWorkflow(supabase, statementMonthId, "statement_paid");
 
     revalidatePath("/cc");
     revalidatePath("/requests");
