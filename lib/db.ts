@@ -201,7 +201,7 @@ export type ProcurementRow = {
   title: string;
   referenceNumber: string | null;
   expenseNumber: string | null;
-  expenseStage: "authorization" | "actual" | "reimbursement" | null;
+  expenseStage: "authorization" | "employee_card" | "actual" | "reimbursement" | null;
   requisitionNumber: string | null;
   poNumber: string | null;
   invoiceNumber: string | null;
@@ -1715,7 +1715,7 @@ export async function getProcurementData(
       title: row.title as string,
       referenceNumber: (row.reference_number as string | null) ?? null,
       expenseNumber: (row.expense_number as string | null) ?? null,
-      expenseStage: (row.expense_stage as "authorization" | "actual" | "reimbursement" | null) ?? null,
+      expenseStage: (row.expense_stage as "authorization" | "employee_card" | "actual" | "reimbursement" | null) ?? null,
       requisitionNumber: (row.requisition_number as string | null) ?? null,
       poNumber: (row.po_number as string | null) ?? null,
       invoiceNumber: (row.invoice_number as string | null) ?? null,

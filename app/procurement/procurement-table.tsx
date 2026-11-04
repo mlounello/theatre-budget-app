@@ -160,6 +160,7 @@ function expenseIdentifier(purchase: ProcurementRow): string | null {
 
 function expenseStageLabel(stage: ProcurementRow["expenseStage"]): string {
   if (stage === "authorization") return "Funding Request";
+  if (stage === "employee_card") return "Siena Issued Employee Card";
   if (stage === "actual") return "Reconciliation";
   if (stage === "reimbursement") return "Reimbursement";
   return "Unclassified";
@@ -996,15 +997,17 @@ export function ProcurementTable({
                   ))}
                 </select>
               </label>
-              <label>
-                {editingPurchase.requestType === "expense" ? "Expense Claim #" : "Reference #"}
-                <input
-                  name="referenceNumber"
-                  value={editReferenceNumber}
-                  onChange={(event) => setEditReferenceNumber(event.target.value)}
-                  placeholder={editingPurchase.requestType === "expense" ? "EC######" : undefined}
-                />
-              </label>
+              {editingPurchase.requestType !== "expense" || editExpenseStage !== "employee_card" ? (
+                <label>
+                  {editingPurchase.requestType === "expense" ? "Expense Claim #" : "Reference #"}
+                  <input
+                    name="referenceNumber"
+                    value={editReferenceNumber}
+                    onChange={(event) => setEditReferenceNumber(event.target.value)}
+                    placeholder={editingPurchase.requestType === "expense" ? "EC######" : undefined}
+                  />
+                </label>
+              ) : null}
               {editingPurchase.requestType === "expense" ? (
                 <>
                   <label>
@@ -1017,23 +1020,30 @@ export function ProcurementTable({
                     >
                       <option value="">Select workflow</option>
                       <option value="authorization">Card Funding Request</option>
+                      <option value="employee_card">Siena Issued Employee Card</option>
                       <option value="actual">Monthly Reconciliation Expense</option>
                       <option value="reimbursement">Reimbursement</option>
                     </select>
-                    <span className="helperText">Funding requests hold the maximum amount. Reconciliation expenses record actual card purchases against that request.</span>
+                    <span className="helperText">
+                      {editExpenseStage === "employee_card"
+                        ? "Use for purchases made on an employee-issued Siena card. No advance EC/EX is needed; receipts receive their final EC/EX during monthly reconciliation."
+                        : "Funding requests hold the maximum amount. Reconciliation expenses record actual card purchases against that request."}
+                    </span>
                   </label>
-                  <label>
-                    Expense #
-                    <input
-                      name="expenseNumber"
-                      value={editExpenseNumber}
-                      onChange={(event) => setEditExpenseNumber(event.target.value.toUpperCase())}
-                      placeholder="EX######"
-                      pattern="EX[0-9]{6}"
-                      title="Use the format EX followed by six digits"
-                    />
-                    <span className="helperText">Use the Expense number issued for this card purchase or reimbursement.</span>
-                  </label>
+                  {editExpenseStage !== "employee_card" ? (
+                    <label>
+                      Expense #
+                      <input
+                        name="expenseNumber"
+                        value={editExpenseNumber}
+                        onChange={(event) => setEditExpenseNumber(event.target.value.toUpperCase())}
+                        placeholder="EX######"
+                        pattern="EX[0-9]{6}"
+                        title="Use the format EX followed by six digits"
+                      />
+                      <span className="helperText">Use the Expense number issued for this card purchase or reimbursement.</span>
+                    </label>
+                  ) : null}
                 </>
               ) : null}
               {editingPurchase.requestType === "requisition" ? (

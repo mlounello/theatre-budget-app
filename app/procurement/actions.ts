@@ -425,6 +425,10 @@ export async function createProcurementOrderAction(
     const orderDate = parseDateInput(formData.get("orderDate"));
     const requestType = parseProcurementRequestType(formData.get("requestType"));
     const isCreditCard = requestType === "expense" ? formData.get("isCreditCard") === "on" : false;
+    const expenseStageRaw = String(formData.get("expenseStage") ?? "").trim();
+    const expenseStage = requestType === "expense" && isCreditCard
+      ? expenseStageRaw === "employee_card" ? "employee_card" : "authorization"
+      : null;
 
     if (!fiscalYearId) return err("Fiscal year is required.");
     if (!title) return err("Title is required.");
@@ -515,6 +519,7 @@ export async function createProcurementOrderAction(
         posted_amount: computed.postedAmount,
         request_type: requestType,
         is_credit_card: isCreditCard,
+        expense_stage: expenseStage,
         cc_workflow_status: computed.ccWorkflowStatus,
         status: computed.status,
         procurement_status: computed.procurementStatus,
@@ -834,11 +839,11 @@ export async function updateProcurementAction(
     if (isExpensePurchase && expenseNumber && !/^EX\d{6}$/.test(expenseNumber)) {
       return err("Expense number must use the EX###### format.");
     }
-    const expenseStage = expenseStageRaw === "authorization" || expenseStageRaw === "actual" || expenseStageRaw === "reimbursement"
+    const expenseStage = expenseStageRaw === "authorization" || expenseStageRaw === "employee_card" || expenseStageRaw === "actual" || expenseStageRaw === "reimbursement"
       ? expenseStageRaw
       : null;
     if (isExpensePurchase && !expenseStage) {
-      return err("Choose whether this is a card funding request, reconciliation expense, or reimbursement.");
+      return err("Choose whether this is a card funding request, Siena-issued employee-card purchase, reconciliation expense, or reimbursement.");
     }
     if (Boolean(existing.invoice_tracking_enabled as boolean | null) && !requestedBudgetTracked) {
       return err("This PO has invoice lines. Keep it budget-tracked so every line retains its allocation.");
@@ -1011,9 +1016,9 @@ export async function updateProcurementAction(
         banner_account_code_id: bannerAccountCodeId || null,
         procurement_status: procurementStatus,
         status: nextBudgetStatus,
-        reference_number: referenceNumber || null,
+        reference_number: isExpensePurchase && expenseStage === "employee_card" ? null : referenceNumber || null,
         expense_number: isExpensePurchase
-          ? expenseNumber || null
+          ? expenseStage === "employee_card" ? null : expenseNumber || null
           : ((existing.expense_number as string | null) ?? null),
         expense_stage: isExpensePurchase
           ? expenseStage
@@ -1580,7 +1585,7 @@ export async function addProcurementReceiptAction(
       organization_id: organizationId || null,
       production_category_id: projectId ? productionCategoryId || null : null,
       account_code_id: accountCodeId || (purchase.banner_account_code_id as string | null) || null,
-      authorization_purchase_id: purchase.expense_stage === "authorization" ? purchaseId : null
+      authorization_purchase_id: purchase.expense_stage === "authorization" || purchase.expense_stage === "employee_card" ? purchaseId : null
     });
     if (error) return err(error.message);
 

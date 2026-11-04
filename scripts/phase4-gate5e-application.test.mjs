@@ -70,7 +70,24 @@ test("procurement drawer shows only fields relevant to the row workflow", async 
   assert.match(table, /editingPurchase\.requestType === "requisition" \? <article className="panel">[\s\S]*?Receiving Docs/);
   assert.match(table, /editingPurchase\.requestType === "expense" \? <article className="panel">[\s\S]*?Receipts/);
   assert.match(table, /expenseStageLabel/);
-  assert.match(actions, /Choose whether this is a card funding request, reconciliation expense, or reimbursement/);
+  assert.match(actions, /Choose whether this is a card funding request, Siena-issued employee-card purchase, reconciliation expense, or reimbursement/);
+});
+
+test("employee-issued Siena card purchases defer EC and EX numbers until reconciliation", async () => {
+  const [table, createForm, actions, migration] = await Promise.all([
+    read("app/procurement/procurement-table.tsx"),
+    read("app/procurement/create-order-form.tsx"),
+    read("app/procurement/actions.ts"),
+    read("supabase/migrations/20261103143000_siena_employee_card_workflow.sql")
+  ]);
+
+  assert.match(createForm, /Siena Issued Employee Card/);
+  assert.match(table, /editExpenseStage !== "employee_card"/);
+  assert.match(table, /No advance EC\/EX is needed/);
+  assert.match(actions, /expenseStage === "employee_card" \? null : referenceNumber/);
+  assert.match(actions, /expenseStage === "employee_card" \? null : expenseNumber/);
+  assert.match(actions, /purchase\.expense_stage === "authorization" \|\| purchase\.expense_stage === "employee_card"/);
+  assert.match(migration, /'authorization', 'employee_card', 'actual', 'reimbursement'/);
 });
 
 test("purchase orders support balanced split allocations across budgets, categories, and accounts", async () => {

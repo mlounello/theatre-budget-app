@@ -47,6 +47,7 @@ export function CreateOrderForm({
     "requisition" | "expense" | "contract" | "request" | "budget_transfer"
   >("requisition");
   const [isCreditCard, setIsCreditCard] = useState(true);
+  const [expenseStage, setExpenseStage] = useState<"authorization" | "employee_card">("authorization");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -259,10 +260,26 @@ export function CreateOrderForm({
         </select>
       </label>
       {requestType === "expense" ? (
-        <label className="checkboxLabel">
-          <input name="isCreditCard" type="checkbox" checked={isCreditCard} onChange={(event) => setIsCreditCard(event.target.checked)} />
-          Credit Card Expense
-        </label>
+        <>
+          <label className="checkboxLabel">
+            <input name="isCreditCard" type="checkbox" checked={isCreditCard} onChange={(event) => setIsCreditCard(event.target.checked)} />
+            Credit Card Expense
+          </label>
+          {isCreditCard ? (
+            <label>
+              Expense Workflow
+              <select name="expenseStage" value={expenseStage} onChange={(event) => setExpenseStage(event.target.value as typeof expenseStage)}>
+                <option value="authorization">Card Funding Request</option>
+                <option value="employee_card">Siena Issued Employee Card</option>
+              </select>
+              <span className="helperText">
+                {expenseStage === "employee_card"
+                  ? "For purchases on your employee-issued Siena card. Enter the purchase and receipts now; the final EC/EX numbers are added during monthly reconciliation."
+                  : "Creates the advance spending authorization and budget hold for a department card."}
+              </span>
+            </label>
+          ) : null}
+        </>
       ) : null}
       <label>
         Title
