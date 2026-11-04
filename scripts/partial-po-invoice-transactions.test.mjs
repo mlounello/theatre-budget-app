@@ -135,13 +135,14 @@ test("rollups count simultaneous YTD and encumbrance instead of choosing one sta
   assert.match(institutional, /asNumber\(purchase\.encumbered_amount\)/);
 });
 
-test("Banner adjustments post to YTD without liquidating PO encumbrance", async () => {
-  const [migration, importer, actions, db, table] = await Promise.all([
+test("Banner adjustments and non-encumbered invoices post to YTD without liquidating PO encumbrance", async () => {
+  const [migration, importer, actions, db, table, ruleClass] = await Promise.all([
     read("supabase/migrations/20261101190000_banner_adjustment_encumbrance.sql"),
     read("app/procurement/invoice-csv-import.tsx"),
     read("app/procurement/actions.ts"),
     read("lib/db.ts"),
-    read("app/procurement/procurement-table.tsx")
+    read("app/procurement/procurement-table.tsx"),
+    read("lib/banner-rule-class.ts")
   ]);
   assert.match(migration, /rule_class_code text null/);
   assert.match(migration, /relieves_encumbrance boolean not null default true/);
@@ -149,7 +150,10 @@ test("Banner adjustments post to YTD without liquidating PO encumbrance", async 
   assert.match(migration, /transaction\.relieves_encumbrance/);
   assert.match(migration, /encumbrance_relief_amount/);
   assert.match(importer, /get\("RUCL_CODE"\)/);
-  assert.match(importer, /ruleClassCode\.startsWith\("AD"\)/);
+  assert.match(importer, /bannerRuleRelievesEncumbrance\(ruleClassCode\)/);
+  assert.match(actions, /bannerRuleRelievesEncumbrance\(ruleClassCode\)/);
+  assert.match(ruleClass, /"INNI", "INNC"/);
+  assert.match(ruleClass, /normalized\.startsWith\("AD"\)/);
   assert.match(actions, /rule_class_code: row\.ruleClassCode/);
   assert.match(actions, /relieves_encumbrance: row\.relievesEncumbrance/);
   assert.match(db, /ruleClassCode: \(row\.rule_class_code/);

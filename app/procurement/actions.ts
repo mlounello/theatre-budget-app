@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext, requireProjectRole } from "@/lib/access";
+import { bannerRuleRelievesEncumbrance } from "@/lib/banner-rule-class";
 import { createInstitutionalCommitmentForPurchase } from "@/lib/institutional-budget";
 import type { PurchaseStatus } from "@/lib/types";
 
@@ -1279,7 +1280,7 @@ export async function importPurchaseInvoiceTransactionsAction(
       const description = String(candidate.description ?? "").trim();
       const amount = Number(candidate.amount);
       const ruleClassCode = String(candidate.ruleClassCode ?? "").trim().toUpperCase().slice(0, 40) || null;
-      const relievesEncumbrance = candidate.relievesEncumbrance !== false && !ruleClassCode?.startsWith("AD");
+      const relievesEncumbrance = candidate.relievesEncumbrance !== false && bannerRuleRelievesEncumbrance(ruleClassCode);
       if (!sourceLineKey || !purchaseAllocationId || !documentNumber || !transactionDate || !Number.isFinite(amount) || amount === 0) {
         return err("Every selected CSV line needs a document number, date, amount, and budget allocation.");
       }
@@ -1398,7 +1399,7 @@ export async function importBannerAccountReconciliationAction(
       const description = String(candidate.description ?? "").trim();
       const amount = Number(candidate.amount);
       const ruleClassCode = String(candidate.ruleClassCode ?? "").trim().toUpperCase().slice(0, 40) || null;
-      const relievesEncumbrance = candidate.relievesEncumbrance !== false && !ruleClassCode?.startsWith("AD");
+      const relievesEncumbrance = candidate.relievesEncumbrance !== false && bannerRuleRelievesEncumbrance(ruleClassCode);
       if (!purchaseId || !purchaseAllocationId || !sourceLineKey || !documentNumber || !transactionDate || !Number.isFinite(amount) || amount === 0) {
         return err("Every kept line needs a matching PO, document number, date, amount, and allocation.");
       }

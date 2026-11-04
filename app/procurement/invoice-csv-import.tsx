@@ -5,6 +5,7 @@ import {
   importPurchaseInvoiceTransactionsAction,
   type ActionState
 } from "@/app/procurement/actions";
+import { bannerRuleRelievesEncumbrance } from "@/lib/banner-rule-class";
 import { formatCurrency } from "@/lib/format";
 
 export type AllocationChoice = {
@@ -95,7 +96,7 @@ export function rowsFromBannerCsv(text: string, allocations: AllocationChoice[] 
     const amount = get("DR_CR_IND") === "-" ? -Math.abs(rawAmount) : rawAmount;
     const accountCode = get("ACCT_CODE").toUpperCase();
     const ruleClassCode = get("RUCL_CODE").toUpperCase();
-    const relievesEncumbrance = !ruleClassCode.startsWith("AD");
+    const relievesEncumbrance = bannerRuleRelievesEncumbrance(ruleClassCode);
     const matchingAllocations = allocations.filter((allocation) => allocation.accountCode?.toUpperCase() === accountCode);
     const purchaseAllocationId = allocations.length === 1
       ? allocations[0].id
