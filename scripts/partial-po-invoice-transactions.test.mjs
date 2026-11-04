@@ -35,15 +35,23 @@ test("procurement exposes a compact grouped transaction manager", async () => {
 });
 
 test("transaction manager supports continuous keyboard entry", async () => {
-  const table = await read("app/procurement/procurement-table.tsx");
+  const [table, actions] = await Promise.all([
+    read("app/procurement/procurement-table.tsx"),
+    read("app/procurement/actions.ts")
+  ]);
   assert.match(table, /data-invoice-field/);
   assert.match(table, /handleInvoiceEntryKeyDown/);
   assert.match(table, /invoiceAmountInputRef\.current\?\.focus/);
   assert.match(table, /setInvoiceTransactionDraft\(\(current\) => \(\{ \.\.\.current, amount: "" \}\)\)/);
   assert.match(table, /blankInvoiceTransaction\(defaultInvoiceAllocationId\)/);
-  assert.match(table, /Invoice, date, type, description, and allocation stay in place/);
+  assert.match(table, /Invoice, date, type, rule class, description, and allocation stay in place/);
   assert.match(table, /Next line is ready/);
   assert.match(table, /Enter<\/kbd> save and start the next line/);
+  assert.match(table, /name="ruleClassCode"/);
+  assert.match(table, /name="relievesEncumbrance"/);
+  assert.match(table, /bannerRuleRelievesEncumbrance\(ruleClassCode\)/);
+  assert.match(actions, /rule_class_code: ruleClassCode/);
+  assert.match(actions, /relieves_encumbrance: relievesEncumbrance/);
 });
 
 test("unsplit POs auto-select their allocation and CSV imports are duplicate-safe", async () => {

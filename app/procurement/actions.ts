@@ -1170,6 +1170,8 @@ export async function addPurchaseInvoiceTransactionAction(
     const transactionDate = parseDateInput(formData.get("transactionDate"));
     const description = String(formData.get("description") ?? "").trim();
     const transactionType = String(formData.get("transactionType") ?? "debit").trim();
+    const ruleClassCode = String(formData.get("ruleClassCode") ?? "").trim().toUpperCase().slice(0, 40) || null;
+    const relievesEncumbrance = formData.get("relievesEncumbrance") === "true" && bannerRuleRelievesEncumbrance(ruleClassCode);
     const enteredAmount = Math.abs(parseMoney(formData.get("amount")));
 
     if (!purchaseId) return err("PO is required.");
@@ -1205,6 +1207,8 @@ export async function addPurchaseInvoiceTransactionAction(
       transaction_date: transactionDate,
       description: description || null,
       amount: signedAmount,
+      rule_class_code: ruleClassCode,
+      relieves_encumbrance: relievesEncumbrance,
       created_by_user_id: user.id
     });
     if (error) return err(error.message);

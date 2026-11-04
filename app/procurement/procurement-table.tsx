@@ -15,6 +15,7 @@ import {
   updateProcurementAction,
   type ActionState
 } from "@/app/procurement/actions";
+import { bannerRuleRelievesEncumbrance } from "@/lib/banner-rule-class";
 import { formatCurrency } from "@/lib/format";
 import { SideDrawer } from "@/components/ui/side-drawer";
 import { BulkSelectionToolbar } from "@/components/ui/toolbars";
@@ -46,6 +47,8 @@ type InvoiceTransactionDraft = {
   documentNumber: string;
   transactionDate: string;
   transactionType: "debit" | "credit";
+  ruleClassCode: string;
+  relievesEncumbrance: boolean;
   purchaseAllocationId: string;
   description: string;
   amount: string;
@@ -59,6 +62,8 @@ const blankInvoiceTransaction = (purchaseAllocationId = ""): InvoiceTransactionD
   documentNumber: "",
   transactionDate: "",
   transactionType: "debit",
+  ruleClassCode: "",
+  relievesEncumbrance: true,
   purchaseAllocationId,
   description: "",
   amount: ""
@@ -1327,7 +1332,7 @@ export function ProcurementTable({
             <div className="invoiceTransactionEntryHeader">
               <div>
                 <h3>Add Banner line</h3>
-                <p className="helperText">Enter one debit or credit at a time. Invoice, date, type, description, and allocation stay in place for the next line; only the amount clears.</p>
+                <p className="helperText">Enter one debit or credit at a time. Invoice, date, type, rule class, description, and allocation stay in place for the next line; only the amount clears.</p>
               </div>
             </div>
             {addInvoiceTransactionState.message ? (
@@ -1371,6 +1376,34 @@ export function ProcurementTable({
                   <option value="debit">Debit / invoice</option>
                   <option value="credit">Credit / return</option>
                 </select>
+              </label>
+              <label>
+                Rule Class
+                <input
+                  data-invoice-field
+                  name="ruleClassCode"
+                  value={invoiceTransactionDraft.ruleClassCode}
+                  onChange={(event) => {
+                    const ruleClassCode = event.target.value.toUpperCase();
+                    setInvoiceTransactionDraft((current) => ({
+                      ...current,
+                      ruleClassCode,
+                      relievesEncumbrance: bannerRuleRelievesEncumbrance(ruleClassCode)
+                    }));
+                  }}
+                  placeholder="INEI"
+                />
+              </label>
+              <label className="checkboxLabel invoiceRelievesEncumbranceField">
+                <input
+                  data-invoice-field
+                  name="relievesEncumbrance"
+                  type="checkbox"
+                  value="true"
+                  checked={invoiceTransactionDraft.relievesEncumbrance}
+                  onChange={(event) => setInvoiceTransactionDraft((current) => ({ ...current, relievesEncumbrance: event.target.checked }))}
+                />
+                Relieves the PO encumbrance
               </label>
               <label className="invoiceTransactionAllocationField">
                 Budget allocation

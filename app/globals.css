@@ -2105,6 +2105,21 @@ th {
   grid-column: span 2;
 }
 
+.invoiceTransactionForm .invoiceRelievesEncumbranceField {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  align-self: end;
+  gap: 0.45rem;
+}
+
+.invoiceTransactionForm .invoiceRelievesEncumbranceField input[type="checkbox"] {
+  width: 1rem;
+  min-height: auto;
+  padding: 0;
+  box-shadow: none;
+}
+
 .invoiceTransactionForm button {
   justify-self: start;
 }
