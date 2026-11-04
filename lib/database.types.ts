@@ -1707,6 +1707,74 @@ export type Database = {
           { foreignKeyName: "purchase_events_purchase_id_fkey"; columns: ["purchase_id"]; isOneToOne: false; referencedRelation: "purchases"; referencedColumns: ["id"] }
         ];
       };
+      "banner_reconciliation_periods": {
+        Row: {
+          "id": string;
+          "fiscal_year_id": string;
+          "organization_id": string;
+          "account_code_id": string;
+          "as_of_date": string;
+          "ytd_control_total": number | string;
+          "enc_control_total": number | string;
+          "enc_detail_total": number | string;
+          "app_ytd_total": number | string;
+          "app_enc_total": number | string;
+          "ytd_source_filename": string | null;
+          "enc_control_filename": string | null;
+          "enc_detail_filename": string | null;
+          "status": string;
+          "notes": string | null;
+          "created_by_user_id": string | null;
+          "created_at": string;
+          "updated_at": string;
+        };
+        Insert: {
+          "id"?: string;
+          "fiscal_year_id": string;
+          "organization_id": string;
+          "account_code_id": string;
+          "as_of_date": string;
+          "ytd_control_total": number | string;
+          "enc_control_total": number | string;
+          "enc_detail_total": number | string;
+          "app_ytd_total": number | string;
+          "app_enc_total": number | string;
+          "ytd_source_filename"?: string | null;
+          "enc_control_filename"?: string | null;
+          "enc_detail_filename"?: string | null;
+          "status"?: string;
+          "notes"?: string | null;
+          "created_by_user_id"?: string | null;
+          "created_at"?: string;
+          "updated_at"?: string;
+        };
+        Update: {
+          "id"?: string;
+          "fiscal_year_id"?: string;
+          "organization_id"?: string;
+          "account_code_id"?: string;
+          "as_of_date"?: string;
+          "ytd_control_total"?: number | string;
+          "enc_control_total"?: number | string;
+          "enc_detail_total"?: number | string;
+          "app_ytd_total"?: number | string;
+          "app_enc_total"?: number | string;
+          "ytd_source_filename"?: string | null;
+          "enc_control_filename"?: string | null;
+          "enc_detail_filename"?: string | null;
+          "status"?: string;
+          "notes"?: string | null;
+          "created_by_user_id"?: string | null;
+          "created_at"?: string;
+          "updated_at"?: string;
+        };
+        Relationships: [
+          { foreignKeyName: "banner_reconciliation_periods_fiscal_year_id_fkey"; columns: ["fiscal_year_id"]; isOneToOne: false; referencedRelation: "fiscal_years"; referencedColumns: ["id"] },
+          { foreignKeyName: "banner_reconciliation_periods_organization_id_fkey"; columns: ["organization_id"]; isOneToOne: false; referencedRelation: "organizations"; referencedColumns: ["id"] },
+          { foreignKeyName: "banner_reconciliation_periods_account_code_id_fkey"; columns: ["account_code_id"]; isOneToOne: false; referencedRelation: "account_codes"; referencedColumns: ["id"] },
+          { foreignKeyName: "banner_reconciliation_periods_created_by_user_id_fkey"; columns: ["created_by_user_id"]; isOneToOne: false; referencedRelation: "users"; referencedColumns: ["id"] }
+        ];
+      };
       "purchase_invoice_transactions": {
         Row: {
           "id": string;

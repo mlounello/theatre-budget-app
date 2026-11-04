@@ -2,10 +2,10 @@ import { getSupabaseServerClient } from "@/lib/supabase-server";
 import type { BudgetPlanMonthRow, BudgetPlanRow, MonthlyActualByOrgAccountRow, PurchaseStatus } from "@/lib/types";
 import { getAccessContext } from "@/lib/access";
 
-function asNumber(value: string | number | null): number {
-  if (value === null) return 0;
+function asNumber(value: unknown): number {
+  if (value === null || value === undefined) return 0;
   if (typeof value === "number") return value;
-  const parsed = Number.parseFloat(value);
+  const parsed = Number.parseFloat(String(value));
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
@@ -246,9 +246,29 @@ export type BannerPoMatchCandidate = {
   requisitionNumber: string | null;
   accountCode: string;
   allocationAmount: number;
+  postedAmount: number;
+  encumberedAmount: number;
+  procurementStatus: string;
   projectName: string | null;
   productionCategoryName: string | null;
   label: string;
+};
+
+export type BannerReconciliationPeriod = {
+  id: string;
+  fiscalYearId: string;
+  organizationId: string;
+  organizationCode: string;
+  accountCodeId: string;
+  accountCode: string;
+  asOfDate: string;
+  ytdControlTotal: number;
+  encControlTotal: number;
+  encDetailTotal: number;
+  appYtdTotal: number;
+  appEncTotal: number;
+  status: string;
+  createdAt: string;
 };
 
 export type BannerImportDuplicate = {
@@ -1930,9 +1950,10 @@ export async function getProcurementData(
 export async function getBannerAccountReconciliationData(fiscalYearId: string): Promise<{
   candidates: BannerPoMatchCandidate[];
   duplicates: BannerImportDuplicate[];
+  periods: BannerReconciliationPeriod[];
 }> {
   const supabase = await getSupabaseServerClient();
-  const [purchasesResponse, duplicatesResponse] = await Promise.all([
+  const [purchasesResponse, duplicatesResponse, financialsResponse, periodsResponse] = await Promise.all([
     supabase
       .from("purchases")
       .select(
@@ -1941,17 +1962,39 @@ export async function getBannerAccountReconciliationData(fiscalYearId: string): 
       .eq("fiscal_year_id", fiscalYearId)
       .eq("request_type", "requisition")
       .not("po_number", "is", null)
-      .not("procurement_status", "in", "(paid,cancelled)")
+      .neq("procurement_status", "cancelled")
       .order("title", { ascending: true }),
     supabase
       .from("purchase_invoice_transactions")
       .select("source_line_key, purchase_id, document_number, purchases!inner(title, po_number, fiscal_year_id)")
       .not("source_line_key", "is", null)
       .is("voided_at", null)
-      .eq("purchases.fiscal_year_id", fiscalYearId)
+      .eq("purchases.fiscal_year_id", fiscalYearId),
+    supabase
+      .from("v_purchase_allocation_financials")
+      .select("purchase_allocation_id, posted_amount, encumbered_amount")
+      .eq("fiscal_year_id", fiscalYearId),
+    supabase
+      .from("banner_reconciliation_periods")
+      .select("id, fiscal_year_id, organization_id, account_code_id, as_of_date, ytd_control_total, enc_control_total, enc_detail_total, app_ytd_total, app_enc_total, status, created_at, organizations(org_code), account_codes(code)")
+      .eq("fiscal_year_id", fiscalYearId)
+      .order("as_of_date", { ascending: false })
+      .limit(50)
   ]);
   if (purchasesResponse.error) throw purchasesResponse.error;
   if (duplicatesResponse.error) throw duplicatesResponse.error;
+  if (financialsResponse.error) throw financialsResponse.error;
+  if (periodsResponse.error) throw periodsResponse.error;
+
+  const financialByAllocation = new Map(
+    ((financialsResponse.data ?? []) as Array<Record<string, unknown>>).map((row) => [
+      String(row.purchase_allocation_id ?? ""),
+      {
+        postedAmount: asNumber(row.posted_amount),
+        encumberedAmount: asNumber(row.encumbered_amount)
+      }
+    ])
+  );
 
   const candidates: BannerPoMatchCandidate[] = [];
   for (const purchase of purchasesResponse.data ?? []) {
@@ -1969,6 +2012,7 @@ export async function getBannerAccountReconciliationData(fiscalYearId: string): 
       const category = Array.isArray(allocation.production_categories) ? allocation.production_categories[0] : allocation.production_categories;
       const accountCode = account?.code ?? "";
       if (!allocation.id || !accountCode) continue;
+      const financial = financialByAllocation.get(allocation.id) ?? { postedAmount: 0, encumberedAmount: 0 };
       const projectName = project?.name ? `${project.name}${project.season ? ` (${project.season})` : ""}` : null;
       const detail = [projectName, category?.name, accountCode].filter(Boolean).join(" · ");
       candidates.push({
@@ -1979,9 +2023,12 @@ export async function getBannerAccountReconciliationData(fiscalYearId: string): 
         requisitionNumber: (purchase.requisition_number as string | null) ?? null,
         accountCode,
         allocationAmount: asNumber(allocation.amount ?? null),
+        postedAmount: financial.postedAmount,
+        encumberedAmount: financial.encumberedAmount,
+        procurementStatus: purchase.procurement_status as string,
         projectName,
         productionCategoryName: category?.name ?? null,
-        label: `${purchase.po_number as string} · ${purchase.title as string}${detail ? ` · ${detail}` : ""}`
+        label: `${purchase.po_number as string} · ${purchase.title as string}${detail ? ` · ${detail}` : ""} · ${String(purchase.procurement_status).replaceAll("_", " ")}`
       });
     }
   }
@@ -1998,7 +2045,27 @@ export async function getBannerAccountReconciliationData(fiscalYearId: string): 
       documentNumber: row.document_number as string
     }];
   });
-  return { candidates, duplicates };
+  const periods: BannerReconciliationPeriod[] = ((periodsResponse.data ?? []) as Array<Record<string, unknown>>).map((row) => {
+    const organization = Array.isArray(row.organizations) ? row.organizations[0] : row.organizations as { org_code?: string } | null;
+    const account = Array.isArray(row.account_codes) ? row.account_codes[0] : row.account_codes as { code?: string } | null;
+    return {
+      id: String(row.id),
+      fiscalYearId: String(row.fiscal_year_id),
+      organizationId: String(row.organization_id),
+      organizationCode: organization?.org_code ?? "",
+      accountCodeId: String(row.account_code_id),
+      accountCode: account?.code ?? "",
+      asOfDate: String(row.as_of_date),
+      ytdControlTotal: asNumber(row.ytd_control_total),
+      encControlTotal: asNumber(row.enc_control_total),
+      encDetailTotal: asNumber(row.enc_detail_total),
+      appYtdTotal: asNumber(row.app_ytd_total),
+      appEncTotal: asNumber(row.app_enc_total),
+      status: String(row.status),
+      createdAt: String(row.created_at)
+    };
+  });
+  return { candidates, duplicates, periods };
 }
 
 export async function getProcurementTrackerData(): Promise<{

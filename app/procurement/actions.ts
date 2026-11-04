@@ -4,6 +4,11 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext, requireProjectRole } from "@/lib/access";
 import { bannerRuleRelievesEncumbrance } from "@/lib/banner-rule-class";
+import {
+  parseArgosEncControlCsv,
+  parseArgosYtdControlCsv,
+  parseBannerFinanceEncWorkbook
+} from "@/lib/banner-reconciliation-files";
 import { createInstitutionalCommitmentForPurchase } from "@/lib/institutional-budget";
 import type { PurchaseStatus } from "@/lib/types";
 
@@ -1430,7 +1435,7 @@ export async function importBannerAccountReconciliationAction(
     if ((purchases ?? []).length !== purchaseIds.length) return err("One or more selected POs are unavailable.");
     for (const purchase of purchases ?? []) {
       if (purchase.request_type !== "requisition") return err("Banner account lines can only be assigned to requisition POs.");
-      if (["paid", "cancelled"].includes(String(purchase.procurement_status))) return err("A selected PO is already fully paid or cancelled.");
+      if (String(purchase.procurement_status) === "cancelled") return err("A selected PO is cancelled. Reopen it before importing Banner activity.");
     }
 
     const allocationIds = [...new Set(rows.map((row) => row.purchaseAllocationId))];
@@ -1494,6 +1499,110 @@ export async function importBannerAccountReconciliationAction(
     return ok(`${importedCount} Banner line${importedCount === 1 ? "" : "s"} assigned to POs.${duplicateMessage}`);
   } catch (error) {
     return err(getErrorMessage(error, "Could not reconcile the Banner account lines."));
+  }
+}
+
+export async function finalizeBannerReconciliationAction(
+  prevState: ActionState = emptyState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const {
+      data: { user }
+    } = await supabase.auth.getUser();
+    if (!user) return err("You must be signed in.");
+    const fiscalYearId = String(formData.get("fiscalYearId") ?? "").trim();
+    const ytdFile = formData.get("ytdFile");
+    const encControlFile = formData.get("encControlFile");
+    const encDetailFile = formData.get("encDetailFile");
+    if (!fiscalYearId) return err("Choose a fiscal year.");
+    if (!(ytdFile instanceof File) || ytdFile.size === 0) return err("Choose the Evisions Argos YTD CSV.");
+    if (!(encControlFile instanceof File) || encControlFile.size === 0) return err("Choose the Evisions Argos ENC control CSV.");
+    if (!(encDetailFile instanceof File) || encDetailFile.size === 0) return err("Choose the Banner Finance ENC detail workbook.");
+    if (ytdFile.size > 8_000_000 || encControlFile.size > 8_000_000 || encDetailFile.size > 8_000_000) {
+      return err("Each reconciliation file must be 8 MB or smaller.");
+    }
+
+    const [ytd, encControl, encDetail] = await Promise.all([
+      parseArgosYtdControlCsv(await ytdFile.text()),
+      parseArgosEncControlCsv(await encControlFile.text()),
+      parseBannerFinanceEncWorkbook(await encDetailFile.arrayBuffer())
+    ]);
+    if (!ytd.organizationCode || !ytd.accountCode) return err("The Argos YTD file is missing its organization or account code.");
+    if (encControl.accountCode !== ytd.accountCode) return err("The Argos ENC control is for a different account than the Argos YTD file.");
+    if (encDetail.fiscalYear !== ytd.fiscalYear) return err("The Banner Finance ENC workbook is for a different fiscal year than the Argos YTD file.");
+    if (encDetail.organizationCode !== ytd.organizationCode || encDetail.accountCode !== ytd.accountCode) {
+      return err("The Banner Finance ENC workbook is for a different organization or account.");
+    }
+    if (!encDetail.asOfDate) return err("The Banner Finance ENC workbook is missing its as-of date.");
+    if (encDetail.reportedTotal !== null && Math.abs(encDetail.reportedTotal - encDetail.total) > 0.01) {
+      return err(`The Banner Finance ENC detail lines total ${encDetail.total.toFixed(2)}, but its report total is ${encDetail.reportedTotal.toFixed(2)}.`);
+    }
+    if (Math.abs(encDetail.total - encControl.total) > 0.01) {
+      return err(`The Banner Finance ENC detail totals ${encDetail.total.toFixed(2)}, but the Argos ENC control is ${encControl.total.toFixed(2)}.`);
+    }
+
+    const { data: organization, error: organizationError } = await supabase
+      .from("organizations")
+      .select("id")
+      .eq("org_code", ytd.organizationCode)
+      .eq("active", true)
+      .is("superseded_by_organization_id", null)
+      .single();
+    if (organizationError || !organization) return err(`Active organization ${ytd.organizationCode} was not found.`);
+    await ensureOrganizationPmOrAdminAccess(organization.id as string, fiscalYearId);
+
+    const { data: account, error: accountError } = await supabase
+      .from("account_codes")
+      .select("id")
+      .eq("code", ytd.accountCode)
+      .single();
+    if (accountError || !account) return err(`Banner account ${ytd.accountCode} was not found.`);
+
+    const { data: actualRows, error: actualError } = await supabase
+      .from("v_actuals_by_banner_code")
+      .select("organization_id, posted_total, enc_total")
+      .eq("fiscal_year_id", fiscalYearId)
+      .eq("org_code", ytd.organizationCode)
+      .eq("banner_account_code", ytd.accountCode);
+    if (actualError) return err(actualError.message);
+    const appYtd = Math.round(((actualRows ?? []) as Array<Record<string, unknown>>).reduce((sum, row) => sum + Number(row.posted_total ?? 0), 0) * 100) / 100;
+    const appEnc = Math.round(((actualRows ?? []) as Array<Record<string, unknown>>).reduce((sum, row) => sum + Number(row.enc_total ?? 0), 0) * 100) / 100;
+    const differences: string[] = [];
+    if (Math.abs(appYtd - ytd.total) > 0.01) differences.push(`YTD: app ${appYtd.toFixed(2)} vs Argos ${ytd.total.toFixed(2)}`);
+    if (Math.abs(appEnc - encControl.total) > 0.01) differences.push(`ENC: app ${appEnc.toFixed(2)} vs Argos ${encControl.total.toFixed(2)}`);
+    if (differences.length > 0) {
+      return err(`The account cannot be marked reconciled. ${differences.join(". ")}. Review the exception documents and try again.`);
+    }
+
+    const { error: saveError } = await supabase
+      .from("banner_reconciliation_periods")
+      .upsert({
+        fiscal_year_id: fiscalYearId,
+        organization_id: organization.id as string,
+        account_code_id: account.id as string,
+        as_of_date: encDetail.asOfDate,
+        ytd_control_total: ytd.total,
+        enc_control_total: encControl.total,
+        enc_detail_total: encDetail.total,
+        app_ytd_total: appYtd,
+        app_enc_total: appEnc,
+        ytd_source_filename: ytdFile.name.slice(0, 255),
+        enc_control_filename: encControlFile.name.slice(0, 255),
+        enc_detail_filename: encDetailFile.name.slice(0, 255),
+        status: "reconciled",
+        notes: `${ytd.rowCount} YTD detail lines; ${encDetail.rows.length} ENC detail lines across ${encDetail.documents.length} documents.`,
+        created_by_user_id: user.id,
+        updated_at: new Date().toISOString()
+      }, { onConflict: "fiscal_year_id,organization_id,account_code_id,as_of_date" });
+    if (saveError) return err(saveError.message);
+    revalidatePath("/procurement");
+    revalidatePath("/overview");
+    return ok(`${ytd.organizationCode} ${ytd.accountCode} reconciled through ${encDetail.asOfDate}. YTD ${appYtd.toFixed(2)} and ENC ${appEnc.toFixed(2)} both match Banner.`);
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not finish the Banner reconciliation."));
   }
 }
 

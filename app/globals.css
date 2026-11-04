@@ -902,6 +902,11 @@ th {
   color: #6b5300;
 }
 
+.status-needs_attention {
+  background: #ffe1e1;
+  color: #8d2525;
+}
+
 .status-encumbered {
   background: #dbf3d8;
   color: #1f5f1e;
@@ -2387,6 +2392,146 @@ th {
   backdrop-filter: blur(8px);
 }
 
+.bannerReconciliationWorkflow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.bannerReconciliationFiles {
+  display: contents;
+}
+
+.bannerStepFiles { order: 1; }
+.bannerStepYtd { order: 2; }
+.bannerStepEnc { order: 3; }
+.bannerStepFinalize { order: 4; }
+.bannerStepHistory { order: 5; }
+
+.bannerYtdReview,
+.bannerDocumentGroups,
+.bannerEncDocuments,
+.bannerPeriodHistory {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.bannerFileGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.bannerFileGrid .invoiceCsvUpload {
+  align-content: start;
+  min-height: 150px;
+}
+
+.bannerDocumentGroup,
+.bannerEncDocument,
+.bannerEncComparison,
+.bannerPeriodHistory > span {
+  border: 1px solid var(--surface-border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.bannerDocumentGroup > summary {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) auto minmax(220px, 1.3fr);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  cursor: pointer;
+}
+
+.bannerDocumentGroup > summary > span:first-child,
+.bannerDocumentGroup > summary label,
+.bannerDocumentLine > span,
+.bannerEncDocument > span,
+.bannerPeriodHistory > span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.bannerDocumentGroup > summary small,
+.bannerDocumentLine small,
+.bannerEncDocument small,
+.bannerPeriodHistory small {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.bannerDocumentGroup select,
+.bannerDocumentLine select,
+.bannerEncDocument select {
+  width: 100%;
+  min-height: 40px;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--surface-border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.bannerDocumentLines {
+  border-top: 1px solid var(--surface-border);
+}
+
+.bannerDocumentLine,
+.bannerEncDocument {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.2fr) auto minmax(220px, 1fr);
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.bannerDocumentLine + .bannerDocumentLine {
+  border-top: 1px solid #edf1ee;
+}
+
+.bannerEncComparison {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.7rem;
+}
+
+.bannerEncComparison span {
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.bannerEncComparison .isMatch {
+  background: #e8f5eb;
+  color: #185c35;
+}
+
+.bannerEncComparison .isMismatch {
+  background: #fff0f0;
+  color: #9f2525;
+}
+
+.bannerFinalizePanel {
+  border-color: #b7d8c2;
+  background: #f5fbf7;
+}
+
+.bannerPeriodHistory > span {
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  padding: 0.65rem 0.75rem;
+}
+
+.bannerPeriodHistory > span .statusChip {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
 .invoiceKeyboardHint {
   margin: 0;
   color: var(--text-muted);
@@ -2522,6 +2667,13 @@ th {
   .bannerReconciliationControls,
   .bannerReconciliationFooter {
     display: grid;
+  }
+
+  .bannerFileGrid,
+  .bannerDocumentGroup > summary,
+  .bannerDocumentLine,
+  .bannerEncDocument {
+    grid-template-columns: 1fr;
   }
 }
 

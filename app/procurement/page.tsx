@@ -123,8 +123,10 @@ export default async function ProcurementPage({
         ) : null}
         {canManageProcurement ? (
           <BannerAccountReconciliation
+            fiscalYearId={selectedFiscalYearId}
             candidates={bannerReconciliation.candidates}
             duplicates={bannerReconciliation.duplicates}
+            periods={bannerReconciliation.periods}
           />
         ) : null}
       </div>
