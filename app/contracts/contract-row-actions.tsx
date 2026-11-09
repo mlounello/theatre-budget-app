@@ -314,7 +314,7 @@ export function ContractRowActions({
                     />
                   </label>
                   <label>
-                    Planned Compensation
+                    {editEngagementType === "temporary_employee" ? "Total Compensation" : "Planned Compensation"}
                     <input
                       name="contractValue"
                       type="number"
@@ -362,7 +362,7 @@ export function ContractRowActions({
                       <label>Employment Start Date<input name="employmentStartDate" type="date" defaultValue={contract.employmentStartDate ?? ""} required /></label>
                       <label>Employment End Date<input name="employmentEndDate" type="date" defaultValue={contract.employmentEndDate ?? ""} required /></label>
                       <label>
-                        First Biweekly Pay Date
+                        First Payroll Date
                         <input name="payrollFirstPayDate" type="date" defaultValue={contract.payrollFirstPayDate ?? ""} required />
                         <span className="helperText">Equal paychecks are scheduled every 14 days through the end date.</span>
                       </label>

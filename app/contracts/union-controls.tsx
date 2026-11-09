@@ -40,6 +40,7 @@ export function UnionContributionStatusControl({ contribution }: { contribution:
           <option value="planned">Not Submitted</option>
           <option value="check_request_submitted">Check Request Submitted</option>
           <option value="check_paid">Check Paid</option>
+          <option value="cancelled">Canceled</option>
         </select>
         <button type="submit" className="tinyButton">Save</button>
       </form>

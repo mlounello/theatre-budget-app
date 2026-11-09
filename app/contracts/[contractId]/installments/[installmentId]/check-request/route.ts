@@ -103,7 +103,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
   let { data, error } = await supabase
     .from("contract_installments")
     .select(
-      "id, contract_id, installment_number, installment_amount, due_date, ap_receive_by, mail_by, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_encrypted, contracts!inner(id, project_id, organization_id, banner_account_code_id, contractor_name, contractor_employee_id, contract_number, contract_role, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_encrypted, notes, accounting_project:projects!contracts_project_id_fkey(name, season), organization:organizations!contracts_organization_id_fkey(org_code, name), account_code:account_codes!contracts_banner_account_code_id_fkey(code, name))"
+      "id, contract_id, installment_number, installment_amount, due_date, ap_receive_by, mail_by, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_encrypted, contracts!inner(id, project_id, organization_id, banner_account_code_id, contractor_name, contractor_employee_id, contract_number, contract_role, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_encrypted, w9_attachment_path, notes, accounting_project:projects!contracts_project_id_fkey(name, season), organization:organizations!contracts_organization_id_fkey(org_code, name), account_code:account_codes!contracts_banner_account_code_id_fkey(code, name))"
     )
     .eq("id", installmentId)
     .eq("contract_id", contractId)
@@ -112,7 +112,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
     ({ data, error } = await supabase
       .from("contract_installments")
       .select(
-        "id, contract_id, installment_number, installment_amount, contracts!inner(id, project_id, organization_id, banner_account_code_id, contractor_name, contractor_employee_id, notes, accounting_project:projects!contracts_project_id_fkey(name, season), organization:organizations!contracts_organization_id_fkey(org_code, name), account_code:account_codes!contracts_banner_account_code_id_fkey(code, name))"
+        "id, contract_id, installment_number, installment_amount, contracts!inner(id, project_id, organization_id, banner_account_code_id, contractor_name, contractor_employee_id, w9_attachment_path, notes, accounting_project:projects!contracts_project_id_fkey(name, season), organization:organizations!contracts_organization_id_fkey(org_code, name), account_code:account_codes!contracts_banner_account_code_id_fkey(code, name))"
       )
       .eq("id", installmentId)
       .eq("contract_id", contractId)
@@ -139,6 +139,7 @@ export async function GET(_request: Request, { params }: RouteParams) {
         vendor_address2?: string | null;
         vendor_address3?: string | null;
         tax_id_encrypted?: string | null;
+        w9_attachment_path?: string | null;
         notes?: string | null;
         accounting_project?: { name?: string | null; season?: string | null } | null;
         organization?: { org_code?: string | null; name?: string | null } | null;
@@ -231,6 +232,23 @@ export async function GET(_request: Request, { params }: RouteParams) {
   }
 
   form.flatten();
+
+  const vendorNumber = String(contractJoin?.contractor_employee_id ?? "").trim();
+  const w9Path = String(contractJoin?.w9_attachment_path ?? "").trim();
+  if (!internal && !vendorNumber && w9Path) {
+    const { data: w9File, error: w9Error } = await supabase.storage.from("contract-w9s").download(w9Path);
+    if (w9Error || !w9File) {
+      return new NextResponse(`The check request was created, but the W-9 could not be added: ${w9Error?.message ?? "file unavailable"}.`, { status: 500 });
+    }
+    try {
+      const w9Document = await PDFDocument.load(await w9File.arrayBuffer());
+      const w9Pages = await pdfDoc.copyPages(w9Document, w9Document.getPageIndices());
+      for (const page of w9Pages) pdfDoc.addPage(page);
+    } catch {
+      return new NextResponse("The stored W-9 is not a readable PDF. Upload a replacement W-9 and export again.", { status: 500 });
+    }
+  }
+
   const pdfBytes = await pdfDoc.save();
   const filename = `${safeFilePart(contractorName)}-installment-${installmentNumber}-check-request.pdf`;
 

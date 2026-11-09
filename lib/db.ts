@@ -375,9 +375,10 @@ export type ContractWorkflowStatus =
   | "w9_requested"
   | "contract_sent"
   | "contract_signed_returned"
-  | "siena_signed";
+  | "siena_signed"
+  | "cancelled";
 
-export type ContractInstallmentStatus = "planned" | "check_request_submitted" | "check_paid";
+export type ContractInstallmentStatus = "planned" | "check_request_submitted" | "check_paid" | "cancelled";
 export type ContractSession = "summer" | "fall" | "winter" | "spring";
 export type UnionSignatureStatus = "not_started" | "sent_to_union" | "union_countersigned" | "complete";
 export type UnionContributionType = "employer_paid" | "artist_withholding";

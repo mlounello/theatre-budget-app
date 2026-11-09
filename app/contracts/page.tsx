@@ -16,6 +16,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 function workflowLabel(value: string, engagementType = "independent_contractor"): string {
+  if (value === "cancelled") return "Canceled";
   if (engagementType === "temporary_employee") {
     if (value === "contract_sent") return "Submitted to HR";
     if (value === "contract_signed_returned") return "HR Onboarding";
@@ -29,6 +30,7 @@ function workflowLabel(value: string, engagementType = "independent_contractor")
 }
 
 function installmentLabel(value: string, paymentChannel = "check_request"): string {
+  if (value === "cancelled") return "Canceled";
   if (paymentChannel === "payroll") {
     if (value === "check_request_submitted") return "Submitted to Payroll";
     if (value === "check_paid") return "Paid through Payroll";
@@ -40,12 +42,14 @@ function installmentLabel(value: string, paymentChannel = "check_request"): stri
 }
 
 function workflowTone(value: string): StatusTone {
+  if (value === "cancelled") return "neutral";
   if (value === "contract_signed_returned") return "info";
   if (value === "siena_signed") return "success";
   return "warning";
 }
 
 function installmentTone(value: string): StatusTone {
+  if (value === "cancelled") return "neutral";
   if (value === "check_paid") return "success";
   if (value === "check_request_submitted") return "info";
   return "warning";
@@ -126,15 +130,16 @@ export default async function ContractsPage({
   const dueCutoff = new Date(today);
   dueCutoff.setDate(dueCutoff.getDate() + 30);
   const isDue = (contractId: string) => installments.some((row) => {
-    if (row.contractId !== contractId || row.status === "check_paid" || !row.dueDate) return false;
+    if (row.contractId !== contractId || row.status === "check_paid" || row.status === "cancelled" || !row.dueDate) return false;
     const due = new Date(`${row.dueDate}T12:00:00`);
     return due <= dueCutoff;
   });
   const needsAttention = (contract: (typeof contracts)[number]) =>
-    contract.workflowStatus === "w9_requested" ||
-    (contract.engagementType === "temporary_employee" && contract.hrOnboardingStatus !== "complete") ||
-    (contract.engagementType === "union_freelance_artist" && contract.unionSignatureStatus !== "complete") ||
-    isDue(contract.id);
+    contract.workflowStatus !== "cancelled" &&
+    (contract.workflowStatus === "w9_requested" ||
+      (contract.engagementType === "temporary_employee" && contract.hrOnboardingStatus !== "complete") ||
+      (contract.engagementType === "union_freelance_artist" && contract.unionSignatureStatus !== "complete") ||
+      isDue(contract.id));
   const visibleContracts = fiscalYearContracts.filter((contract) => {
     if (query) {
       const haystack = `${contract.contractorName} ${contract.contractRole ?? ""} ${contract.contractorEmployeeId ?? ""} ${contract.projectName} ${contract.productionProjects.map((production) => production.name).join(" ")}`.toLowerCase();
@@ -168,8 +173,10 @@ export default async function ContractsPage({
     .map((installment) => ({ installment, contract: visibleContractById.get(installment.contractId) }))
     .filter((entry): entry is { installment: (typeof installments)[number]; contract: (typeof contracts)[number] } => Boolean(entry.contract))
     .sort((a, b) => {
-      if (a.installment.status === "check_paid" && b.installment.status !== "check_paid") return 1;
-      if (a.installment.status !== "check_paid" && b.installment.status === "check_paid") return -1;
+      const aClosed = a.installment.status === "check_paid" || a.installment.status === "cancelled";
+      const bClosed = b.installment.status === "check_paid" || b.installment.status === "cancelled";
+      if (aClosed && !bClosed) return 1;
+      if (!aClosed && bClosed) return -1;
       return dateSortValue(a.installment.dueDate).localeCompare(dateSortValue(b.installment.dueDate));
     });
   const scheduledUnionContributions = unionContributions
@@ -187,7 +194,7 @@ export default async function ContractsPage({
     );
     const contractContributions = unionContributionsByContract.get(contract.id) ?? [];
     return [
-      ...contractInstallments.filter((installment) => installment.paymentChannel !== "payroll").map((installment) => ({
+      ...contractInstallments.filter((installment) => installment.paymentChannel !== "payroll" && installment.status !== "cancelled").map((installment) => ({
         value: `installment:${contract.id}:${installment.id}`,
         contractorName: contract.contractorName,
         role: contract.contractRole || "Role not set",
@@ -195,7 +202,7 @@ export default async function ContractsPage({
         details: `Due ${shortDate(installment.dueDate)} · Mail by ${shortDate(installment.mailBy)}`,
         kind: "artist" as const
       })),
-      ...contractContributions.map((contribution) => ({
+      ...contractContributions.filter((contribution) => contribution.status !== "cancelled").map((contribution) => ({
         value: `union:${contract.id}:${contribution.id}`,
         contractorName: contract.contractorName,
         role: contract.contractRole || "Role not set",
@@ -226,7 +233,7 @@ export default async function ContractsPage({
           <form method="get" className="hiringFilters">
             <input type="hidden" name="fiscalYearId" value={selectedFiscalYearId} />
             <label>Search<input name="hiring_q" defaultValue={resolvedSearchParams?.hiring_q ?? ""} placeholder="Name, role, ID, or production" /></label>
-            <label>Status<select name="hiring_status" defaultValue={statusFilter}><option value="">All statuses</option><option value="w9_requested">Not Started</option><option value="contract_sent">Agreement Sent</option><option value="contract_signed_returned">Signed + Returned</option><option value="siena_signed">Complete</option></select></label>
+            <label>Status<select name="hiring_status" defaultValue={statusFilter}><option value="">All statuses</option><option value="w9_requested">Not Started</option><option value="contract_sent">Agreement Sent</option><option value="contract_signed_returned">Signed + Returned</option><option value="siena_signed">Complete</option><option value="cancelled">Canceled</option></select></label>
             <label>Session<select name="hiring_session" defaultValue={sessionFilter}><option value="">All sessions</option><option value="summer">Summer</option><option value="fall">Fall</option><option value="winter">Winter</option><option value="spring">Spring</option></select></label>
             <label>Production<select name="hiring_production" defaultValue={productionFilter}><option value="">All productions</option>{projectOptions.filter((project) => project.fiscalYearId === selectedFiscalYearId).map((project) => <option key={project.id} value={project.id}>{project.label}</option>)}</select></label>
             <label>View<select name="hiring_view" defaultValue={viewFilter}><option value="all">All Hiring</option><option value="payments">Payment Schedule</option><option value="checks_due">Checks Due</option><option value="needs_attention">Needs Attention</option></select></label>
@@ -260,16 +267,16 @@ export default async function ContractsPage({
           ) : null}
 
           <section className="contractChecksPanel" aria-labelledby="artist-payment-schedule-heading">
-            <h3 id="artist-payment-schedule-heading">Artist Contract Payments</h3>
-            <p className="helperText">{scheduledInstallments.length} scheduled payments</p>
-            {scheduledInstallments.length === 0 ? <p className="emptyState">No artist payments match these filters.</p> : (
+            <h3 id="artist-payment-schedule-heading">Artist &amp; Employee Payments</h3>
+            <p className="helperText">{scheduledInstallments.length} scheduled payments and paychecks</p>
+            {scheduledInstallments.length === 0 ? <p className="emptyState">No hiring payments match these filters.</p> : (
               <div className="contractCheckList">
                 {scheduledInstallments.map(({ installment, contract }) => (
                   <div className="contractCheckRow" key={installment.id}>
                     <div className="contractCheckSummary">
-                      <strong>{contract.contractorName} · Installment {installment.installmentNumber} · {formatCurrency(installment.installmentAmount)}</strong>
+                      <strong>{contract.contractorName} · {installment.paymentChannel === "payroll" ? `Paycheck ${installment.installmentNumber}` : `Installment ${installment.installmentNumber}`} · {formatCurrency(installment.installmentAmount)}</strong>
                       <small>
-                        {contract.contractRole || "Role not set"} · {contract.projectName} · Due {shortDate(installment.dueDate)} · Mail by {shortDate(installment.mailBy)}
+                        {contract.contractRole || "Role not set"} · {contract.projectName} · {installment.paymentChannel === "payroll" ? `Pay date ${shortDate(installment.dueDate)}` : `Due ${shortDate(installment.dueDate)} · Mail by ${shortDate(installment.mailBy)}`}
                       </small>
                     </div>
                     <StatusPill tone={installmentTone(installment.status)}>{installmentLabel(installment.status, installment.paymentChannel)}</StatusPill>
@@ -339,7 +346,7 @@ export default async function ContractsPage({
               const paidTotal = rows
                 .filter((row) => row.status === "check_paid")
                 .reduce((sum, row) => sum + row.installmentAmount, 0);
-              const nextPayment = rows.find((row) => row.status !== "check_paid") ?? rows[rows.length - 1];
+              const nextPayment = rows.find((row) => row.status !== "check_paid" && row.status !== "cancelled");
               const productionNames = associatedProductions.map(
                 (production) => `${production.name}${production.season ? ` (${production.season})` : ""}`
               );
@@ -353,7 +360,16 @@ export default async function ContractsPage({
                         {contract.contractRole || "Role not set"}
                         {sessionLabels.length > 0 ? ` · ${sessionLabels.join(", ")}` : ""}
                       </p>
-                      <small>Vendor #{contract.contractorEmployeeId ?? "Not assigned"}</small>
+                      <small className={!contract.contractorEmployeeId ? "contractVendorWarning" : undefined}>
+                        Vendor #{contract.contractorEmployeeId ?? "Not assigned *"}
+                        {!contract.contractorEmployeeId ? <span className="srOnly"> Vendor number not assigned.</span> : null}
+                      </small>
+                      {!contract.contractorEmployeeId && contract.engagementType !== "temporary_employee" ? (
+                        <span className="contractVendorHelper" title="The first payment may proceed with a W-9. Add the vendor number after Siena assigns it.">
+                          * Vendor number not assigned
+                        </span>
+                      ) : null}
+                      {contract.w9AttachmentPath ? <span className="contractDocumentBadge">W-9 on file</span> : null}
                       <span className="contractEngagementBadge">{engagementLabel(contract.engagementType)}</span>
                     </div>
                     <div className="contractMetaItem">
@@ -365,19 +381,23 @@ export default async function ContractsPage({
                       {productionNames.length > 0 ? <small>For {productionNames.join(", ")}</small> : null}
                     </div>
                     <div className="contractMetaItem">
-                      <span>Contract</span>
+                      <span>{contract.engagementType === "temporary_employee" ? "Employment" : "Contract"}</span>
                       <strong>{formatCurrency(contract.contractValue)}</strong>
                       <small>
-                        {contract.fiscalYearName ?? "No FY"} · {contract.bannerAccountCode ?? "No Banner code"}
+                        {contract.engagementType === "temporary_employee"
+                          ? `${shortDate(contract.employmentStartDate)}–${shortDate(contract.employmentEndDate)} · biweekly`
+                          : `${contract.fiscalYearName ?? "No FY"} · ${contract.bannerAccountCode ?? "No Banner code"}`}
                       </small>
                     </div>
                     <div className="contractMetaItem">
-                      <span>Next check</span>
-                      <strong>{nextPayment ? formatCurrency(nextPayment.installmentAmount) : "No installments"}</strong>
+                      <span>{contract.engagementType === "temporary_employee" ? "Next payroll" : "Next check"}</span>
+                      <strong>{nextPayment ? formatCurrency(nextPayment.installmentAmount) : "No future payment"}</strong>
                       <small>
                         {nextPayment
-                          ? `Due ${shortDate(nextPayment.dueDate)} · Mail ${shortDate(nextPayment.mailBy)}`
-                          : "No date"}
+                          ? contract.engagementType === "temporary_employee"
+                            ? `Pay date ${shortDate(nextPayment.dueDate)}`
+                            : `Due ${shortDate(nextPayment.dueDate)} · Mail ${shortDate(nextPayment.mailBy)}`
+                          : contract.workflowStatus === "cancelled" ? "Canceled; paid history retained" : "No date"}
                       </small>
                     </div>
                     <div className="contractStatusSummary">
@@ -416,7 +436,7 @@ export default async function ContractsPage({
                     <summary>
                       <span>Workflow &amp; check requests</span>
                       <small>
-                        {rows.length + contractUnionContributions.length} checks · {formatCurrency(paidTotal)} paid
+                        {rows.length + contractUnionContributions.length} payments · {formatCurrency(paidTotal)} paid
                       </small>
                     </summary>
                     <div className="contractDetailGrid">
@@ -434,16 +454,21 @@ export default async function ContractsPage({
                       </section>
 
                       <section className="contractChecksPanel">
-                        <h4>{contract.engagementType === "temporary_employee" ? "Payroll schedule" : "Artist installments"}</h4>
+                        <h4>{contract.engagementType === "temporary_employee" ? "Biweekly payroll schedule" : "Artist installments"}</h4>
+                        {contract.engagementType === "temporary_employee" ? (
+                          <p className="helperText">
+                            {formatCurrency(contract.contractValue)} total compensation is divided evenly across {rows.length} paychecks from {shortDate(contract.employmentStartDate)} through {shortDate(contract.employmentEndDate)}.
+                          </p>
+                        ) : null}
                         <div className="contractCheckList">
                           {rows.map((row) => (
                             <div className="contractCheckRow" key={row.id}>
                               <div className="contractCheckSummary">
                                 <strong>
-                                  Installment {row.installmentNumber} · {formatCurrency(row.installmentAmount)}
+                                  {row.paymentChannel === "payroll" ? `Paycheck ${row.installmentNumber} of ${rows.length}` : `Installment ${row.installmentNumber}`} · {formatCurrency(row.installmentAmount)}
                                 </strong>
                                 <small>
-                                  Due {shortDate(row.dueDate)} · Mail by {shortDate(row.mailBy)}
+                                  {row.paymentChannel === "payroll" ? `Pay date ${shortDate(row.dueDate)}` : `Due ${shortDate(row.dueDate)} · Mail by ${shortDate(row.mailBy)}`}
                                 </small>
                               </div>
                               <StatusPill tone={installmentTone(row.status)}>

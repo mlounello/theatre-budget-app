@@ -43,6 +43,7 @@ export function ContractWorkflowControl({
             <option value="contract_sent">{isTemporaryEmployee ? "Submitted to HR" : "Agreement Sent"}</option>
             <option value="contract_signed_returned">{isTemporaryEmployee ? "HR Onboarding" : "Signed + Returned"}</option>
             <option value="siena_signed">{isTemporaryEmployee ? "Onboarding Complete" : "Siena Signed"}</option>
+            <option value="cancelled">Canceled</option>
           </select>
         </StatusSelector>
         <PendingButton className="tinyButton" type="submit" pendingLabel="Saving…">
@@ -66,15 +67,16 @@ export function ContractInstallmentControl({ installment }: { installment: Contr
       ) : null}
       <form action={formAction} className="inlineEditForm">
         <input type="hidden" name="installmentId" value={installment.id} />
-        <StatusSelector label="Payment status">
+        <StatusSelector label={isPayroll ? "Paycheck status" : "Payment status"}>
           <select
             name="status"
             defaultValue={installment.status}
-            aria-label={`Payment status for installment ${installment.installmentNumber}`}
+            aria-label={`${isPayroll ? "Paycheck" : "Payment"} status for ${isPayroll ? "paycheck" : "installment"} ${installment.installmentNumber}`}
           >
             <option value="planned">{isPayroll ? "Planned" : "Not Submitted"}</option>
             <option value="check_request_submitted">{isPayroll ? "Submitted to Payroll" : "Check Request Submitted"}</option>
             <option value="check_paid">{isPayroll ? "Paid through Payroll" : "Check Paid"}</option>
+            <option value="cancelled">Canceled</option>
           </select>
         </StatusSelector>
         <PendingButton type="submit" className="tinyButton" pendingLabel="Saving…">

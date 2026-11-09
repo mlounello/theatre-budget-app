@@ -69,14 +69,14 @@ export async function getDashboardOperationalAttention(params: {
         "id, installment_number, installment_amount, status, due_date, ap_receive_by, mail_by, contracts!inner(id, fiscal_year_id, contractor_name, contract_role)"
       )
       .eq("contracts.fiscal_year_id", params.fiscalYearId)
-      .neq("status", "check_paid"),
+      .not("status", "in", "(check_paid,cancelled)"),
     supabase
       .from("contract_union_contributions")
       .select(
         "id, fund_name_snapshot, amount, status, due_date, ap_receive_by, mail_by, contracts!inner(id, fiscal_year_id, contractor_name, contract_role)"
       )
       .eq("contracts.fiscal_year_id", params.fiscalYearId)
-      .neq("status", "check_paid"),
+      .not("status", "in", "(check_paid,cancelled)"),
     getRevenuePerformanceRows({ fiscalYearId: params.fiscalYearId })
   ]);
 

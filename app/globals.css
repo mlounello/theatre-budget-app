@@ -2998,6 +2998,32 @@ th {
   text-transform: uppercase;
 }
 
+.contractVendorWarning {
+  color: #9b1c31;
+  font-weight: 800;
+}
+
+.contractVendorHelper {
+  display: block;
+  color: #9b1c31;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.contractDocumentBadge {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 0.25rem;
+  padding: 0.18rem 0.5rem;
+  border: 1px solid #a8c8b6;
+  border-radius: 999px;
+  background: #edf8f1;
+  color: #155b37;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
 .contractCardActions {
   display: flex;
   justify-content: flex-end;

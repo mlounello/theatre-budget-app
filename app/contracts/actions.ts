@@ -14,8 +14,8 @@ type ActionState = {
   timestamp: number;
 };
 
-type ContractWorkflowStatus = "w9_requested" | "contract_sent" | "contract_signed_returned" | "siena_signed";
-type InstallmentStatus = "planned" | "check_request_submitted" | "check_paid";
+type ContractWorkflowStatus = "w9_requested" | "contract_sent" | "contract_signed_returned" | "siena_signed" | "cancelled";
+type InstallmentStatus = "planned" | "check_request_submitted" | "check_paid" | "cancelled";
 type CheckRequestHandling = "mail" | "business_affairs_pickup" | "other";
 type ContractSession = "summer" | "fall" | "winter" | "spring";
 type EngagementType = "independent_contractor" | "union_freelance_artist" | "temporary_employee";
@@ -142,17 +142,18 @@ async function uploadContractW9(
 
 function parseWorkflowStatus(value: FormDataEntryValue | null): ContractWorkflowStatus {
   const raw = String(value ?? "w9_requested").trim().toLowerCase();
-  if (raw === "contract_sent" || raw === "contract_signed_returned" || raw === "siena_signed") return raw;
+  if (raw === "contract_sent" || raw === "contract_signed_returned" || raw === "siena_signed" || raw === "cancelled") return raw;
   return "w9_requested";
 }
 
 function parseInstallmentStatus(value: FormDataEntryValue | null): InstallmentStatus {
   const raw = String(value ?? "planned").trim().toLowerCase();
-  if (raw === "check_request_submitted" || raw === "check_paid") return raw;
+  if (raw === "check_request_submitted" || raw === "check_paid" || raw === "cancelled") return raw;
   return "planned";
 }
 
 function purchaseStatusForInstallmentStatus(status: InstallmentStatus): PurchaseStatus {
+  if (status === "cancelled") return "cancelled";
   if (status === "check_paid") return "posted";
   if (status === "check_request_submitted") return "encumbered";
   return "requested";
@@ -1287,7 +1288,7 @@ export async function updateContractDetailsAction(
           posted_amount: postedAmount,
           ordered_on: nextOrderDate,
           status: nextStatus,
-          procurement_status: nextStatus === "posted" ? "paid" : nextStatus === "encumbered" ? "ordered" : "requested",
+          procurement_status: nextStatus === "cancelled" ? "cancelled" : nextStatus === "posted" ? "paid" : nextStatus === "encumbered" ? "ordered" : "requested",
           posted_date: nextStatus === "posted" ? new Date().toISOString().slice(0, 10) : null
         })
         .eq("id", purchaseId)
@@ -1393,6 +1394,54 @@ export async function updateContractWorkflowAction(
       ]);
     }
 
+    if (workflowStatus === "cancelled") {
+      const [{ data: plannedInstallments, error: installmentLookupError }, { data: plannedContributions, error: contributionLookupError }] = await Promise.all([
+        supabase.from("contract_installments").select("id, purchase_id").eq("contract_id", contractId).eq("status", "planned"),
+        supabase.from("contract_union_contributions").select("id, purchase_id").eq("contract_id", contractId).eq("status", "planned")
+      ]);
+      if (installmentLookupError) return err(installmentLookupError.message);
+      if (contributionLookupError) return err(contributionLookupError.message);
+
+      const installmentIds = (plannedInstallments ?? []).map((row) => row.id as string);
+      const contributionIds = (plannedContributions ?? []).map((row) => row.id as string);
+      const purchaseIds = [...(plannedInstallments ?? []), ...(plannedContributions ?? [])]
+        .map((row) => (row.purchase_id as string | null) ?? null)
+        .filter((id): id is string => Boolean(id));
+
+      if (purchaseIds.length > 0) {
+        const { error: purchaseCancelError } = await supabase
+          .from("purchases")
+          .update({
+            status: "cancelled",
+            requested_amount: 0,
+            encumbered_amount: 0,
+            pending_cc_amount: 0,
+            posted_amount: 0,
+            posted_date: null,
+            procurement_status: "cancelled"
+          })
+          .in("id", purchaseIds);
+        if (purchaseCancelError) return err(purchaseCancelError.message);
+        for (const purchaseId of purchaseIds) {
+          await createInstitutionalCommitmentForPurchase(supabase, purchaseId, user.id);
+        }
+      }
+      if (installmentIds.length > 0) {
+        const { error: installmentCancelError } = await supabase
+          .from("contract_installments")
+          .update({ status: "cancelled", automation_status: "not_ready", automation_ready_at: null, automation_ready_by_user_id: null })
+          .in("id", installmentIds);
+        if (installmentCancelError) return err(installmentCancelError.message);
+      }
+      if (contributionIds.length > 0) {
+        const { error: contributionCancelError } = await supabase
+          .from("contract_union_contributions")
+          .update({ status: "cancelled", automation_status: "not_ready", automation_ready_at: null, automation_ready_by_user_id: null })
+          .in("id", contributionIds);
+        if (contributionCancelError) return err(contributionCancelError.message);
+      }
+    }
+
     revalidatePath("/contracts");
     return ok("Contract workflow updated.");
   } catch (error) {
@@ -1439,7 +1488,10 @@ export async function updateContractInstallmentStatusAction(
     let procurementStatus = "requested";
     let postedDate: string | null = null;
 
-    if (nextStatus === "check_request_submitted") {
+    if (nextStatus === "cancelled") {
+      purchaseStatus = "cancelled";
+      procurementStatus = "cancelled";
+    } else if (nextStatus === "check_request_submitted") {
       purchaseStatus = "encumbered";
       encumberedAmount = amount;
       procurementStatus = "ordered";
@@ -1493,7 +1545,10 @@ export async function updateContractInstallmentStatusAction(
       .update({
         status: nextStatus,
         check_request_submitted_on: nextStatus === "check_request_submitted" || nextStatus === "check_paid" ? today : null,
-        check_paid_on: nextStatus === "check_paid" ? today : null
+        check_paid_on: nextStatus === "check_paid" ? today : null,
+        ...(nextStatus === "cancelled"
+          ? { automation_status: "not_ready", automation_ready_at: null, automation_ready_by_user_id: null }
+          : {})
       })
       .eq("id", installmentId)
       .select("id")
@@ -1631,7 +1686,13 @@ export async function updateUnionContributionStatusAction(
 
     const amount = Number(contribution.amount ?? 0);
     const purchaseStatus: PurchaseStatus =
-      nextStatus === "check_paid" ? "posted" : nextStatus === "check_request_submitted" ? "encumbered" : "requested";
+      nextStatus === "cancelled"
+        ? "cancelled"
+        : nextStatus === "check_paid"
+          ? "posted"
+          : nextStatus === "check_request_submitted"
+            ? "encumbered"
+            : "requested";
     if (contribution.purchase_id) {
       const { error: purchaseError } = await supabase
         .from("purchases")
@@ -1641,7 +1702,7 @@ export async function updateUnionContributionStatusAction(
           encumbered_amount: purchaseStatus === "encumbered" ? amount : 0,
           posted_amount: purchaseStatus === "posted" ? amount : 0,
           pending_cc_amount: 0,
-          procurement_status: purchaseStatus === "posted" ? "paid" : purchaseStatus === "encumbered" ? "ordered" : "requested",
+          procurement_status: purchaseStatus === "cancelled" ? "cancelled" : purchaseStatus === "posted" ? "paid" : purchaseStatus === "encumbered" ? "ordered" : "requested",
           posted_date: purchaseStatus === "posted" ? new Date().toISOString().slice(0, 10) : null
         })
         .eq("id", contribution.purchase_id as string);
@@ -1653,8 +1714,11 @@ export async function updateUnionContributionStatusAction(
       .from("contract_union_contributions")
       .update({
         status: nextStatus,
-        check_request_submitted_on: nextStatus === "planned" ? null : today,
-        check_paid_on: nextStatus === "check_paid" ? today : null
+        check_request_submitted_on: nextStatus === "check_request_submitted" || nextStatus === "check_paid" ? today : null,
+        check_paid_on: nextStatus === "check_paid" ? today : null,
+        ...(nextStatus === "cancelled"
+          ? { automation_status: "not_ready", automation_ready_at: null, automation_ready_by_user_id: null }
+          : {})
       })
       .eq("id", contributionId);
     if (updateError) return err(updateError.message);

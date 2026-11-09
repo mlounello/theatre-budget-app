@@ -255,7 +255,7 @@ export function CreateContractForm({
         <input name="contractorPhone" value={contractorPhone} onChange={(event) => setContractorPhone(event.target.value)} />
       </label>
       <label>
-        Planned Compensation
+        {engagementType === "temporary_employee" ? "Total Compensation" : "Planned Compensation"}
         <input
           name="contractValue"
           type="number"
@@ -304,7 +304,7 @@ export function CreateContractForm({
           <label>Employment Start Date<input name="employmentStartDate" type="date" required /></label>
           <label>Employment End Date<input name="employmentEndDate" type="date" required /></label>
           <label>
-            First Biweekly Pay Date
+            First Payroll Date
             <input name="payrollFirstPayDate" type="date" required />
             <span className="helperText">The app creates equal paychecks every 14 days through the end date.</span>
           </label>

@@ -112,6 +112,7 @@ export function renderContractCalendar(
       (left, right) => Number(left.installment_number ?? 1) - Number(right.installment_number ?? 1)
     );
     for (const installment of installments) {
+      if (installment.status === "cancelled") continue;
       if (!installment.mail_by) continue;
       const project = contractProjectLabel(contract);
       const installmentNumber = Number(installment.installment_number ?? 1);
