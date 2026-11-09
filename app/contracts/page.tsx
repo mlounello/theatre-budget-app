@@ -78,6 +78,10 @@ function engagementLabel(value: string): string {
   return "Independent Contractor";
 }
 
+function effectiveWorkflowStatus(contract: { workflowStatus: string; engagementStatus: string }): string {
+  return contract.engagementStatus === "terminated" ? "cancelled" : contract.workflowStatus;
+}
+
 export default async function ContractsPage({
   searchParams
 }: {
@@ -135,8 +139,8 @@ export default async function ContractsPage({
     return due <= dueCutoff;
   });
   const needsAttention = (contract: (typeof contracts)[number]) =>
-    contract.workflowStatus !== "cancelled" &&
-    (contract.workflowStatus === "w9_requested" ||
+    effectiveWorkflowStatus(contract) !== "cancelled" &&
+    (effectiveWorkflowStatus(contract) === "w9_requested" ||
       (contract.engagementType === "temporary_employee" && contract.hrOnboardingStatus !== "complete") ||
       (contract.engagementType === "union_freelance_artist" && contract.unionSignatureStatus !== "complete") ||
       isDue(contract.id));
@@ -145,7 +149,7 @@ export default async function ContractsPage({
       const haystack = `${contract.contractorName} ${contract.contractRole ?? ""} ${contract.contractorEmployeeId ?? ""} ${contract.projectName} ${contract.productionProjects.map((production) => production.name).join(" ")}`.toLowerCase();
       if (!haystack.includes(query)) return false;
     }
-    if (statusFilter && contract.workflowStatus !== statusFilter) return false;
+    if (statusFilter && effectiveWorkflowStatus(contract) !== statusFilter) return false;
     if (sessionFilter && !contract.contractSessions.includes(sessionFilter as "summer" | "fall" | "winter" | "spring")) return false;
     if (productionFilter && !contract.productionProjects.some((production) => production.id === productionFilter)) return false;
     if (viewFilter === "checks_due" && !isDue(contract.id)) return false;
@@ -335,6 +339,7 @@ export default async function ContractsPage({
         ) : (
           <div className="contractList">
             {visibleContracts.map((contract) => {
+              const effectiveStatus = effectiveWorkflowStatus(contract);
               const sessionLabels = contractSessionLabels(contract.contractSessions);
               const associatedProductions = contract.productionProjects.filter(
                 (production) => production.id !== contract.projectId
@@ -397,20 +402,20 @@ export default async function ContractsPage({
                           ? contract.engagementType === "temporary_employee"
                             ? `Pay date ${shortDate(nextPayment.dueDate)}`
                             : `Due ${shortDate(nextPayment.dueDate)} · Mail ${shortDate(nextPayment.mailBy)}`
-                          : contract.workflowStatus === "cancelled" ? "Canceled; paid history retained" : "No date"}
+                          : effectiveStatus === "cancelled" ? "Canceled; paid history retained" : "No date"}
                       </small>
                     </div>
                     <div className="contractStatusSummary">
                       {canManageContracts ? (
                         <>
-                          <StatusPill tone={workflowTone(contract.workflowStatus)}>
-                            {workflowLabel(contract.workflowStatus, contract.engagementType)}
+                          <StatusPill tone={workflowTone(effectiveStatus)}>
+                            {workflowLabel(effectiveStatus, contract.engagementType)}
                           </StatusPill>
-                          <ContractWorkflowControl contract={contract} compact />
+                          {contract.engagementStatus !== "terminated" ? <ContractWorkflowControl contract={contract} compact /> : null}
                         </>
                       ) : (
-                        <StatusPill tone={workflowTone(contract.workflowStatus)}>
-                          {workflowLabel(contract.workflowStatus, contract.engagementType)}
+                        <StatusPill tone={workflowTone(effectiveStatus)}>
+                          {workflowLabel(effectiveStatus, contract.engagementType)}
                         </StatusPill>
                       )}
                       {contract.isUnion ? <span className="contractUnionBadge">Union</span> : null}
@@ -442,9 +447,12 @@ export default async function ContractsPage({
                     <div className="contractDetailGrid">
                       <section className="contractWorkflowPanel">
                         <h4>Contract workflow</h4>
-                        <StatusPill tone={workflowTone(contract.workflowStatus)}>
-                          {workflowLabel(contract.workflowStatus, contract.engagementType)}
+                        <StatusPill tone={workflowTone(effectiveStatus)}>
+                          {workflowLabel(effectiveStatus, contract.engagementType)}
                         </StatusPill>
+                        {contract.engagementStatus === "terminated" ? (
+                          <p className="helperText">This engagement was ended in Production Management. Paid history is retained and future payments are closed.</p>
+                        ) : null}
                         {contract.isUnion ? (
                           <div className="contractUnionWorkflow">
                             <strong>{contract.unionAgreementName ?? "Union Agreement"}</strong>

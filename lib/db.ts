@@ -383,6 +383,7 @@ export type ContractSession = "summer" | "fall" | "winter" | "spring";
 export type UnionSignatureStatus = "not_started" | "sent_to_union" | "union_countersigned" | "complete";
 export type UnionContributionType = "employer_paid" | "artist_withholding";
 export type HiringEngagementType = "independent_contractor" | "union_freelance_artist" | "temporary_employee";
+export type HiringEngagementStatus = "active" | "completed" | "terminated";
 export type HiringCompensationBasis = "flat_fee" | "hourly";
 export type HrOnboardingStatus = "not_started" | "submitted_to_hr" | "onboarding" | "complete" | "not_required";
 export type CheckRequestAutomationStatus = "not_ready" | "ready" | "sending" | "sent" | "failed";
@@ -429,6 +430,7 @@ export type ContractRow = {
   unionAgreementName: string | null;
   unionSignatureStatus: UnionSignatureStatus;
   engagementType: HiringEngagementType;
+  engagementStatus: HiringEngagementStatus;
   compensationBasis: HiringCompensationBasis;
   hrOnboardingStatus: HrOnboardingStatus;
   hrOnboardingReference: string | null;
@@ -2193,7 +2195,7 @@ export async function getContractsData(): Promise<{
   let contractsResponse = (await supabase
     .from("contracts")
     .select(
-      "id, fiscal_year_id, organization_id, project_id, production_project_id, banner_account_code_id, guest_artist_id, contractor_name, contractor_employee_id, contractor_email, contractor_phone, contract_value, installment_count, contract_number, contract_role, contract_session, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, workflow_status, is_union, union_agreement_id, union_agreement_name_snapshot, union_signature_status, engagement_type, compensation_basis, hr_onboarding_status, hr_onboarding_reference, w9_attachment_path, employment_start_date, employment_end_date, payroll_first_pay_date, payroll_frequency, notes, created_at, fiscal_years(name), organizations(name, org_code), accounting_project:projects!contracts_project_id_fkey(name, season), production_project:projects!contracts_production_project_id_fkey(name, season), contract_productions(project_id, production:projects!contract_productions_project_id_fkey(name, season)), account_codes(code)"
+      "id, fiscal_year_id, organization_id, project_id, production_project_id, banner_account_code_id, guest_artist_id, contractor_name, contractor_employee_id, contractor_email, contractor_phone, contract_value, installment_count, contract_number, contract_role, contract_session, check_request_foapal_id, check_request_handling, check_request_other_location, vendor_address1, vendor_address2, vendor_address3, tax_id_last4, workflow_status, is_union, union_agreement_id, union_agreement_name_snapshot, union_signature_status, engagement_type, engagement_status, compensation_basis, hr_onboarding_status, hr_onboarding_reference, w9_attachment_path, employment_start_date, employment_end_date, payroll_first_pay_date, payroll_frequency, notes, created_at, fiscal_years(name), organizations(name, org_code), accounting_project:projects!contracts_project_id_fkey(name, season), production_project:projects!contracts_production_project_id_fkey(name, season), contract_productions(project_id, production:projects!contract_productions_project_id_fkey(name, season)), account_codes(code)"
     )
     .order("created_at", { ascending: false })
     .limit(200)) as DbListResponse;
@@ -2322,6 +2324,7 @@ export async function getContractsData(): Promise<{
       unionAgreementName: (row.union_agreement_name_snapshot as string | null) ?? null,
       unionSignatureStatus: ((row.union_signature_status as string | null) ?? "not_started") as UnionSignatureStatus,
       engagementType: ((row.engagement_type as string | null) ?? (Boolean(row.is_union) ? "union_freelance_artist" : "independent_contractor")) as HiringEngagementType,
+      engagementStatus: ((row.engagement_status as string | null) ?? "active") as HiringEngagementStatus,
       compensationBasis: ((row.compensation_basis as string | null) ?? "flat_fee") as HiringCompensationBasis,
       hrOnboardingStatus: ((row.hr_onboarding_status as string | null) ?? "not_required") as HrOnboardingStatus,
       hrOnboardingReference: (row.hr_onboarding_reference as string | null) ?? null,

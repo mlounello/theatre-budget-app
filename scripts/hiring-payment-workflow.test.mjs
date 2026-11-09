@@ -17,6 +17,7 @@ test("canceled hires preserve paid history and stop future payments", async () =
   assert.match(actions, /status: "cancelled"/);
   assert.match(page, /value="cancelled">Canceled/);
   assert.match(page, /row\.status !== "cancelled"/);
+  assert.match(page, /contract\.engagementStatus === "terminated"/);
   assert.match(dashboard, /\(check_paid,cancelled\)/);
   assert.match(calendar, /installment\.status === "cancelled"/);
 });
