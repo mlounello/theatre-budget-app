@@ -285,9 +285,9 @@ export default async function ContractsPage({
                     </div>
                     <StatusPill tone={installmentTone(installment.status)}>{installmentLabel(installment.status, installment.paymentChannel)}</StatusPill>
                     <div className="contractCheckActions">
-                      {canManageContracts ? <ContractInstallmentControl installment={installment} /> : null}
-                      {canManageContracts && installment.paymentChannel !== "payroll" ? <CheckRequestAutomationControl kind="installment" itemId={installment.id} status={installment.automationStatus} sentAt={installment.automationSentAt} error={installment.automationLastError} /> : null}
-                      {canManageContracts && installment.paymentChannel !== "payroll" ? <InstallmentCheckRequestActions installment={installment} foapalOptions={foapalOptions} /> : null}
+                      {canManageContracts && contract.engagementStatus !== "terminated" ? <ContractInstallmentControl installment={installment} /> : null}
+                      {canManageContracts && contract.engagementStatus !== "terminated" && installment.paymentChannel !== "payroll" ? <CheckRequestAutomationControl kind="installment" itemId={installment.id} status={installment.automationStatus} sentAt={installment.automationSentAt} error={installment.automationLastError} /> : null}
+                      {canManageContracts && contract.engagementStatus !== "terminated" && installment.paymentChannel !== "payroll" ? <InstallmentCheckRequestActions installment={installment} foapalOptions={foapalOptions} /> : null}
                       {installment.paymentChannel !== "payroll" ? <a className="tinyButton" href={`/contracts/${contract.id}/installments/${installment.id}/check-request`}>PDF</a> : null}
                       <a className="tinyButton" href={`/contracts?fiscalYearId=${encodeURIComponent(selectedFiscalYearId)}&hiring_view=payments&ct_edit=${encodeURIComponent(contract.id)}`}>Open Hire</a>
                     </div>
@@ -312,8 +312,8 @@ export default async function ContractsPage({
                     </div>
                     <StatusPill tone={installmentTone(contribution.status)}>{installmentLabel(contribution.status)}</StatusPill>
                     <div className="contractCheckActions">
-                      {canManageContracts ? <UnionContributionStatusControl contribution={contribution} /> : null}
-                      {canManageContracts ? <CheckRequestAutomationControl kind="union" itemId={contribution.id} status={contribution.automationStatus} sentAt={contribution.automationSentAt} error={contribution.automationLastError} /> : null}
+                      {canManageContracts && contract.engagementStatus !== "terminated" ? <UnionContributionStatusControl contribution={contribution} /> : null}
+                      {canManageContracts && contract.engagementStatus !== "terminated" ? <CheckRequestAutomationControl kind="union" itemId={contribution.id} status={contribution.automationStatus} sentAt={contribution.automationSentAt} error={contribution.automationLastError} /> : null}
                       <a className="tinyButton" href={`/contracts/${contract.id}/union-contributions/${contribution.id}/check-request`}>Separate PDF</a>
                       <a className="tinyButton" href={`/contracts?fiscalYearId=${encodeURIComponent(selectedFiscalYearId)}&hiring_view=payments&ct_edit=${encodeURIComponent(contract.id)}`}>Open Hire</a>
                     </div>
@@ -482,7 +482,7 @@ export default async function ContractsPage({
                               <StatusPill tone={installmentTone(row.status)}>
                                 {installmentLabel(row.status, row.paymentChannel)}
                               </StatusPill>
-                              {canManageContracts ? (
+                              {canManageContracts && contract.engagementStatus !== "terminated" ? (
                                 <div className="contractCheckActions">
                                   <ContractInstallmentControl installment={row} />
                                   {contract.engagementType !== "temporary_employee" ? <>
@@ -517,7 +517,7 @@ export default async function ContractsPage({
                                   <StatusPill tone={installmentTone(contribution.status)}>
                                     {installmentLabel(contribution.status)}
                                   </StatusPill>
-                                  {canManageContracts ? (
+                                  {canManageContracts && contract.engagementStatus !== "terminated" ? (
                                     <div className="contractCheckActions">
                                       <UnionContributionStatusControl contribution={contribution} />
                                       <CheckRequestAutomationControl kind="union" itemId={contribution.id} status={contribution.automationStatus} sentAt={contribution.automationSentAt} error={contribution.automationLastError} />
