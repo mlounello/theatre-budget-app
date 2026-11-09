@@ -43,10 +43,22 @@ test("hiring UI distinguishes vendor warnings and payroll checks", async () => {
   assert.match(page, /`Paycheck \$\{installment\.installmentNumber\}`/);
   assert.match(page, /Biweekly payroll schedule/);
   assert.match(inlineActions, /Paycheck status/);
-  assert.match(createForm, /Total Compensation/);
+  assert.match(createForm, /Total Fee/);
   assert.match(createForm, /First Payroll Date/);
-  assert.match(editForm, /Total Compensation/);
+  assert.match(createForm, /The total fee is divided as evenly as possible/);
+  assert.match(editForm, /Total Fee/);
   assert.match(editForm, /First Payroll Date/);
+  assert.match(editForm, /The total fee is divided as evenly as possible/);
+});
+
+test("temporary employee payroll is flat-fee and allocations retain their full scope", async () => {
+  const actions = await read("app/contracts/actions.ts");
+
+  assert.match(actions, /engagementType === "temporary_employee" \? "flat_fee"/);
+  assert.match(actions, /const installmentAmounts = artistInstallmentAmounts\(contractValue, installmentCount/);
+  assert.match(actions, /project_id: params\.projectId,[\s\S]*organization_id: params\.organizationId,[\s\S]*note: "Union contribution allocation/);
+  assert.match(actions, /project_id: projectId,[\s\S]*organization_id: resolvedOrganizationId,[\s\S]*note: "Contract installment allocation"/);
+  assert.match(actions, /\.update\(\{[\s\S]*project_id: projectId,[\s\S]*organization_id: resolvedOrganizationId,[\s\S]*amount: installmentAmount/);
 });
 
 test("database migration expands hiring cancellation statuses", async () => {

@@ -373,6 +373,8 @@ async function createUnionContributionRows(
 
     const { error: allocationError } = await supabase.from("purchase_allocations").insert({
       purchase_id: purchase.id,
+      project_id: params.projectId,
+      organization_id: params.organizationId,
       reporting_budget_line_id: params.reportingBudgetLineId,
       account_code_id: params.bannerAccountCodeId,
       production_category_id: params.productionCategoryId,
@@ -681,7 +683,7 @@ export async function createContractAction(
     const contractorPhone = String(formData.get("contractorPhone") ?? "").trim() || guestArtist?.phone || "";
     const contractValue = parseMoney(formData.get("contractValue"));
     const engagementType = parseEngagementType(formData.get("engagementType"));
-    const compensationBasis = parseCompensationBasis(formData.get("compensationBasis"));
+    const compensationBasis = engagementType === "temporary_employee" ? "flat_fee" : parseCompensationBasis(formData.get("compensationBasis"));
     const payrollDates = payrollSchedule(formData, engagementType);
     const installmentCount = payrollDates?.length ?? parseInstallmentCount(formData.get("installmentCount"));
     const notes = String(formData.get("notes") ?? "").trim();
@@ -719,6 +721,7 @@ export async function createContractAction(
 
     const resolvedOrganizationId = organizationId || ((projectRow.organization_id as string | null) ?? null);
     const resolvedFiscalYearId = fiscalYearId || ((projectRow.fiscal_year_id as string | null) ?? null);
+    if (!resolvedOrganizationId) return err("Select an organization for this hiring record before saving its payments.");
     const productionFiscalYearError = await validateProductionProjectFiscalYear(
       supabase,
       productionProjectIds,
@@ -825,6 +828,8 @@ export async function createContractAction(
 
       const { error: allocationError } = await supabase.from("purchase_allocations").insert({
         purchase_id: purchase.id,
+        project_id: projectId,
+        organization_id: resolvedOrganizationId,
         reporting_budget_line_id: reportingBudgetLineId as string,
         account_code_id: bannerAccountCodeId,
         production_category_id: miscCategoryId,
@@ -960,7 +965,7 @@ export async function updateContractDetailsAction(
     const contractorPhone = String(formData.get("contractorPhone") ?? "").trim() || guestArtist?.phone || "";
     const contractValue = parseMoney(formData.get("contractValue"));
     const engagementType = parseEngagementType(formData.get("engagementType"));
-    const compensationBasis = parseCompensationBasis(formData.get("compensationBasis"));
+    const compensationBasis = engagementType === "temporary_employee" ? "flat_fee" : parseCompensationBasis(formData.get("compensationBasis"));
     const payrollDates = payrollSchedule(formData, engagementType);
     const installmentCount = payrollDates?.length ?? parseInstallmentCount(formData.get("installmentCount"));
     const notes = String(formData.get("notes") ?? "").trim();
@@ -999,6 +1004,7 @@ export async function updateContractDetailsAction(
 
     const resolvedOrganizationId = organizationId || ((projectRow.organization_id as string | null) ?? null);
     const resolvedFiscalYearId = fiscalYearId || ((projectRow.fiscal_year_id as string | null) ?? null);
+    if (!resolvedOrganizationId) return err("Select an organization for this hiring record before saving its payments.");
     const productionFiscalYearError = await validateProductionProjectFiscalYear(
       supabase,
       productionProjectIds,
@@ -1178,6 +1184,8 @@ export async function updateContractDetailsAction(
 
       const { error: allocationError } = await supabase.from("purchase_allocations").insert({
         purchase_id: purchase.id,
+        project_id: projectId,
+        organization_id: resolvedOrganizationId,
         reporting_budget_line_id: reportingBudgetLineId as string,
         account_code_id: bannerAccountCodeId,
         production_category_id: productionCategoryId,
@@ -1300,6 +1308,8 @@ export async function updateContractDetailsAction(
       const { data: allocationUpdated, error: allocationUpdateError } = await supabase
         .from("purchase_allocations")
         .update({
+          project_id: projectId,
+          organization_id: resolvedOrganizationId,
           reporting_budget_line_id: reportingBudgetLineId as string,
           account_code_id: bannerAccountCodeId,
           production_category_id: productionCategoryId,

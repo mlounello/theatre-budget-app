@@ -314,7 +314,7 @@ export function ContractRowActions({
                     />
                   </label>
                   <label>
-                    {editEngagementType === "temporary_employee" ? "Total Compensation" : "Planned Compensation"}
+                    {editEngagementType === "temporary_employee" ? "Total Fee" : "Planned Compensation"}
                     <input
                       name="contractValue"
                       type="number"
@@ -340,13 +340,21 @@ export function ContractRowActions({
                       <option value="temporary_employee">Temporary Employee through HR</option>
                     </select>
                   </label>
-                  <label>
-                    Compensation Basis
-                    <select name="compensationBasis" value={editCompensationBasis} onChange={(event) => setEditCompensationBasis(event.target.value as typeof editCompensationBasis)}>
-                      <option value="flat_fee">Flat Fee</option>
-                      <option value="hourly">Hourly</option>
-                    </select>
-                  </label>
+                  {editEngagementType === "temporary_employee" ? (
+                    <label>
+                      Compensation Basis
+                      <input type="hidden" name="compensationBasis" value="flat_fee" />
+                      <input value="Flat Fee" readOnly aria-label="Compensation basis" />
+                    </label>
+                  ) : (
+                    <label>
+                      Compensation Basis
+                      <select name="compensationBasis" value={editCompensationBasis} onChange={(event) => setEditCompensationBasis(event.target.value as typeof editCompensationBasis)}>
+                        <option value="flat_fee">Flat Fee</option>
+                        <option value="hourly">Hourly</option>
+                      </select>
+                    </label>
+                  )}
                   {editEngagementType === "temporary_employee" ? (
                     <>
                       <label>
@@ -364,7 +372,7 @@ export function ContractRowActions({
                       <label>
                         First Payroll Date
                         <input name="payrollFirstPayDate" type="date" defaultValue={contract.payrollFirstPayDate ?? ""} required />
-                        <span className="helperText">Equal paychecks are scheduled every 14 days through the end date.</span>
+                        <span className="helperText">The total fee is divided as evenly as possible across every University biweekly pay date through the employment end date.</span>
                       </label>
                     </>
                   ) : null}

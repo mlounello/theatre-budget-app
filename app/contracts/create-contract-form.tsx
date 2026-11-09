@@ -255,7 +255,7 @@ export function CreateContractForm({
         <input name="contractorPhone" value={contractorPhone} onChange={(event) => setContractorPhone(event.target.value)} />
       </label>
       <label>
-        {engagementType === "temporary_employee" ? "Total Compensation" : "Planned Compensation"}
+        {engagementType === "temporary_employee" ? "Total Fee" : "Planned Compensation"}
         <input
           name="contractValue"
           type="number"
@@ -282,13 +282,21 @@ export function CreateContractForm({
           <option value="temporary_employee">Temporary Employee through HR</option>
         </select>
       </label>
-      <label>
-        Compensation Basis
-        <select name="compensationBasis" value={compensationBasis} onChange={(event) => setCompensationBasis(event.target.value as typeof compensationBasis)}>
-          <option value="flat_fee">Flat Fee</option>
-          <option value="hourly">Hourly</option>
-        </select>
-      </label>
+      {engagementType === "temporary_employee" ? (
+        <label>
+          Compensation Basis
+          <input type="hidden" name="compensationBasis" value="flat_fee" />
+          <input value="Flat Fee" readOnly aria-label="Compensation basis" />
+        </label>
+      ) : (
+        <label>
+          Compensation Basis
+          <select name="compensationBasis" value={compensationBasis} onChange={(event) => setCompensationBasis(event.target.value as typeof compensationBasis)}>
+            <option value="flat_fee">Flat Fee</option>
+            <option value="hourly">Hourly</option>
+          </select>
+        </label>
+      )}
       {engagementType === "temporary_employee" ? (
         <>
           <label>
@@ -306,7 +314,7 @@ export function CreateContractForm({
           <label>
             First Payroll Date
             <input name="payrollFirstPayDate" type="date" required />
-            <span className="helperText">The app creates equal paychecks every 14 days through the end date.</span>
+            <span className="helperText">The total fee is divided as evenly as possible across every University biweekly pay date through the employment end date.</span>
           </label>
         </>
       ) : null}
