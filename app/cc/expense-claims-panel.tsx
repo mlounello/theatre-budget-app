@@ -1,5 +1,7 @@
 "use client";
 
+import { useActionState } from "react";
+import { correctExpenseClaimNumberAction, type ExpenseClaimActionState } from "@/app/cc/expense-claim-actions";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { ResponsiveDataTable } from "@/components/ui/responsive-data-table";
 import { formatCurrency } from "@/lib/format";
@@ -18,6 +20,24 @@ export type ExpenseClaimView = {
   cardLabel: string | null;
   expenses: Array<{ id: string; expenseNumber: string | null; title: string; amount: number; stage: string | null; budgetLabel: string; accountCode: string | null }>;
 };
+
+const correctionInitialState: ExpenseClaimActionState = { ok: true, message: "", timestamp: 0 };
+
+function ExpenseClaimNumberEditor({ claimId, claimNumber }: { claimId: string; claimNumber: string }) {
+  const [state, action, pending] = useActionState(correctExpenseClaimNumberAction, correctionInitialState);
+  return (
+    <form action={action} className="inlineEditForm expenseClaimNumberEditor">
+      <input type="hidden" name="claimId" value={claimId} />
+      <label>
+        Correct EC Number
+        <input name="newClaimNumber" defaultValue={claimNumber} pattern="EC[0-9]{6}" placeholder="EC######" required />
+      </label>
+      <button type="submit" className="tinyButton" disabled={pending}>{pending ? "Correcting…" : "Save EC Number"}</button>
+      <span className="helperText">If that EC already exists for the same card, type, and month, these Expenses will be merged into it.</span>
+      {state.message ? <span className={state.ok ? "successNote" : "errorNote"}>{state.message}</span> : null}
+    </form>
+  );
+}
 
 export function ExpenseClaimsPanel({
   claims,
@@ -58,6 +78,7 @@ export function ExpenseClaimsPanel({
                   <small>{claim.cardLabel ?? "No card"} · {claim.claimMonth?.slice(0, 7) ?? "No month"} · {claim.status.replaceAll("_", " ")}</small>
                 </summary>
                 <div className="expenseClaimRecordBody">
+                  <ExpenseClaimNumberEditor claimId={claim.id} claimNumber={claim.claimNumber} />
                   {claim.claimType === "funding_request" ? <p><strong>Authorized:</strong> {formatCurrency(claim.authorizedAmount)} · <strong>Reconciled:</strong> {formatCurrency(claim.settledAmount)} · <strong>Remaining hold:</strong> {formatCurrency(remaining)}</p> : <p><strong>Claim total:</strong> {formatCurrency(claim.settledAmount || claim.expenses.reduce((sum, expense) => sum + expense.amount, 0))}</p>}
                   {claim.overageExplanation ? <p className="errorNote"><strong>Overage explanation:</strong> {claim.overageExplanation}</p> : null}
                   <ResponsiveDataTable

@@ -238,3 +238,21 @@ test("Procurement explicitly separates PO work from Expense Claims", async () =>
   assert.match(page, /Purchase Orders do not use Expense Claim or receipt-reconciliation fields/);
   assert.match(table, /Expense Claims are managed in Credit Cards/);
 });
+
+test("Expense Claim numbers can be corrected or merged without orphaning Expenses", async () => {
+  const [actions, panel, migration] = await Promise.all([
+    read("app/cc/expense-claim-actions.ts"),
+    read("app/cc/expense-claims-panel.tsx"),
+    read("supabase/migrations/20261118040000_expense_claim_number_corrections.sql")
+  ]);
+
+  assert.match(actions, /correctExpenseClaimNumberAction/);
+  assert.match(actions, /correct_expense_claim_number/);
+  assert.match(panel, /Correct EC Number/);
+  assert.match(panel, /If that EC already exists/);
+  assert.match(migration, /create or replace function app_theatre_budget\.correct_expense_claim_number/);
+  assert.match(migration, /set expense_claim_id = v_target\.id/);
+  assert.match(migration, /set reference_number = v_new_claim_number/);
+  assert.match(migration, /update app_theatre_budget\.purchase_allocations/);
+  assert.match(migration, /delete from app_theatre_budget\.expense_claims/);
+});

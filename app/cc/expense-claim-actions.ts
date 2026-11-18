@@ -40,6 +40,41 @@ function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim() ? error.message : "Could not save the Expense Claim.";
 }
 
+export async function correctExpenseClaimNumberAction(
+  previousState: ExpenseClaimActionState = emptyState,
+  formData: FormData
+): Promise<ExpenseClaimActionState> {
+  void previousState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return err("You must be signed in.");
+    const access = await getAccessContext();
+    if (access.role !== "admin") return err("Only an Admin can correct an Expense Claim number.");
+
+    const claimId = String(formData.get("claimId") ?? "").trim();
+    const newClaimNumber = String(formData.get("newClaimNumber") ?? "").trim().toUpperCase();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(claimId)) {
+      return err("Choose a valid Expense Claim.");
+    }
+    if (!/^EC[0-9]{6}$/.test(newClaimNumber)) return err("Expense Claim number must use EC######.");
+
+    const { data, error } = await supabase.rpc("correct_expense_claim_number", {
+      p_claim_id: claimId,
+      p_new_claim_number: newClaimNumber
+    });
+    if (error) return err(error.message);
+    const result = data as { merged?: boolean; moved_expense_count?: number } | null;
+    const moved = Number(result?.moved_expense_count ?? 0);
+    revalidatePath("/cc");
+    return ok(result?.merged
+      ? `${moved} Expense${moved === 1 ? "" : "s"} merged into ${newClaimNumber}.`
+      : `Expense Claim corrected to ${newClaimNumber}.`);
+  } catch (error) {
+    return err(errorMessage(error));
+  }
+}
+
 function money(value: unknown): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? Math.round(parsed * 100) / 100 : 0;
