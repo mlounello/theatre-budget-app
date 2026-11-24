@@ -5,49 +5,12 @@ import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext, requireProjectRole } from "@/lib/access";
 import { createInstitutionalCommitmentForPurchase } from "@/lib/institutional-budget";
 import type { PurchaseStatus } from "@/lib/types";
-
-type ActionState = {
-  ok: boolean;
-  message: string;
-  timestamp: number;
-};
-
-const emptyState: ActionState = { ok: true, message: "", timestamp: 0 };
-
-function ok(message: string): ActionState {
-  return { ok: true, message, timestamp: Date.now() };
-}
-
-function err(message: string): ActionState {
-  return { ok: false, message, timestamp: Date.now() };
-}
-
-function parseMoney(value: FormDataEntryValue | null): number {
-  if (typeof value !== "string" || value.trim() === "") return 0;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function parseIdsJson(value: FormDataEntryValue | null): string[] {
-  if (typeof value !== "string" || value.trim() === "") return [];
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map((item) => String(item)).filter(Boolean);
-  } catch {
-    return [];
-  }
-}
+import { type ActionState, emptyState, ok, err, getErrorMessage, parseMoney, parseIdsJson } from "@/lib/action-helpers";
 
 function toStatementDate(monthValue: string): string {
   const trimmed = monthValue.trim();
   if (!/^\d{4}-\d{2}$/.test(trimmed)) throw new Error("Statement month must be in YYYY-MM format.");
   return `${trimmed}-01`;
-}
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim().length > 0) return error.message;
-  return fallback;
 }
 
 async function requireCcManagerRole(): Promise<void> {

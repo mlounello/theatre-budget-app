@@ -5,28 +5,9 @@ import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
 import { APP_ID } from "@/lib/supabase-schema";
 import { ensureBudgetAccessUser, sendBudgetAccessMagicLink } from "@/lib/budget-access-invite";
+import { type ActionState, emptyState, ok, err, getErrorMessage, parseMoney } from "@/lib/action-helpers";
 
-export type ActionState = {
-  ok: boolean;
-  message: string;
-  timestamp: number;
-};
-
-const emptyState: ActionState = { ok: true, message: "", timestamp: 0 };
-
-function ok(message: string): ActionState {
-  return { ok: true, message, timestamp: Date.now() };
-}
-
-function err(message: string): ActionState {
-  return { ok: false, message, timestamp: Date.now() };
-}
-
-function parseMoney(value: FormDataEntryValue | null): number {
-  if (typeof value !== "string" || value.trim() === "") return 0;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
+export type { ActionState };
 
 function parseOptionalSortOrder(value: FormDataEntryValue | null): number | undefined {
   if (typeof value !== "string" || value.trim() === "") return undefined;
@@ -1331,11 +1312,6 @@ export async function reorderProjectsAction(_prevState: ActionState = emptyState
   } catch (error) {
     return settingsError(getErrorMessage(error, "Could not reorder projects."));
   }
-}
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim().length > 0) return error.message;
-  return fallback;
 }
 
 export async function importHierarchyCsvAction(_prevState: ActionState = emptyState, formData: FormData): Promise<ActionState> {

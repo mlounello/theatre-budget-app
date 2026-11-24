@@ -55,35 +55,7 @@ async function resolveTargetAccessContext(
   if (membershipResponse.error) throw membershipResponse.error;
   if (scopeResponse.error) throw scopeResponse.error;
 
-  const membershipRoles = new Set<AppRole>();
-  const scopedRoles = new Set<AppRole>();
-  const manageableProjectIds = new Set<string>();
-  const projectMembershipRolesByProjectId = new Map<string, Set<AppRole>>();
-  const scopes: AccessScopeRow[] = [];
-  for (const row of membershipResponse.data ?? []) {
-    const role = toRole(row.role);
-    if (!role) continue;
-    membershipRoles.add(role);
-    addProjectMembershipRole(projectMembershipRolesByProjectId, row.project_id as string, role);
-    if (role === "admin" || role === "project_manager") manageableProjectIds.add(row.project_id as string);
-  }
-  for (const row of scopeResponse.data ?? []) {
-    const scopeRole = toRole(row.scope_role);
-    if (!scopeRole) continue;
-    scopedRoles.add(scopeRole);
-    scopes.push({
-      scopeRole,
-      fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
-      organizationId: (row.organization_id as string | null) ?? null,
-      projectId: (row.project_id as string | null) ?? null,
-      productionCategoryId: (row.production_category_id as string | null) ?? null
-    });
-  }
-  const preferredRole = toRole(coreMembership.data?.role);
-  const role =
-    preferredRole ??
-    selectHighestRole([...membershipRoles, ...scopedRoles]) ??
-    "none";
+  const grants = buildAccessGrants(membershipResponse.data ?? [], scopeResponse.data ?? []);
   return {
     userId: targetUserId,
     email: null,
@@ -91,13 +63,62 @@ async function resolveTargetAccessContext(
     actorEmail: actor.email,
     isImpersonating: true,
     impersonatedUserName: targetName,
-    role,
-    membershipRoles,
-    scopedRoles,
-    manageableProjectIds,
-    projectMembershipRolesByProjectId,
-    scopes
+    role: resolveEffectiveRole(toRole(coreMembership.data?.role), grants),
+    ...grants
   };
+}
+
+type AccessGrants = Pick<
+  AccessContext,
+  "membershipRoles" | "scopedRoles" | "manageableProjectIds" | "projectMembershipRolesByProjectId" | "scopes"
+>;
+
+type MembershipRow = { project_id: unknown; role: unknown };
+type ScopeRow = {
+  scope_role: unknown;
+  fiscal_year_id: unknown;
+  organization_id: unknown;
+  project_id: unknown;
+  production_category_id: unknown;
+};
+
+function emptyAccessGrants(): AccessGrants {
+  return {
+    membershipRoles: new Set<AppRole>(),
+    scopedRoles: new Set<AppRole>(),
+    manageableProjectIds: new Set<string>(),
+    projectMembershipRolesByProjectId: new Map<string, Set<AppRole>>(),
+    scopes: []
+  };
+}
+
+function buildAccessGrants(memberships: MembershipRow[], scopeRows: ScopeRow[]): AccessGrants {
+  const grants = emptyAccessGrants();
+  for (const row of memberships) {
+    const role = toRole(row.role);
+    if (!role) continue;
+    grants.membershipRoles.add(role);
+    addProjectMembershipRole(grants.projectMembershipRolesByProjectId, row.project_id as string, role);
+    if (role === "admin" || role === "project_manager") grants.manageableProjectIds.add(row.project_id as string);
+  }
+  for (const row of scopeRows) {
+    const scopeRole = toRole(row.scope_role);
+    if (!scopeRole) continue;
+    grants.scopedRoles.add(scopeRole);
+    grants.scopes.push({
+      scopeRole,
+      fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
+      organizationId: (row.organization_id as string | null) ?? null,
+      projectId: (row.project_id as string | null) ?? null,
+      productionCategoryId: (row.production_category_id as string | null) ?? null
+    });
+  }
+  return grants;
+}
+
+// An explicit app-level role wins; otherwise fall back to the strongest project/scope role.
+function resolveEffectiveRole(preferredRole: AppRole | null, grants: AccessGrants): EffectiveAppRole {
+  return preferredRole ?? selectHighestRole([...grants.membershipRoles, ...grants.scopedRoles]) ?? "none";
 }
 
 type ProjectAccessTarget = {
@@ -180,9 +201,9 @@ function scopeMatchesProject(
 
 export async function getProjectScopedRole(
   projectId: string,
-  options?: { productionCategoryId?: string | null }
+  options?: { productionCategoryId?: string | null; access?: AccessContext }
 ): Promise<{ access: AccessContext; role: AppRole | null }> {
-  const access = await getAccessContext();
+  const access = options?.access ?? (await getAccessContext());
   if (!access.userId) {
     return { access, role: null };
   }
@@ -230,7 +251,7 @@ export async function getProjectScopedRole(
 export async function requireProjectRole(
   projectId: string,
   allowed: AppRole[],
-  options?: { productionCategoryId?: string | null; errorMessage?: string }
+  options?: { productionCategoryId?: string | null; errorMessage?: string; access?: AccessContext }
 ): Promise<AccessContext> {
   const { access, role } = await getProjectScopedRole(projectId, options);
   if (role && allowed.includes(role)) {
@@ -255,16 +276,36 @@ export async function getAccessContext(options?: { ignoreImpersonation?: boolean
       isImpersonating: false,
       impersonatedUserName: null,
       role: "none",
-      membershipRoles: new Set<AppRole>(),
-      scopedRoles: new Set<AppRole>(),
-      manageableProjectIds: new Set<string>(),
-      projectMembershipRolesByProjectId: new Map<string, Set<AppRole>>(),
-      scopes: []
+      ...emptyAccessGrants()
     };
   }
 
   const coreAppId = APP_ID;
-  const { data: rpcRoleValue, error: rpcRoleError } = await supabase.rpc("get_user_role", { p_app_id: coreAppId });
+  // All four lookups are independent, so issue them in one round trip instead of four serial ones.
+  const [
+    { data: rpcRoleValue, error: rpcRoleError },
+    { data: coreMembership, error: coreErr },
+    membershipResponse,
+    scopeResponse
+  ] = await Promise.all([
+    supabase.rpc("get_user_role", { p_app_id: coreAppId }),
+    // Backward-compatible fallback while get_user_role is being rolled out.
+    supabase
+      .schema("core")
+      .from("app_memberships")
+      .select("role")
+      .eq("user_id", user.id)
+      .eq("app_id", coreAppId)
+      .eq("is_active", true)
+      .maybeSingle(),
+    supabase.from("project_memberships").select("project_id, role").eq("user_id", user.id),
+    supabase
+      .from("user_access_scopes")
+      .select("scope_role, fiscal_year_id, organization_id, project_id, production_category_id")
+      .eq("user_id", user.id)
+      .eq("active", true)
+  ]);
+
   const rpcRole = toRole(rpcRoleValue);
   if (debugAccess) {
     console.info("[access] rpc get_user_role", { coreAppId, rpcRoleValue, rpcRoleError });
@@ -272,15 +313,6 @@ export async function getAccessContext(options?: { ignoreImpersonation?: boolean
   let preferredRole: AppRole | null = rpcRole;
   let preferredSource: "rpc.get_user_role" | "core.app_memberships" | null = rpcRole ? "rpc.get_user_role" : null;
 
-  // Backward-compatible fallback while get_user_role is being rolled out.
-  const { data: coreMembership, error: coreErr } = await supabase
-    .schema("core")
-    .from("app_memberships")
-    .select("role")
-    .eq("user_id", user.id)
-    .eq("app_id", coreAppId)
-    .eq("is_active", true)
-    .maybeSingle();
   if (debugAccess) {
     console.info("[access] core membership fallback", { coreAppId, coreMembership, coreErr });
     if (coreErr) {
@@ -297,64 +329,19 @@ export async function getAccessContext(options?: { ignoreImpersonation?: boolean
     preferredSource = "core.app_memberships";
   }
 
-  const [membershipResponse, scopeResponse] = await Promise.all([
-    supabase.from("project_memberships").select("project_id, role").eq("user_id", user.id),
-    supabase
-      .from("user_access_scopes")
-      .select("scope_role, fiscal_year_id, organization_id, project_id, production_category_id")
-      .eq("user_id", user.id)
-      .eq("active", true)
-  ]);
-
   if (membershipResponse.error) throw membershipResponse.error;
   if (scopeResponse.error) throw scopeResponse.error;
 
-  const membershipRoles = new Set<AppRole>();
-  const scopedRoles = new Set<AppRole>();
-  const manageableProjectIds = new Set<string>();
-  const projectMembershipRolesByProjectId = new Map<string, Set<AppRole>>();
-  const scopes: AccessScopeRow[] = [];
-
-  for (const row of membershipResponse.data ?? []) {
-    const role = toRole(row.role);
-    if (!role) continue;
-    membershipRoles.add(role);
-    addProjectMembershipRole(projectMembershipRolesByProjectId, row.project_id as string, role);
-    if (role === "admin" || role === "project_manager") {
-      manageableProjectIds.add(row.project_id as string);
-    }
-  }
-
-  for (const row of scopeResponse.data ?? []) {
-    const scopeRole = toRole(row.scope_role);
-    if (!scopeRole) continue;
-    scopedRoles.add(scopeRole);
-    scopes.push({
-      scopeRole,
-      fiscalYearId: (row.fiscal_year_id as string | null) ?? null,
-      organizationId: (row.organization_id as string | null) ?? null,
-      projectId: (row.project_id as string | null) ?? null,
-      productionCategoryId: (row.production_category_id as string | null) ?? null
-    });
-  }
-
-  let role: EffectiveAppRole = "none";
-  const allRoles = new Set<AppRole>([...membershipRoles, ...scopedRoles]);
-  const sortedRoles = [...allRoles].sort((a, b) => rolePriority(b) - rolePriority(a));
-  if (sortedRoles.length > 0) {
-    role = sortedRoles[0];
-  }
-  if (preferredRole) {
-    role = preferredRole;
-  }
+  const grants = buildAccessGrants(membershipResponse.data ?? [], scopeResponse.data ?? []);
+  const role = resolveEffectiveRole(preferredRole, grants);
 
   if (debugAccess) {
     let source = "none";
     if (preferredSource && role === preferredRole) {
       source = preferredSource;
     } else if (role !== "none") {
-      const inProjectMemberships = membershipRoles.has(role);
-      const inUserScopes = scopedRoles.has(role);
+      const inProjectMemberships = grants.membershipRoles.has(role);
+      const inUserScopes = grants.scopedRoles.has(role);
       if (inProjectMemberships) source = "project_memberships";
       else if (inUserScopes) source = "user_access_scopes";
     }
@@ -369,11 +356,7 @@ export async function getAccessContext(options?: { ignoreImpersonation?: boolean
     isImpersonating: false,
     impersonatedUserName: null,
     role,
-    membershipRoles,
-    scopedRoles,
-    manageableProjectIds,
-    projectMembershipRolesByProjectId,
-    scopes
+    ...grants
   };
 
   if (options?.ignoreImpersonation || actualContext.role !== "admin") return actualContext;

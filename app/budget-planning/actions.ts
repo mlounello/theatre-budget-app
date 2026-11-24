@@ -5,22 +5,9 @@ import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { getAccessContext } from "@/lib/access";
 import { getFiscalYearOptions, getHistoricalMonthlyActuals } from "@/lib/db";
+import { type ActionState, emptyState, ok, err, getErrorMessage, parseMoney } from "@/lib/action-helpers";
 
-export type ActionState = {
-  ok: boolean;
-  message: string;
-  timestamp: number;
-};
-
-const emptyState: ActionState = { ok: true, message: "", timestamp: 0 };
-
-function ok(message: string): ActionState {
-  return { ok: true, message, timestamp: Date.now() };
-}
-
-function err(message: string): ActionState {
-  return { ok: false, message, timestamp: Date.now() };
-}
+export type { ActionState };
 
 type MonthUpdateInput = {
   id?: string;
@@ -102,12 +89,6 @@ const FISCAL_MONTH_ALIASES = [
   ["apr", "april"],
   ["may"]
 ];
-
-function parseMoney(value: FormDataEntryValue | null): number {
-  if (typeof value !== "string" || value.trim() === "") return 0;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
 
 function parseMonthUpdates(value: FormDataEntryValue | null): MonthUpdateInput[] {
   if (typeof value !== "string" || value.trim() === "") return [];
@@ -622,11 +603,6 @@ async function upsertImportMonths(
       if (insertError) throw new Error(insertError.message);
     }
   }
-}
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim().length > 0) return error.message;
-  return fallback;
 }
 
 function rethrowIfRedirect(error: unknown): void {

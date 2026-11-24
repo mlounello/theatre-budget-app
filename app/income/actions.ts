@@ -2,33 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { type ActionState, emptyState, ok, err, getErrorMessage, parseMoney, parseIdsJson } from "@/lib/action-helpers";
 
 type IncomeType = "starting_budget" | "donation" | "ticket_sales" | "other";
-
-type ActionState = {
-  ok: boolean;
-  message: string;
-  timestamp: number;
-};
-
-const emptyState: ActionState = { ok: true, message: "", timestamp: 0 };
-
-function parseMoney(value: FormDataEntryValue | null): number {
-  if (typeof value !== "string" || value.trim() === "") return 0;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function parseIdsJson(value: FormDataEntryValue | null): string[] {
-  if (typeof value !== "string" || value.trim() === "") return [];
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.map((item) => String(item)).filter(Boolean);
-  } catch {
-    return [];
-  }
-}
 
 function parseIncomeType(value: string): IncomeType {
   if (value === "starting_budget" || value === "donation" || value === "ticket_sales" || value === "other") {
@@ -42,19 +18,6 @@ function defaultLineName(type: IncomeType): string {
   if (type === "donation") return "Donation";
   if (type === "ticket_sales") return "Ticket Sales";
   return "Other Income";
-}
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim().length > 0) return error.message;
-  return fallback;
-}
-
-function ok(message: string): ActionState {
-  return { ok: true, message, timestamp: Date.now() };
-}
-
-function err(message: string): ActionState {
-  return { ok: false, message, timestamp: Date.now() };
 }
 
 async function requireFiscalYearOrganizationMembership(

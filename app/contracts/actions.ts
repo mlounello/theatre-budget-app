@@ -7,12 +7,7 @@ import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
 import { createInstitutionalCommitmentForPurchase } from "@/lib/institutional-budget";
 import { encryptSensitiveValue, taxIdLastFour } from "@/lib/sensitive-encryption";
 import type { PurchaseStatus } from "@/lib/types";
-
-type ActionState = {
-  ok: boolean;
-  message: string;
-  timestamp: number;
-};
+import { type ActionState, emptyState, ok, err, getErrorMessage, parseMoney } from "@/lib/action-helpers";
 
 type ContractWorkflowStatus = "w9_requested" | "contract_sent" | "contract_signed_returned" | "siena_signed" | "cancelled";
 type InstallmentStatus = "planned" | "check_request_submitted" | "check_paid" | "cancelled";
@@ -71,27 +66,6 @@ type UnionCalculation = {
   totalWithholding: number;
   rules: UnionCalculationRule[];
 };
-
-const emptyState: ActionState = { ok: true, message: "", timestamp: 0 };
-
-function ok(message: string): ActionState {
-  return { ok: true, message, timestamp: Date.now() };
-}
-
-function err(message: string): ActionState {
-  return { ok: false, message, timestamp: Date.now() };
-}
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim().length > 0) return error.message;
-  return fallback;
-}
-
-function parseMoney(value: FormDataEntryValue | null): number {
-  if (typeof value !== "string" || value.trim() === "") return 0;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
 
 function parseInstallmentCount(value: FormDataEntryValue | null): number {
   const parsed = Number.parseInt(String(value ?? "1"), 10);

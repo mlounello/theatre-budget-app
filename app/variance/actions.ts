@@ -4,37 +4,11 @@ import { revalidatePath } from "next/cache";
 import { getAccessContext } from "@/lib/access";
 import type { Database } from "@/lib/database.types";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
-
-type ActionState = {
-  ok: boolean;
-  message: string;
-  timestamp: number;
-};
-
-const emptyState: ActionState = { ok: true, message: "", timestamp: 0 };
-
-function ok(message: string): ActionState {
-  return { ok: true, message, timestamp: Date.now() };
-}
-
-function err(message: string): ActionState {
-  return { ok: false, message, timestamp: Date.now() };
-}
-
-function parseMoney(value: FormDataEntryValue | null): number {
-  if (typeof value !== "string" || value.trim() === "") return 0;
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
+import { type ActionState, emptyState, ok, err, getErrorMessage, parseMoney } from "@/lib/action-helpers";
 
 function asNumber(value: string | number | null | undefined): number {
   const parsed = Number(value ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim().length > 0) return error.message;
-  return fallback;
 }
 
 function normalizeStatus(value: FormDataEntryValue | null): "draft" | "ready_for_review" | "submitted" | "approved" | "denied" | "posted" {

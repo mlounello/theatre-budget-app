@@ -5,27 +5,9 @@ import { getAccessContext } from "@/lib/access";
 import { encryptSensitiveValue, taxIdLastFour } from "@/lib/sensitive-encryption";
 import { reconcileGuestArtistWithProductionManagement } from "@/lib/production-management-sync";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
+import { type ActionState, emptyState, ok, err, getErrorMessage } from "@/lib/action-helpers";
 
-export type ActionState = {
-  ok: boolean;
-  message: string;
-  timestamp: number;
-};
-
-const emptyState: ActionState = { ok: true, message: "", timestamp: 0 };
-
-function ok(message: string): ActionState {
-  return { ok: true, message, timestamp: Date.now() };
-}
-
-function err(message: string): ActionState {
-  return { ok: false, message, timestamp: Date.now() };
-}
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.trim().length > 0) return error.message;
-  return fallback;
-}
+export type { ActionState };
 
 async function requireGuestArtistManager(): Promise<void> {
   const access = await getAccessContext();
