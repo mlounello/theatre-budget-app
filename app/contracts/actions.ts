@@ -911,6 +911,40 @@ export async function createContractsBulkAction(
   }
 }
 
+export async function updateContractVendorIdAction(
+  prevState: ActionState,
+  formData: FormData
+): Promise<ActionState> {
+  void prevState;
+  try {
+    const supabase = await getSupabaseServerClient();
+    const access = await getAccessContext();
+    if (!access.userId) return err("You must be signed in.");
+    if (access.isImpersonating) return err("Exit impersonation before editing a vendor ID.");
+
+    const contractId = String(formData.get("contractId") ?? "").trim();
+    const vendorId = String(formData.get("contractorEmployeeId") ?? "").trim();
+    if (!contractId || !vendorId) return err("Enter a vendor or employee ID.");
+
+    const { data: contract, error } = await supabase.from("contracts")
+      .select("id, project_id").eq("id", contractId).maybeSingle();
+    if (error || !contract?.project_id) return err("Contract not found.");
+    await ensurePmOrAdmin(String(contract.project_id), access.userId);
+
+    const { data: updated, error: updateError } = await supabase.from("contracts")
+      .update({ contractor_employee_id: vendorId })
+      .eq("id", contractId)
+      .eq("project_id", contract.project_id)
+      .select("id")
+      .maybeSingle();
+    if (updateError || !updated) return err(updateError?.message ?? "Vendor ID was not saved.");
+    revalidatePath("/contracts");
+    return ok("Vendor / Employee ID saved.");
+  } catch (error) {
+    return err(getErrorMessage(error, "Could not save the vendor ID."));
+  }
+}
+
 export async function updateContractDetailsAction(
   prevState: ActionState = emptyState,
   formData: FormData

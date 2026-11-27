@@ -2,7 +2,7 @@
 
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { deleteContractAction, updateContractDetailsAction, type ActionState } from "@/app/contracts/actions";
+import { deleteContractAction, updateContractDetailsAction, updateContractVendorIdAction, type ActionState } from "@/app/contracts/actions";
 import { SensitiveTextInput } from "@/components/sensitive-text-input";
 import { AccordionSection } from "@/components/ui/accordion-section";
 import { ActionNotice } from "@/components/ui/action-notice";
@@ -52,7 +52,9 @@ export function ContractRowActions({
   const router = useRouter();
   const searchParams = useSearchParams();
   const [updateState, updateAction] = useActionState(updateContractDetailsAction, initialState);
+  const [vendorState, vendorAction, vendorPending] = useActionState(updateContractVendorIdAction, initialState);
   const [deleteState, deleteAction] = useActionState(deleteContractAction, initialState);
+  const vendorOnly = contract.workflowStatus === "cancelled" || contract.engagementStatus === "terminated";
 
   const open = useMemo(() => searchParams.get("ct_edit") === contract.id, [searchParams, contract.id]);
   const [editProjectId, setEditProjectId] = useState(contract.projectId);
@@ -206,6 +208,37 @@ export function ContractRowActions({
     setOpenDrawerSection((current) => (isOpen ? section : current === section ? null : current));
   }
 
+  if (vendorOnly) {
+    return (
+      <>
+        <div className="contractCardActions">
+          <button type="button" className="tinyButton" onClick={openEdit}>Edit Vendor ID</button>
+        </div>
+        <SideDrawer
+          open={open}
+          onClose={closeEdit}
+          eyebrow="Edit Vendor ID"
+          title={contract.contractorName}
+          description="This updates the ID on the hiring record without reopening it or changing any payments."
+          footer={
+            <button type="submit" className="tinyButton primaryButton" form={`vendor-id-${contract.id}`} disabled={vendorPending}>
+              {vendorPending ? "Saving…" : "Save Vendor ID"}
+            </button>
+          }
+        >
+          <form action={vendorAction} id={`vendor-id-${contract.id}`} className="uiDrawerForm">
+            <input type="hidden" name="contractId" value={contract.id} />
+            <label>
+              Vendor / Employee ID
+              <input name="contractorEmployeeId" value={editContractorEmployeeId} onChange={(event) => setEditContractorEmployeeId(event.target.value)} required />
+            </label>
+            {vendorState.message ? <ActionNotice tone={vendorState.ok ? "success" : "error"} key={vendorState.timestamp}>{vendorState.message}</ActionNotice> : null}
+          </form>
+        </SideDrawer>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="contractCardActions">
@@ -236,6 +269,9 @@ export function ContractRowActions({
               <button type="submit" className="tinyButton primaryButton" form={`edit-contract-${contract.id}`}>
                 Save Contract
               </button>
+              <button type="submit" className="tinyButton" form={`edit-contract-${contract.id}`} formAction={vendorAction} formNoValidate disabled={vendorPending}>
+                {vendorPending ? "Saving…" : "Save Vendor ID Only"}
+              </button>
             </div>
           </>
         }
@@ -250,6 +286,7 @@ export function ContractRowActions({
                 {deleteState.message}
               </ActionNotice>
             ) : null}
+            {vendorState.message ? <ActionNotice tone={vendorState.ok ? "success" : "error"} key={vendorState.timestamp}>{vendorState.message}</ActionNotice> : null}
             <form action={updateAction} className="uiDrawerForm" id={`edit-contract-${contract.id}`}>
               <input type="hidden" name="contractId" value={contract.id} />
 

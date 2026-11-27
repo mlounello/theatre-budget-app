@@ -31,6 +31,24 @@ test("check-request export appends an available W-9 for a new vendor", async () 
   assert.match(route, /!internal/);
 });
 
+test("vendor IDs can be saved independently of profile and payment status", async () => {
+  const [actions, editor] = await Promise.all([
+    read("app/contracts/actions.ts"),
+    read("app/contracts/contract-row-actions.tsx")
+  ]);
+  const vendorAction = actions.split("export async function updateContractVendorIdAction")[1]
+    .split("export async function updateContractDetailsAction")[0];
+
+  assert.match(vendorAction, /await ensurePmOrAdmin/);
+  assert.match(vendorAction, /if \(access\.isImpersonating\)/);
+  assert.deepEqual([...vendorAction.matchAll(/\.from\("([^"]+)"\)/g)].map((match) => match[1]), ["contracts", "contracts"]);
+  assert.match(vendorAction, /\.update\(\{ contractor_employee_id: vendorId \}\)/);
+  assert.doesNotMatch(vendorAction, /getGuestArtistDefaults|workflow_status|engagement_status/);
+  assert.match(editor, /contract\.workflowStatus === "cancelled" \|\| contract\.engagementStatus === "terminated"/);
+  assert.match(editor, /<form action=\{vendorAction\}/);
+  assert.match(editor, /Save Vendor ID Only/);
+});
+
 test("hiring UI distinguishes vendor warnings and payroll checks", async () => {
   const [page, inlineActions, createForm, editForm] = await Promise.all([
     read("app/contracts/page.tsx"),
