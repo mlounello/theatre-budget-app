@@ -6,12 +6,8 @@ export const dynamic = "force-dynamic";
 
 function isAuthorized(request: Request) {
   const received = bearerToken(request);
-  const configured = [
-    process.env.BUDGET_ACCESS_INTEGRATION_SECRET?.trim(),
-    process.env.SUPABASE_SECRET_KEY?.trim(),
-    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
-  ].filter((value): value is string => Boolean(value));
-  return Boolean(received) && configured.some((expected) => secretsMatch(received, expected));
+  const expected = process.env.BUDGET_ACCESS_INTEGRATION_SECRET?.trim();
+  return Boolean(received) && Boolean(expected) && secretsMatch(received, expected as string);
 }
 
 export async function POST(request: Request) {
