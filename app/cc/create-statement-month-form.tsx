@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
-import { createStatementMonthAction, type ActionState } from "@/app/cc/actions";
+import { createStatementMonthAction } from "@/app/cc/actions/cards";
+import type { ActionState } from "@/lib/action-helpers";
 
 type CardOption = {
   id: string;

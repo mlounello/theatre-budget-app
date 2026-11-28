@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { readDbSources } from "./_db-source.mjs";
+import { readDbSources, readDirSources } from "./_db-source.mjs";
 
 function source(path) {
   return readFileSync(new URL(path, import.meta.url), "utf8");
 }
 
-const procurementActions = source("../app/procurement/actions.ts");
+const procurementActions = readDirSources("app/procurement/actions");
 const procurementCreateForm = source("../app/procurement/create-order-form.tsx");
 const procurementBatchForm = source("../app/procurement/quick-batch-add-form.tsx");
 const procurementPage = source("../app/procurement/page.tsx");

@@ -1,11 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import {
-  updateUnionContributionStatusAction,
-  updateUnionSignatureStatusAction,
-  type ActionState
-} from "@/app/contracts/actions";
+import { updateUnionContributionStatusAction, updateUnionSignatureStatusAction } from "@/app/contracts/actions/payments";
+import type { ActionState } from "@/lib/action-helpers";
 import type { ContractRow, ContractUnionContributionRow } from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };

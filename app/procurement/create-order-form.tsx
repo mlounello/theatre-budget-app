@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
-import { createProcurementOrderAction, type ActionState } from "@/app/procurement/actions";
+import { createProcurementOrderAction } from "@/app/procurement/actions/orders";
+import type { ActionState } from "@/lib/action-helpers";
 import { GLOBAL_FISCAL_YEAR_STORAGE_KEY } from "@/lib/fiscal-year-context";
 import type {
   AccountCodeOption,

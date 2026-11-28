@@ -27,7 +27,7 @@ test("settings edits membership participation and archives instead of deleting o
 });
 
 test("organization-scoped authorization uses the transaction fiscal year", () => {
-  const procurement = read("app/procurement/actions.ts");
+  const procurement = readDirSources("app/procurement/actions");
   const dashboard = read("app/dashboard-actions.ts");
   assert.match(procurement, /getPurchaseScope[\s\S]*fiscal_year_id/);
   assert.match(procurement, /ensureOrganizationPmOrAdminAccess\(organizationId: string, fiscalYearId: string\)/);

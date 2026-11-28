@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readDirSources } from "./_db-source.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -39,7 +40,7 @@ test("statement lifecycle actions remain in the current-statement workspace", as
 });
 
 test("employee-issued card source purchases follow the full statement lifecycle", async () => {
-  const actions = await read("app/cc/actions.ts");
+  const actions = await readDirSources("app/cc/actions");
   assert.match(actions, /syncEmployeeCardSourceWorkflow/);
   assert.match(actions, /\.eq\("expense_stage", "employee_card"\)/);
   assert.match(actions, /syncEmployeeCardSourceWorkflow\(supabase, statementMonthId, "receipts_uploaded"\)/);
@@ -58,7 +59,7 @@ test("exceptions identify missing receipts, unassigned cards, and excluded recor
 
 test("attention transactions edit in a drawer and can release an unused card hold", async () => {
   const client = await read("app/cc/cc-page-client.tsx");
-  const actions = await read("app/cc/actions.ts");
+  const actions = await readDirSources("app/cc/actions");
   assert.match(client, /searchParams\.get\("cc_purchase"\)/);
   assert.match(client, /title=\{activeAttentionPurchase\?\.requestTitle/);
   assert.match(client, /Review &amp; Edit/);

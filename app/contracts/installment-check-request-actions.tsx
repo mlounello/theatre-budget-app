@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { updateContractInstallmentCheckRequestAction, type ActionState } from "@/app/contracts/actions";
+import { updateContractInstallmentCheckRequestAction } from "@/app/contracts/actions/payments";
+import type { ActionState } from "@/lib/action-helpers";
 import { SensitiveTextInput } from "@/components/sensitive-text-input";
 import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
 import type { ContractInstallmentRow, FoapalOption } from "@/lib/db";

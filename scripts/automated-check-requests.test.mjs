@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readDirSources } from "./_db-source.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("automatic check requests are review-gated and scheduled", async () => {
   const [action, cron, migration, vercel, middleware] = await Promise.all([
-    read("app/contracts/actions.ts"),
+    readDirSources("app/contracts/actions"),
     read("app/api/cron/check-requests/route.ts"),
     read("supabase/migrations/20261031120000_automated_check_requests_payroll.sql"),
     read("vercel.json"),
@@ -24,7 +25,7 @@ test("automatic check requests are review-gated and scheduled", async () => {
 });
 
 test("temporary employee schedules use equal biweekly payroll rows", async () => {
-  const action = await read("app/contracts/actions.ts");
+  const action = await readDirSources("app/contracts/actions");
   assert.match(action, /cursor\.setUTCDate\(cursor\.getUTCDate\(\) \+ 14\)/);
   assert.match(action, /splitAmounts\(contractValue, installmentCount\)/);
   assert.match(action, /payment_channel: engagementType === "temporary_employee" \? "payroll"/);

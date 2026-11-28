@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
-import { createContractAction, type ActionState } from "@/app/contracts/actions";
+import { createContractAction } from "@/app/contracts/actions/create";
+import type { ActionState } from "@/lib/action-helpers";
 import { SensitiveTextInput } from "@/components/sensitive-text-input";
 import { calculateCheckRequestSchedule } from "@/lib/check-request-schedule";
 import { GLOBAL_FISCAL_YEAR_STORAGE_KEY } from "@/lib/fiscal-year-context";

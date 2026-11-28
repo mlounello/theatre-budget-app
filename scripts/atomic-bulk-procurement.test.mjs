@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readDirSources } from "./_db-source.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const MIGRATION = "supabase/migrations/20261123120000_atomic_bulk_procurement_update.sql";
@@ -17,7 +18,7 @@ function actionKeys(source) {
 }
 
 test("bulk update sends exactly the purchase columns the RPC requires", async () => {
-  const [sql, actions] = await Promise.all([read(MIGRATION), read("app/procurement/actions.ts")]);
+  const [sql, actions] = await Promise.all([read(MIGRATION), readDirSources("app/procurement/actions")]);
   const required = sqlKeys(sql);
   assert.equal(required.length, 24);
   assert.deepEqual(actionKeys(actions), required);
@@ -39,7 +40,7 @@ test("RPC runs with caller privileges and is not callable anonymously", async ()
 });
 
 test("bulk update applies rows in one RPC and no longer writes purchases row by row", async () => {
-  const actions = await read("app/procurement/actions.ts");
+  const actions = await readDirSources("app/procurement/actions");
   const fn = actions.slice(actions.indexOf("export async function bulkUpdateProcurementAction"));
   const body = fn.slice(0, fn.indexOf("\nexport async function ", 10));
   assert.match(body, /rpc\("apply_procurement_bulk_update"/);
@@ -53,7 +54,7 @@ test("rollback drops only the function", async () => {
 });
 
 test("bulk delete handles projectless purchases without treating null as a project", async () => {
-  const actions = await read("app/procurement/actions.ts");
+  const actions = await readDirSources("app/procurement/actions");
   const fn = actions.slice(actions.indexOf("export async function bulkDeleteProcurementAction"));
   const body = fn.slice(0, fn.indexOf("\nexport async function ", 10));
   assert.match(body, /select\("id, project_id, organization_id"\)/);

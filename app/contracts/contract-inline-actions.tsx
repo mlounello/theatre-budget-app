@@ -1,11 +1,9 @@
 "use client";
 
 import { useActionState } from "react";
-import {
-  updateContractInstallmentStatusAction,
-  updateContractWorkflowAction,
-  type ActionState
-} from "@/app/contracts/actions";
+import { updateContractInstallmentStatusAction } from "@/app/contracts/actions/payments";
+import { updateContractWorkflowAction } from "@/app/contracts/actions/details";
+import type { ActionState } from "@/lib/action-helpers";
 import { ActionNotice } from "@/components/ui/action-notice";
 import { PendingButton } from "@/components/ui/pending-button";
 import { StatusSelector } from "@/components/ui/status-controls";

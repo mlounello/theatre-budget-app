@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
-import { createContractsBulkAction, type ActionState } from "@/app/contracts/actions";
+import { createContractsBulkAction } from "@/app/contracts/actions/create";
+import type { ActionState } from "@/lib/action-helpers";
 import { GLOBAL_FISCAL_YEAR_STORAGE_KEY } from "@/lib/fiscal-year-context";
 import type { AccountCodeOption, FiscalYearOption, OrganizationOption, ProcurementProjectOption } from "@/lib/db";
 

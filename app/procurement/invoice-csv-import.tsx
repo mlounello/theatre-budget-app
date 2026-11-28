@@ -1,10 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
-import {
-  importPurchaseInvoiceTransactionsAction,
-  type ActionState
-} from "@/app/procurement/actions";
+import { importPurchaseInvoiceTransactionsAction } from "@/app/procurement/actions/invoices";
+import type { ActionState } from "@/lib/action-helpers";
 import { bannerRuleRelievesEncumbrance } from "@/lib/banner-rule-class";
 import { formatCurrency } from "@/lib/format";
 

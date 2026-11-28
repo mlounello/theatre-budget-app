@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { extractFunction, readDbSources } from "./_db-source.mjs";
+import { extractFunction, readDbSources, readDirSources } from "./_db-source.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -50,7 +50,7 @@ test("contract and union payments stay out of procurement queues", async () => {
 test("card expenses show and edit EX identifiers instead of empty requisition and PO labels", async () => {
   const table = await read("app/procurement/procurement-table.tsx");
   const db = await readDbSources();
-  const actions = await read("app/procurement/actions.ts");
+  const actions = await readDirSources("app/procurement/actions");
   assert.match(db, /reference_number, expense_number, expense_stage, requisition_number/);
   assert.match(db, /expenseNumber: \(row\.expense_number/);
   assert.match(table, /Order \/ Expense #/);
@@ -63,7 +63,7 @@ test("card expenses show and edit EX identifiers instead of empty requisition an
 
 test("procurement drawer shows only fields relevant to the row workflow", async () => {
   const table = await read("app/procurement/procurement-table.tsx");
-  const actions = await read("app/procurement/actions.ts");
+  const actions = await readDirSources("app/procurement/actions");
   assert.match(table, /editingPurchase\.requestType === "expense"[\s\S]*?Expense Workflow/);
   assert.match(table, /Card Funding Request/);
   assert.match(table, /Monthly Reconciliation Expense/);
@@ -78,7 +78,7 @@ test("employee-issued Siena card purchases defer EC and EX numbers until reconci
   const [table, createForm, actions, migration] = await Promise.all([
     read("app/procurement/procurement-table.tsx"),
     read("app/procurement/create-order-form.tsx"),
-    read("app/procurement/actions.ts"),
+    readDirSources("app/procurement/actions"),
     read("supabase/migrations/20261103143000_siena_employee_card_workflow.sql")
   ]);
 
@@ -93,7 +93,7 @@ test("employee-issued Siena card purchases defer EC and EX numbers until reconci
 
 test("employee-card receipt status follows whether staged receipts exist", async () => {
   const [actions, backfill] = await Promise.all([
-    read("app/procurement/actions.ts"),
+    readDirSources("app/procurement/actions"),
     read("supabase/migrations/20261104001500_sync_employee_card_statuses.sql")
   ]);
   assert.match(actions, /expenseStage === "employee_card"[\s\S]*?receiptCount[\s\S]*?"receipts_uploaded" : "requested"/);
@@ -106,7 +106,7 @@ test("employee-card receipt status follows whether staged receipts exist", async
 
 test("purchase orders support balanced split allocations across budgets, categories, and accounts", async () => {
   const table = await read("app/procurement/procurement-table.tsx");
-  const actions = await read("app/procurement/actions.ts");
+  const actions = await readDirSources("app/procurement/actions");
   const institutional = await read("lib/institutional-budget.ts");
   const migration = await read("supabase/migrations/20260919234500_split_po_budget_allocations.sql");
   assert.match(table, /Budget Allocations/);
@@ -136,7 +136,7 @@ test("each PO allocation is a complete child budget record", async () => {
   const migration = await read("supabase/migrations/20261021210000_complete_purchase_allocation_children.sql");
   const independentScopeMigration = await read("supabase/migrations/20261021220000_independent_purchase_allocation_scope.sql");
   const table = await read("app/procurement/procurement-table.tsx");
-  const actions = await read("app/procurement/actions.ts");
+  const actions = await readDirSources("app/procurement/actions");
   const db = await readDbSources();
 
   assert.match(migration, /add column if not exists project_id uuid/);

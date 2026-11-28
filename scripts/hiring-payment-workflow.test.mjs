@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readDirSources } from "./_db-source.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("canceled hires preserve paid history and stop future payments", async () => {
   const [actions, page, dashboard, calendar] = await Promise.all([
-    read("app/contracts/actions.ts"),
+    readDirSources("app/contracts/actions"),
     read("app/contracts/page.tsx"),
     read("lib/dashboard-attention.ts"),
     read("lib/contract-calendar.ts")
@@ -33,7 +34,7 @@ test("check-request export appends an available W-9 for a new vendor", async () 
 
 test("vendor IDs can be saved independently of profile and payment status", async () => {
   const [actions, editor] = await Promise.all([
-    read("app/contracts/actions.ts"),
+    readDirSources("app/contracts/actions"),
     read("app/contracts/contract-row-actions.tsx")
   ]);
   const vendorAction = actions.split("export async function updateContractVendorIdAction")[1]
@@ -70,7 +71,7 @@ test("hiring UI distinguishes vendor warnings and payroll checks", async () => {
 });
 
 test("temporary employee payroll is flat-fee and allocations retain their full scope", async () => {
-  const actions = await read("app/contracts/actions.ts");
+  const actions = await readDirSources("app/contracts/actions");
 
   assert.match(actions, /engagementType === "temporary_employee" \? "flat_fee"/);
   assert.match(actions, /const installmentAmounts = artistInstallmentAmounts\(contractValue, installmentCount/);

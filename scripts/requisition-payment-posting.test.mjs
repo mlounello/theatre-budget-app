@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readDirSources } from "./_db-source.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("paid is the only financial posting point for requisitions", async () => {
-  const procurementActions = await read("app/procurement/actions.ts");
+  const procurementActions = await readDirSources("app/procurement/actions");
   const dashboardActions = await read("app/dashboard-actions.ts");
 
   assert.match(procurementActions, /if \(procurementStatus === "paid"\) return "posted"/);
@@ -25,7 +26,7 @@ test("invoice received remains encumbered until payment", async () => {
 });
 
 test("marking an encumbered requisition paid records its posting date once", async () => {
-  const procurementActions = await read("app/procurement/actions.ts");
+  const procurementActions = await readDirSources("app/procurement/actions");
   const dashboardActions = await read("app/dashboard-actions.ts");
 
   assert.match(procurementActions, /existingPostedDate \|\| todayIsoDate\(\)/);

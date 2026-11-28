@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { updateCheckRequestAutomationAction, type ActionState } from "@/app/contracts/actions";
+import { updateCheckRequestAutomationAction } from "@/app/contracts/actions/payments";
+import type { ActionState } from "@/lib/action-helpers";
 import { ActionNotice } from "@/components/ui/action-notice";
 import { PendingButton } from "@/components/ui/pending-button";
 import type { CheckRequestAutomationStatus } from "@/lib/db";

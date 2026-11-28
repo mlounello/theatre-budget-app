@@ -2,7 +2,9 @@
 
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { deleteContractAction, updateContractDetailsAction, updateContractVendorIdAction, type ActionState } from "@/app/contracts/actions";
+import { deleteContractAction } from "@/app/contracts/actions/delete";
+import { updateContractDetailsAction, updateContractVendorIdAction } from "@/app/contracts/actions/details";
+import type { ActionState } from "@/lib/action-helpers";
 import { SensitiveTextInput } from "@/components/sensitive-text-input";
 import { AccordionSection } from "@/components/ui/accordion-section";
 import { ActionNotice } from "@/components/ui/action-notice";

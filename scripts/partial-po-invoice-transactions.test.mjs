@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { readDbSources } from "./_db-source.mjs";
+import { readDbSources, readDirSources } from "./_db-source.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -25,7 +25,7 @@ test("known partially invoiced PO is seeded from the Banner debit and credit lin
 test("procurement exposes a compact grouped transaction manager", async () => {
   const [table, actions] = await Promise.all([
     read("app/procurement/procurement-table.tsx"),
-    read("app/procurement/actions.ts")
+    readDirSources("app/procurement/actions")
   ]);
   assert.match(table, /Manage transactions/);
   assert.match(table, /Grouped by invoice or credit number/);
@@ -38,7 +38,7 @@ test("procurement exposes a compact grouped transaction manager", async () => {
 test("transaction manager supports continuous keyboard entry", async () => {
   const [table, actions] = await Promise.all([
     read("app/procurement/procurement-table.tsx"),
-    read("app/procurement/actions.ts")
+    readDirSources("app/procurement/actions")
   ]);
   assert.match(table, /data-invoice-field/);
   assert.match(table, /handleInvoiceEntryKeyDown/);
@@ -59,7 +59,7 @@ test("unsplit POs auto-select their allocation and CSV imports are duplicate-saf
   const [table, importer, actions, migration] = await Promise.all([
     read("app/procurement/procurement-table.tsx"),
     read("app/procurement/invoice-csv-import.tsx"),
-    read("app/procurement/actions.ts"),
+    readDirSources("app/procurement/actions"),
     read("supabase/migrations/20261030143000_partial_po_invoice_transactions.sql")
   ]);
   assert.match(table, /editingAllocations\.length === 1/);
@@ -87,7 +87,7 @@ test("full Banner account exports reconcile line by line to matching unpaid POs"
   const [page, reconciliation, actions, db] = await Promise.all([
     read("app/procurement/page.tsx"),
     read("app/procurement/banner-account-reconciliation.tsx"),
-    read("app/procurement/actions.ts"),
+    readDirSources("app/procurement/actions"),
     readDbSources()
   ]);
   assert.match(page, /BannerAccountReconciliation/);
@@ -106,7 +106,7 @@ test("full Banner account exports reconcile line by line to matching unpaid POs"
 test("partially paid is available without collapsing the YTD and ENC buckets", async () => {
   const [table, actions, dashboardActions, migration] = await Promise.all([
     read("app/procurement/procurement-table.tsx"),
-    read("app/procurement/actions.ts"),
+    readDirSources("app/procurement/actions"),
     read("app/dashboard-actions.ts"),
     read("supabase/migrations/20261030210000_partial_paid_procurement_status.sql")
   ]);
@@ -146,7 +146,7 @@ test("Banner adjustments and non-encumbered invoices post to YTD without liquida
   const [migration, importer, actions, db, table, ruleClass] = await Promise.all([
     read("supabase/migrations/20261101190000_banner_adjustment_encumbrance.sql"),
     read("app/procurement/invoice-csv-import.tsx"),
-    read("app/procurement/actions.ts"),
+    readDirSources("app/procurement/actions"),
     readDbSources(),
     read("app/procurement/procurement-table.tsx"),
     read("lib/banner-rule-class.ts")

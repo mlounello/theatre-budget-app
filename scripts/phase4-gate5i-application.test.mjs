@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { readDbSources } from "./_db-source.mjs";
+import { readDbSources, readDirSources } from "./_db-source.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -45,7 +45,7 @@ test("Hiring UI identifies the three reviewed engagement workflows", async () =>
 
 test("Hiring keeps existing union, installment, filtering, drawer, and bulk export capabilities", async () => {
   const page = await read("app/contracts/page.tsx");
-  const actions = await read("app/contracts/actions.ts");
+  const actions = await readDirSources("app/contracts/actions");
   assert.match(page, /BulkCheckRequestExport/);
   assert.match(page, /contract\.isUnion/);
   assert.match(page, /ContractRowActions/);
@@ -58,7 +58,7 @@ test("Hiring keeps existing union, installment, filtering, drawer, and bulk expo
 
 test("Hiring provides separate artist and union payment schedules without removing budget commitments", async () => {
   const page = await read("app/contracts/page.tsx");
-  const actions = await read("app/contracts/actions.ts");
+  const actions = await readDirSources("app/contracts/actions");
   const dashboard = await read("lib/dashboard-attention.ts");
   assert.match(page, /Payment Schedule/);
   assert.match(page, /Artist &amp; Employee Payments/);
@@ -116,7 +116,7 @@ test("Expense Claims are collections while every Expense owns its budget assignm
 test("Existing Expenses can move their final budget destination without changing claim or receipt history", async () => {
   const client = await read("app/cc/cc-page-client.tsx");
   const panel = await read("app/cc/expense-claims-panel.tsx");
-  const actions = await read("app/cc/actions.ts");
+  const actions = await readDirSources("app/cc/actions");
   const migration = await read("supabase/migrations/20260924143000_edit_expense_budget_destinations.sql");
   assert.match(panel, /Edit Budget/);
   assert.match(client, /Expense budget destination/);
@@ -131,8 +131,8 @@ test("Existing Expenses can move their final budget destination without changing
 
 test("Card receipts stage against funding requests and finalize as one monthly EC with receipt-level EX assignments", async () => {
   const client = await read("app/cc/cc-page-client.tsx");
-  const ccActions = await read("app/cc/actions.ts");
-  const procurementActions = await read("app/procurement/actions.ts");
+  const ccActions = await readDirSources("app/cc/actions");
+  const procurementActions = await readDirSources("app/procurement/actions");
   const migration = await read("supabase/migrations/20260924190000_receipt_staging_monthly_reconciliation.sql");
   assert.match(client, /Finalize Selected Receipts/);
   assert.match(client, /Monthly Expense Claim Number/);
@@ -164,9 +164,9 @@ test("Monthly card finalization creates a complete allocation child", async () =
 });
 
 test("Receipt entry and monthly finalization support returns and credits", async () => {
-  const procurement = await read("app/procurement/actions.ts");
+  const procurement = await readDirSources("app/procurement/actions");
   const procurementTable = await read("app/procurement/procurement-table.tsx");
-  const ccActions = await read("app/cc/actions.ts");
+  const ccActions = await readDirSources("app/cc/actions");
   const ccClient = await read("app/cc/cc-page-client.tsx");
   const migration = await read(
     "supabase/migrations/20261028130000_allow_negative_cc_receipts.sql"
@@ -219,7 +219,7 @@ test("Finalized monthly Expenses keep their receipts out of the missing-receipt 
 });
 
 test("Monthly card finalization transfers budget impact off the funding authorization", async () => {
-  const ccActions = await read("app/cc/actions.ts");
+  const ccActions = await readDirSources("app/cc/actions");
   const db = await readDbSources();
   const migration = await read("supabase/migrations/20261008120000_transfer_card_authorization_budget_impact.sql");
   assert.match(ccActions, /rescalePurchaseAllocations\(\s*supabase,\s*authorization\.id/);

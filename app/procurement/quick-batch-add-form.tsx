@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useState } from "react";
-import { createProcurementBatchAction, type ActionState } from "@/app/procurement/actions";
+import { createProcurementBatchAction } from "@/app/procurement/actions/orders";
+import type { ActionState } from "@/lib/action-helpers";
 import { GLOBAL_FISCAL_YEAR_STORAGE_KEY } from "@/lib/fiscal-year-context";
 import type {
   AccountCodeOption,
