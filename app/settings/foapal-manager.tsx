@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import { createFoapalAction, createFundAction, createProgramAction, type ActionState } from "@/app/settings/actions";
+import { createFoapalAction, createFundAction, createProgramAction } from "@/app/settings/actions/funds";
+import type { ActionState } from "@/lib/action-helpers";
 import type { FoapalOption, FundOption, OrganizationOption, ProgramOption } from "@/lib/db";
 
 const initialState: ActionState = { ok: true, message: "", timestamp: 0 };

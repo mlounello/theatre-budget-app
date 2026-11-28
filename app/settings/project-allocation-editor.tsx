@@ -2,11 +2,8 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
-import {
-  deleteAllocationLineAction,
-  updateAllocationLineInlineAction,
-  type ActionState
-} from "@/app/settings/actions";
+import { deleteAllocationLineAction, updateAllocationLineInlineAction } from "@/app/settings/actions/allocations";
+import type { ActionState } from "@/lib/action-helpers";
 import { GLOBAL_FISCAL_YEAR_STORAGE_KEY, resolveCurrentFiscalYearId } from "@/lib/fiscal-year-context";
 import type { FiscalYearOption, HierarchyRow, OrganizationOption } from "@/lib/db";
 import { formatCurrency } from "@/lib/format";

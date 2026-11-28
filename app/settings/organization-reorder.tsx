@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useMemo, useState } from "react";
-import { reorderOrganizationsAction, type ActionState } from "@/app/settings/actions";
+import { reorderOrganizationsAction } from "@/app/settings/actions/allocations";
+import type { ActionState } from "@/lib/action-helpers";
 
 type Item = {
   id: string;

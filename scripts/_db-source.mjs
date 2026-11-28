@@ -18,3 +18,13 @@ export function extractFunction(source, name) {
   const end = source.indexOf("\n}\n", start);
   return source.slice(start, end < 0 ? undefined : end + 3);
 }
+
+/** Concatenates every .ts file in a directory (server-action modules split by domain). */
+export function readDirSources(relativeDir) {
+  const dir = new URL(`../${relativeDir.replace(/\/?$/, "/")}`, import.meta.url);
+  return readdirSync(dir)
+    .filter((file) => file.endsWith(".ts"))
+    .sort()
+    .map((file) => readFileSync(new URL(file, dir), "utf8"))
+    .join("\n");
+}

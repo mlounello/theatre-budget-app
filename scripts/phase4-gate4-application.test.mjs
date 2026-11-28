@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { readDbSources } from "./_db-source.mjs";
+import { readDbSources, readDirSources } from "./_db-source.mjs";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -12,14 +12,14 @@ test("organization options and hierarchy use fiscal-year memberships", () => {
 });
 
 test("settings creates one canonical organization and fiscal-year memberships", () => {
-  const actions = read("app/settings/actions.ts");
+  const actions = readDirSources("app/settings/actions");
   assert.match(actions, /createOrganizationAction[\s\S]*fiscal_year_id:\s*null/);
   assert.match(actions, /createOrganizationAction[\s\S]*from\("fiscal_year_organizations"\)\.insert/);
   assert.doesNotMatch(actions, /const organizationRows = \(fiscalYearIds/);
 });
 
 test("settings edits membership participation and archives instead of deleting organizations", () => {
-  const actions = read("app/settings/actions.ts");
+  const actions = readDirSources("app/settings/actions");
   assert.match(actions, /updateOrganizationAction[\s\S]*fiscal_year_organizations[\s\S]*onConflict:\s*"fiscal_year_id,organization_id"/);
   assert.match(actions, /deleteOrganizationAction[\s\S]*update\(\{ active: false \}\)/);
   assert.doesNotMatch(actions, /deleteOrganizationAction[\s\S]*from\("organizations"\)\.delete\(\)/);

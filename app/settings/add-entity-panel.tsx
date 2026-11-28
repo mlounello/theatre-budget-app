@@ -1,15 +1,9 @@
 "use client";
 
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
-import {
-  addBudgetLineAction,
-  createAccountCodeAction,
-  createFiscalYearAction,
-  createOrganizationAction,
-  createProductionCategoryAction,
-  createProjectAction,
-  type ActionState
-} from "@/app/settings/actions";
+import { addBudgetLineAction } from "@/app/settings/actions/allocations";
+import { createAccountCodeAction, createFiscalYearAction, createOrganizationAction, createProductionCategoryAction, createProjectAction } from "@/app/settings/actions/structure";
+import type { ActionState } from "@/lib/action-helpers";
 import type {
   FiscalYearOption,
   OrganizationOption,

@@ -3,27 +3,11 @@
 import Link from "next/link";
 import { useActionState, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import {
-  addBudgetLineAction,
-  createAccountCodeAction,
-  deactivateProductionTeamAssignmentAction,
-  archiveUserProfileAction,
-  deleteFiscalYearAction,
-  deleteOrganizationAction,
-  deleteProjectAction,
-  deleteProductionCategoryAction,
-  deleteAccountCodeAction,
-  saveProductionTeamAssignmentAction,
-  sendProductionTeamAccessLinkAction,
-  importHierarchyCsvAction,
-  updateProductionCategoryAction,
-  updateAccountCodeAction,
-  updateBudgetLineAction,
-  updateFiscalYearAction,
-  updateOrganizationAction,
-  updateProjectAction,
-  type ActionState
-} from "@/app/settings/actions";
+import { addBudgetLineAction, updateBudgetLineAction } from "@/app/settings/actions/allocations";
+import { createAccountCodeAction, deleteFiscalYearAction, deleteOrganizationAction, deleteProjectAction, deleteProductionCategoryAction, deleteAccountCodeAction, updateProductionCategoryAction, updateAccountCodeAction, updateFiscalYearAction, updateOrganizationAction, updateProjectAction } from "@/app/settings/actions/structure";
+import { deactivateProductionTeamAssignmentAction, archiveUserProfileAction, saveProductionTeamAssignmentAction, sendProductionTeamAccessLinkAction } from "@/app/settings/actions/access";
+import { importHierarchyCsvAction } from "@/app/settings/actions/hierarchy-import";
+import type { ActionState } from "@/lib/action-helpers";
 import { AddEntityPanel } from "@/app/settings/add-entity-panel";
 import { BudgetLineReorder } from "@/app/settings/budget-line-reorder";
 import { FiscalYearReorder } from "@/app/settings/fiscal-year-reorder";

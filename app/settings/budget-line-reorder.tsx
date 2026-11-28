@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState, useMemo, useState } from "react";
-import { reorderBudgetLinesAction, type ActionState } from "@/app/settings/actions";
+import { reorderBudgetLinesAction } from "@/app/settings/actions/allocations";
+import type { ActionState } from "@/lib/action-helpers";
 
 type Line = {
   id: string;
