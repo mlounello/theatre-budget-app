@@ -72,3 +72,11 @@ test("finalize inherits the existing monthly EC for the card and month when no n
   assert.doesNotMatch(client, /name="claimNumber" pattern="EC\[0-9\]\{6\}" placeholder="EC######" required/);
   assert.match(client, /inheritedClaimNumber/);
 });
+
+test("Edit Budget now records the project and its organization on the allocation", () => {
+  const fn = migration.slice(migration.indexOf("function app_theatre_budget.update_expense_budget_destination"), migration.indexOf("revoke all on function app_theatre_budget.assert_expense_actor"));
+  assert.match(fn, /reporting_budget_line_id,\s*project_id,\s*organization_id/);
+  assert.match(fn, /case when p_project_id is not null then v_project\.organization_id else p_organization_id end/);
+  assert.match(fn, /security invoker/);
+  assert.match(migration, /grant execute on function app_theatre_budget\.update_expense_budget_destination\(uuid, uuid, uuid, uuid, uuid, uuid\)/);
+});

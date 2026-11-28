@@ -4,6 +4,7 @@ begin;
 --   2. move_expense_to_claim        : detach from the wrong EC and attach to another EC
 --                                     (an existing EC, or a new one with the same card and month)
 --   3. delete_expense_restage_receipts : delete the EX and return its receipts to the staged pool
+--   4. update_expense_budget_destination : fix Edit Budget for project Expenses (allocations now need an organization)
 -- All functions are security invoker so row-level security still applies, are additive,
 -- keep EC settled totals and the funding-request balance consistent, and write an audit row.
 -- Posted or submitted-statement Expenses are locked.
@@ -453,6 +454,156 @@ begin
 end;
 $$;
 
+-- 4. Fix Edit Budget for project Expenses ------------------------------------------------
+-- Since 20261021 every PO allocation must carry an organization (and its project). The original
+-- update_expense_budget_destination inserted project allocations with no organization, so every
+-- budget edit on a project Expense failed with "Every PO allocation requires an organization."
+-- Same signature, security and behavior; the allocation now records the project and its organization,
+-- exactly as finalize_cc_receipt_batch does.
+create or replace function app_theatre_budget.update_expense_budget_destination(
+  p_purchase_id uuid,
+  p_project_id uuid,
+  p_organization_id uuid,
+  p_production_category_id uuid,
+  p_account_code_id uuid,
+  p_user_id uuid
+)
+returns jsonb
+language plpgsql
+security invoker
+set search_path = app_theatre_budget, public, auth
+as $$
+declare
+  v_purchase app_theatre_budget.purchases%rowtype;
+  v_project app_theatre_budget.projects%rowtype;
+  v_budget_line_id uuid;
+  v_amount numeric(12,2);
+begin
+  if auth.uid() is null or p_user_id is distinct from auth.uid() then
+    raise exception 'Expense updates must be made by the signed-in user.';
+  end if;
+  if (p_project_id is null) = (p_organization_id is null) then
+    raise exception 'Choose exactly one project or organization budget.';
+  end if;
+  if p_account_code_id is null then
+    raise exception 'Choose a Banner account / FOAP charge.';
+  end if;
+
+  select * into v_purchase
+  from app_theatre_budget.purchases
+  where id = p_purchase_id
+  for update;
+
+  if not found or v_purchase.request_type <> 'expense' then
+    raise exception 'Expense not found or outside your access scope.';
+  end if;
+
+  if p_project_id is not null then
+    if p_production_category_id is null then
+      raise exception 'Choose a Production Category for a theatre project Expense.';
+    end if;
+    select * into v_project
+    from app_theatre_budget.projects
+    where id = p_project_id;
+    if not found or v_project.fiscal_year_id is distinct from v_purchase.fiscal_year_id then
+      raise exception 'The selected project is outside this Expense fiscal year.';
+    end if;
+    v_budget_line_id := app_theatre_budget.ensure_project_category_line(
+      p_project_id,
+      p_production_category_id
+    );
+  else
+    if not exists (
+      select 1
+      from app_theatre_budget.fiscal_year_organizations membership
+      where membership.fiscal_year_id = v_purchase.fiscal_year_id
+        and membership.organization_id = p_organization_id
+        and membership.active = true
+        and membership.project_tracking_required = false
+    ) then
+      raise exception 'That organization is not an active non-project budget in this fiscal year.';
+    end if;
+  end if;
+
+  v_amount := coalesce(
+    nullif(v_purchase.posted_amount, 0),
+    nullif(v_purchase.pending_cc_amount, 0),
+    nullif(v_purchase.requested_amount, 0),
+    nullif(v_purchase.estimated_amount, 0),
+    0
+  );
+
+  -- Remove the old destination before changing the purchase header so RLS checks
+  -- the caller's access to the record as it existed when they opened it.
+  delete from app_theatre_budget.purchase_allocations
+  where purchase_id = p_purchase_id;
+
+  update app_theatre_budget.purchases
+  set project_id = p_project_id,
+      organization_id = case when p_project_id is not null then v_project.organization_id else p_organization_id end,
+      budget_line_id = v_budget_line_id,
+      production_category_id = case when p_project_id is not null then p_production_category_id else null end,
+      banner_account_code_id = p_account_code_id,
+      budget_tracked = true
+  where id = p_purchase_id;
+
+  insert into app_theatre_budget.purchase_allocations (
+    purchase_id,
+    reporting_budget_line_id,
+    project_id,
+    organization_id,
+    account_code_id,
+    production_category_id,
+    amount,
+    reporting_bucket,
+    note
+  ) values (
+    p_purchase_id,
+    v_budget_line_id,
+    p_project_id,
+    case when p_project_id is not null then v_project.organization_id else p_organization_id end,
+    p_account_code_id,
+    case when p_project_id is not null then p_production_category_id else null end,
+    v_amount,
+    'direct',
+    coalesce(v_purchase.reference_number || ' / ', '') || coalesce(v_purchase.expense_number, 'Expense')
+  );
+
+  insert into app_theatre_budget.purchase_events (
+    purchase_id,
+    from_status,
+    to_status,
+    estimated_amount_snapshot,
+    requested_amount_snapshot,
+    encumbered_amount_snapshot,
+    pending_cc_amount_snapshot,
+    posted_amount_snapshot,
+    changed_by_user_id,
+    note
+  ) values (
+    p_purchase_id,
+    v_purchase.status,
+    v_purchase.status,
+    v_purchase.estimated_amount,
+    v_purchase.requested_amount,
+    v_purchase.encumbered_amount,
+    v_purchase.pending_cc_amount,
+    v_purchase.posted_amount,
+    p_user_id,
+    'Expense budget destination updated.'
+  );
+
+  return jsonb_build_object(
+    'purchase_id', p_purchase_id,
+    'project_id', p_project_id,
+    'organization_id', case when p_project_id is not null then v_project.organization_id else p_organization_id end,
+    'budget_line_id', v_budget_line_id
+  );
+end;
+$$;
+
+grant execute on function app_theatre_budget.update_expense_budget_destination(uuid, uuid, uuid, uuid, uuid, uuid) to authenticated;
+
 revoke all on function app_theatre_budget.assert_expense_actor(uuid) from public;
 revoke all on function app_theatre_budget.assert_expense_unlocked(app_theatre_budget.purchases) from public;
 revoke all on function app_theatre_budget.refresh_expense_claim_settled(uuid) from public;
@@ -513,6 +664,17 @@ begin
     (select coalesce(sum(a.amount),0) from app_theatre_budget.purchase_allocations a where a.purchase_id = pr.id)) into v_hold_before
   from app_theatre_budget.purchases pr where pr.id = v_purchase.authorization_purchase_id;
   v_out := v_out || format(E'\nBefore: claim settled=%s, funding request remaining=%s, receipts on expense=%s', v_before_settled, v_before_remaining, v_receipts_before);
+
+  -- 0. Edit Budget (re-applies the expense's own destination; previously failed with 'Every PO allocation requires an organization')
+  perform app_theatre_budget.update_expense_budget_destination(
+    v_purchase.id, v_purchase.project_id,
+    case when v_purchase.project_id is null then v_purchase.organization_id else null end,
+    v_purchase.production_category_id, v_purchase.banner_account_code_id, v_user);
+  v_out := v_out || format(E'\n0 edit budget -> ok | allocation project=%s organization=%s account=%s amount=%s',
+    (select project_id from app_theatre_budget.purchase_allocations where purchase_id = v_purchase.id limit 1),
+    (select organization_id from app_theatre_budget.purchase_allocations where purchase_id = v_purchase.id limit 1),
+    (select account_code_id from app_theatre_budget.purchase_allocations where purchase_id = v_purchase.id limit 1),
+    (select amount from app_theatre_budget.purchase_allocations where purchase_id = v_purchase.id limit 1));
 
   -- 1. Edit details
   v_res := app_theatre_budget.adjust_expense_details(v_purchase.id, 'EX999991', 'Trial title', v_user);

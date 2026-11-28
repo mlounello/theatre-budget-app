@@ -45,6 +45,17 @@ begin
   from app_theatre_budget.purchases pr where pr.id = v_purchase.authorization_purchase_id;
   v_out := v_out || format(E'\nBefore: claim settled=%s, funding request remaining=%s, receipts on expense=%s', v_before_settled, v_before_remaining, v_receipts_before);
 
+  -- 0. Edit Budget (re-applies the expense's own destination; previously failed with 'Every PO allocation requires an organization')
+  perform app_theatre_budget.update_expense_budget_destination(
+    v_purchase.id, v_purchase.project_id,
+    case when v_purchase.project_id is null then v_purchase.organization_id else null end,
+    v_purchase.production_category_id, v_purchase.banner_account_code_id, v_user);
+  v_out := v_out || format(E'\n0 edit budget -> ok | allocation project=%s organization=%s account=%s amount=%s',
+    (select project_id from app_theatre_budget.purchase_allocations where purchase_id = v_purchase.id limit 1),
+    (select organization_id from app_theatre_budget.purchase_allocations where purchase_id = v_purchase.id limit 1),
+    (select account_code_id from app_theatre_budget.purchase_allocations where purchase_id = v_purchase.id limit 1),
+    (select amount from app_theatre_budget.purchase_allocations where purchase_id = v_purchase.id limit 1));
+
   -- 1. Edit details
   v_res := app_theatre_budget.adjust_expense_details(v_purchase.id, 'EX999991', 'Trial title', v_user);
   v_out := v_out || format(E'\n1 edit details -> %s | now number=%s title=%s', v_res,
