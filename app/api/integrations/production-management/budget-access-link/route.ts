@@ -1,24 +1,17 @@
-import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { bearerToken, secretsMatch } from "@/lib/bearer-auth";
 import { sendBudgetAccessReadyEmail } from "@/lib/branded-magic-link";
 
 export const dynamic = "force-dynamic";
 
-function matchesSecret(received: string, expected: string) {
-  const left = Buffer.from(received);
-  const right = Buffer.from(expected);
-  return left.length === right.length && timingSafeEqual(left, right);
-}
-
 function isAuthorized(request: Request) {
-  const header = request.headers.get("authorization") ?? "";
-  const received = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  const received = bearerToken(request);
   const configured = [
     process.env.BUDGET_ACCESS_INTEGRATION_SECRET?.trim(),
     process.env.SUPABASE_SECRET_KEY?.trim(),
     process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()
   ].filter((value): value is string => Boolean(value));
-  return Boolean(received) && configured.some((expected) => matchesSecret(received, expected));
+  return Boolean(received) && configured.some((expected) => secretsMatch(received, expected));
 }
 
 export async function POST(request: Request) {

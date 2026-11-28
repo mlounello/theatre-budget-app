@@ -3,7 +3,7 @@ import { z } from "zod";
 const nullableUuidSchema = z.union([z.string().uuid(), z.literal("")]).transform((value) => value || null);
 
 export const positiveMoneySchema = z.coerce
-  .number({ invalid_type_error: "Enter a valid amount." })
+  .number({ error: "Enter a valid amount." })
   .finite("Enter a valid amount.")
   .positive("Amount must be greater than zero.")
   .transform((value) => Math.round(value * 100) / 100);

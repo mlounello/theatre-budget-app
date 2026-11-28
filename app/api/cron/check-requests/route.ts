@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { PDFDocument } from "pdf-lib";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
+import { hasBearerSecret } from "@/lib/bearer-auth";
 import { GET as installmentPdf } from "@/app/contracts/[contractId]/installments/[installmentId]/check-request/route";
 import { GET as unionPdf } from "@/app/contracts/[contractId]/union-contributions/[contributionId]/check-request/route";
 
@@ -78,7 +79,7 @@ async function sendPacket(input: { packet: Buffer; date: string; items: DueItem[
 
 export async function GET(request: Request) {
   const secret = process.env.CRON_SECRET?.trim();
-  if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!secret || !hasBearerSecret(request, secret)) {
     return new NextResponse("Unauthorized", { status: 401 });
   }
   const supabase = createSupabaseAdminClient();

@@ -60,7 +60,7 @@ test("Hiring provides separate artist and union payment schedules without removi
   const actions = await read("app/contracts/actions.ts");
   const dashboard = await read("lib/dashboard-attention.ts");
   assert.match(page, /Payment Schedule/);
-  assert.match(page, /Artist Contract Payments/);
+  assert.match(page, /Artist &amp; Employee Payments/);
   assert.match(page, /Union Pension &amp; Benefit Funds/);
   assert.match(page, /ContractInstallmentControl/);
   assert.match(page, /UnionContributionStatusControl/);

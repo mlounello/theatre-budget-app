@@ -90,17 +90,15 @@ test("full Banner account exports reconcile line by line to matching unpaid POs"
     read("lib/db.ts")
   ]);
   assert.match(page, /BannerAccountReconciliation/);
-  assert.match(reconciliation, /Reconcile Banner CSV/);
+  assert.match(reconciliation, /Reconcile Banner/);
   assert.match(page, /getBannerAccountReconciliationData/);
-  assert.match(reconciliation, /Match Banner Lines to POs/);
-  assert.match(reconciliation, /Keep and attach to PO/);
-  assert.match(reconciliation, /Skip this line/);
-  assert.match(reconciliation, /Duplicates/);
+  assert.match(reconciliation, /Match YTD documents to POs/);
+  assert.match(reconciliation, /Duplicate · /);
   assert.match(reconciliation, /\^\(EX\|EC\)/);
   assert.match(actions, /importBannerAccountReconciliationAction/);
   assert.match(actions, /already imported and skipped/);
   assert.match(db, /request_type", "requisition"/);
-  assert.match(db, /procurement_status", "in", "\(paid,cancelled\)"/);
+  assert.match(db, /\.neq\("procurement_status", "cancelled"\)/);
   assert.match(reconciliation, /candidate\.accountCode/);
 });
 

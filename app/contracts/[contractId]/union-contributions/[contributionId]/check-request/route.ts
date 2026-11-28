@@ -6,6 +6,7 @@ import { getAccessContext } from "@/lib/access";
 import { decryptSensitiveValue } from "@/lib/sensitive-encryption";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
+import { hasBearerSecret } from "@/lib/bearer-auth";
 
 export const runtime = "nodejs";
 
@@ -40,8 +41,7 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ contractId: string; contributionId: string }> }
 ) {
-  const cronSecret = process.env.CRON_SECRET?.trim();
-  const internal = Boolean(cronSecret && request.headers.get("authorization") === `Bearer ${cronSecret}`);
+  const internal = hasBearerSecret(request, process.env.CRON_SECRET);
   const access = internal ? null : await getAccessContext();
   if (!internal && !access?.userId) return NextResponse.redirect(new URL("/login", request.url));
   if (!internal && !["admin", "project_manager"].includes(access?.role ?? "")) return new NextResponse("Forbidden", { status: 403 });

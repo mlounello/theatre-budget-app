@@ -6,6 +6,7 @@ import { getAccessContext } from "@/lib/access";
 import { decryptSensitiveValue } from "@/lib/sensitive-encryption";
 import { getSupabaseServerClient } from "@/lib/supabase-server";
 import { createSupabaseAdminClient } from "@/lib/supabase-admin";
+import { hasBearerSecret } from "@/lib/bearer-auth";
 
 export const runtime = "nodejs";
 
@@ -89,8 +90,7 @@ function buildDescription(params: {
 }
 
 export async function GET(_request: Request, { params }: RouteParams) {
-  const cronSecret = process.env.CRON_SECRET?.trim();
-  const internal = Boolean(cronSecret && _request.headers.get("authorization") === `Bearer ${cronSecret}`);
+  const internal = hasBearerSecret(_request, process.env.CRON_SECRET);
   const access = internal ? null : await getAccessContext();
   if (!internal && !access?.userId) return NextResponse.redirect(new URL("/login", _request.url));
   if (!internal && !["admin", "project_manager"].includes(access?.role ?? "")) {
