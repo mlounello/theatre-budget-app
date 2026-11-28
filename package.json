@@ -9,6 +9,7 @@
     "lint": "next lint",
     "typecheck": "npm run build && tsc --noEmit",
     "test:lib-behavior": "node --experimental-strip-types --test scripts/lib-behavior.test.mjs",
+    "test:source-candidates-perf": "node --test scripts/institutional-source-candidates-perf.test.mjs",
     "test:smoke": "node --test scripts/smoke-unauthenticated.test.mjs",
     "test:auth-boundary": "node --test scripts/auth-access-boundary.test.mjs",
     "test:active-production-team-settings": "node --test scripts/active-production-team-settings.test.mjs",
