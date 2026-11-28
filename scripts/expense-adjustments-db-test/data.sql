@@ -1,0 +1,19 @@
+insert into app_theatre_budget.users values ('00000000-0000-0000-0000-0000000000a1');
+insert into app_theatre_budget.cc_statement_months values ('00000000-0000-0000-0000-0000000000b1','00000000-0000-0000-0000-0000000000f1','00000000-0000-0000-0000-0000000000c1','2026-11-01',null,null);
+insert into app_theatre_budget.expense_claims (id,fiscal_year_id,credit_card_id,claim_number,claim_type,claim_month,status,authorized_amount,settled_amount,entered_by_user_id,project_id) values
+ ('00000000-0000-0000-0000-000000000fc1','00000000-0000-0000-0000-0000000000f1','00000000-0000-0000-0000-0000000000c1','EC000100','funding_request','2026-11-01','approved',300,0,'00000000-0000-0000-0000-0000000000a1','00000000-0000-0000-0000-0000000000d1');
+insert into app_theatre_budget.expense_claims (id,fiscal_year_id,credit_card_id,claim_number,claim_type,claim_month,status,settled_amount,entered_by_user_id,project_id,authorization_claim_id) values
+ ('00000000-0000-0000-0000-000000000111','00000000-0000-0000-0000-0000000000f1','00000000-0000-0000-0000-0000000000c1','EC000001','monthly_reconciliation','2026-11-01','reconciled',150,'00000000-0000-0000-0000-0000000000a1','00000000-0000-0000-0000-0000000000d1',null);
+-- a claim for a different card
+insert into app_theatre_budget.expense_claims (id,fiscal_year_id,credit_card_id,claim_number,claim_type,claim_month,status,settled_amount,entered_by_user_id,project_id) values
+ ('00000000-0000-0000-0000-000000000999','00000000-0000-0000-0000-0000000000f1','00000000-0000-0000-0000-0000000000c9','EC000777','monthly_reconciliation','2026-11-01','reconciled',0,'00000000-0000-0000-0000-0000000000a1','00000000-0000-0000-0000-0000000000d1');
+insert into app_theatre_budget.purchases (id,fiscal_year_id,request_type,status,title,reference_number,estimated_amount,requested_amount,pending_cc_amount,authorized_amount,cc_workflow_status,expense_claim_id,expense_number,expense_stage) values
+ ('00000000-0000-0000-0000-0000000000aa','00000000-0000-0000-0000-0000000000f1','expense','pending_cc','Funding','EC000100',300,150,300,300,'requested','00000000-0000-0000-0000-000000000fc1','EX000100','authorization');
+insert into app_theatre_budget.purchases (id,fiscal_year_id,request_type,status,title,reference_number,estimated_amount,requested_amount,pending_cc_amount,expense_claim_id,expense_number,expense_stage,authorization_purchase_id,cc_statement_month_id) values
+ ('00000000-0000-0000-0000-0000000000e1','00000000-0000-0000-0000-0000000000f1','expense','pending_cc','Paint','EC000001',100,0,100,'00000000-0000-0000-0000-000000000111','EX000001','actual','00000000-0000-0000-0000-0000000000aa','00000000-0000-0000-0000-0000000000b1'),
+ ('00000000-0000-0000-0000-0000000000e2','00000000-0000-0000-0000-0000000000f1','expense','pending_cc','Lumber','EC000001',50,0,50,'00000000-0000-0000-0000-000000000111','EX000002','actual','00000000-0000-0000-0000-0000000000aa','00000000-0000-0000-0000-0000000000b1');
+insert into app_theatre_budget.purchase_allocations (purchase_id,amount,note) values ('00000000-0000-0000-0000-0000000000e1',100,'EC000001 / EX000001'),('00000000-0000-0000-0000-0000000000e2',50,'EC000001 / EX000002');
+insert into app_theatre_budget.purchase_receipts (purchase_id,authorization_purchase_id,cc_statement_month_id,amount_received) values
+ ('00000000-0000-0000-0000-0000000000e1','00000000-0000-0000-0000-0000000000aa','00000000-0000-0000-0000-0000000000b1',100),
+ ('00000000-0000-0000-0000-0000000000e2','00000000-0000-0000-0000-0000000000aa','00000000-0000-0000-0000-0000000000b1',50);
+insert into app_theatre_budget.cc_statement_lines (matched_purchase_ids) values (array['00000000-0000-0000-0000-0000000000e1'::uuid,'00000000-0000-0000-0000-0000000000e2'::uuid]);

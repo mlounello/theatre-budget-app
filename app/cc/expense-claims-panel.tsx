@@ -1,7 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { correctExpenseClaimNumberAction, type ExpenseClaimActionState } from "@/app/cc/expense-claim-actions";
+import { adjustExpenseDetailsAction, deleteExpenseAction, moveExpenseToClaimAction } from "@/app/cc/actions/expenses";
+import { SideDrawer } from "@/components/ui/side-drawer";
+import { ActionNotice } from "@/components/ui/action-notice";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { ResponsiveDataTable } from "@/components/ui/responsive-data-table";
 import { formatCurrency } from "@/lib/format";
@@ -39,6 +42,85 @@ function ExpenseClaimNumberEditor({ claimId, claimNumber }: { claimId: string; c
   );
 }
 
+type AdjustTarget = { claim: ExpenseClaimView; expense: ExpenseClaimView["expenses"][number] };
+
+function ExpenseAdjustDrawer({ target, onClose }: { target: AdjustTarget | null; onClose: () => void }) {
+  const [detailsState, detailsAction, detailsPending] = useActionState(adjustExpenseDetailsAction, correctionInitialState);
+  const [moveState, moveAction, movePending] = useActionState(moveExpenseToClaimAction, correctionInitialState);
+  const [deleteState, deleteAction, deletePending] = useActionState(deleteExpenseAction, correctionInitialState);
+  const deleted = deleteState.ok && deleteState.message !== "";
+  const reconciliation = target?.claim.claimType === "monthly_reconciliation" && target.expense.stage === "actual";
+
+  return (
+    <>
+    {deleted ? <ActionNotice tone="success">{deleteState.message}</ActionNotice> : null}
+    <SideDrawer
+      open={Boolean(target)}
+      onClose={onClose}
+      eyebrow="Adjust Expense"
+      title={target ? `${target.expense.expenseNumber ?? "Expense"} · ${target.expense.title}` : "Expense"}
+      description={target ? `${target.claim.claimNumber} · ${formatCurrency(target.expense.amount)}` : undefined}
+      closeLabel="Close expense adjustment panel"
+    >
+      {target ? (
+        <div className="varianceDrawerBody">
+          {deleted ? (
+            <section className="varianceDrawerSection">
+              <p>Expense deleted.</p>
+              <button type="button" className="buttonLink" onClick={onClose}>Close</button>
+            </section>
+          ) : (
+            <>
+              <section className="varianceDrawerSection">
+                <h3>Correct EX number and title</h3>
+                {detailsState.message ? <ActionNotice tone={detailsState.ok ? "success" : "error"}>{detailsState.message}</ActionNotice> : null}
+                <form action={detailsAction} className="drawerFieldGrid" key={`details-${target.expense.id}`}>
+                  <input type="hidden" name="purchaseId" value={target.expense.id} />
+                  <label>EX Number<input name="expenseNumber" defaultValue={target.expense.expenseNumber ?? ""} pattern="EX[0-9]{6}" placeholder="EX######" required /></label>
+                  <label>Title<input name="title" defaultValue={target.expense.title} maxLength={200} required /></label>
+                  <div><button type="submit" className="buttonLink buttonPrimary" disabled={detailsPending}>{detailsPending ? "Saving…" : "Save Details"}</button></div>
+                </form>
+                <p className="helperText">To change the project, category, or Banner account, use Edit Budget on the expense row.</p>
+              </section>
+
+              {reconciliation ? (
+                <>
+                  <section className="varianceDrawerSection">
+                    <h3>Move to another EC</h3>
+                    <p className="helperText">Use this when the Expense is in the wrong claim. Enter an existing EC for the same card and month, or a new EC number to create it.</p>
+                    {moveState.message ? <ActionNotice tone={moveState.ok ? "success" : "error"}>{moveState.message}</ActionNotice> : null}
+                    <form action={moveAction} className="drawerFieldGrid" key={`move-${target.expense.id}`}>
+                      <input type="hidden" name="purchaseId" value={target.expense.id} />
+                      <label>EC Number<input name="claimNumber" pattern="EC[0-9]{6}" placeholder="EC######" required /></label>
+                      <div><button type="submit" className="buttonLink" disabled={movePending}>{movePending ? "Moving…" : "Move Expense"}</button></div>
+                    </form>
+                  </section>
+
+                  <section className="varianceDrawerSection">
+                    <h3>Delete this Expense</h3>
+                    <p className="helperText">
+                      Removes {target.expense.expenseNumber ?? "this Expense"} and its budget impact. Its receipts return to the staged pool, where you can correct them and finalize again. This cannot be undone.
+                    </p>
+                    {deleteState.message && !deleteState.ok ? <ActionNotice tone="error">{deleteState.message}</ActionNotice> : null}
+                    <form action={deleteAction} className="drawerFieldGrid" key={`delete-${target.expense.id}`}>
+                      <input type="hidden" name="purchaseId" value={target.expense.id} />
+                      <label className="checkboxLabel"><input type="checkbox" name="confirmDelete" value="yes" required />I understand this deletes {target.expense.expenseNumber ?? "this Expense"} from {target.claim.claimNumber}.</label>
+                      <div><button type="submit" className="buttonLink" disabled={deletePending}>{deletePending ? "Deleting…" : "Delete Expense"}</button></div>
+                    </form>
+                  </section>
+                </>
+              ) : (
+                <p className="helperText">Moving or deleting is available for reconciled Expenses in Monthly Card Reconciliation claims.</p>
+              )}
+            </>
+          )}
+        </div>
+      ) : null}
+    </SideDrawer>
+    </>
+  );
+}
+
 export function ExpenseClaimsPanel({
   claims,
   page,
@@ -56,6 +138,15 @@ export function ExpenseClaimsPanel({
   onCreate: () => void;
   onEditExpense: (expenseId: string) => void;
 }) {
+  const [adjustId, setAdjustId] = useState<string | null>(null);
+  const adjustTarget: AdjustTarget | null = (() => {
+    if (!adjustId) return null;
+    for (const claim of claims) {
+      const expense = claim.expenses.find((candidate) => candidate.id === adjustId);
+      if (expense) return { claim, expense };
+    }
+    return null;
+  })();
   return (
     <article className="panel panelFull">
       <div className="ccWorkspaceHeader">
@@ -93,7 +184,12 @@ export function ExpenseClaimsPanel({
                       { key: "account", label: "Account", render: (expense) => expense.accountCode ?? "-" },
                       { key: "stage", label: "Stage", render: (expense) => expense.stage?.replaceAll("_", " ") ?? "-" },
                       { key: "amount", label: "Amount", numeric: true, render: (expense) => formatCurrency(expense.amount) },
-                      { key: "actions", label: "Actions", render: (expense) => <button type="button" className="tinyButton" onClick={() => onEditExpense(expense.id)}>Edit Budget</button> }
+                      { key: "actions", label: "Actions", render: (expense) => (
+                        <span className="buttonCluster">
+                          <button type="button" className="tinyButton" onClick={() => onEditExpense(expense.id)}>Edit Budget</button>
+                          <button type="button" className="tinyButton" onClick={() => setAdjustId(expense.id)}>Adjust</button>
+                        </span>
+                      ) }
                     ]}
                   />
                 </div>
@@ -111,6 +207,7 @@ export function ExpenseClaimsPanel({
           hrefForPage={hrefForPage}
         />
       ) : null}
+      <ExpenseAdjustDrawer key={adjustId ?? "none"} target={adjustTarget} onClose={() => setAdjustId(null)} />
     </article>
   );
 }

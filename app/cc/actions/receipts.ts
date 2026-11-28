@@ -134,9 +134,30 @@ export async function finalizeReceiptBatchAction(
     await requireCcManagerRole();
 
     const statementMonthId = String(formData.get("statementMonthId") ?? "").trim();
-    const claimNumber = String(formData.get("claimNumber") ?? "").trim().toUpperCase();
+    let claimNumber = String(formData.get("claimNumber") ?? "").trim().toUpperCase();
     const receiptIds = formData.getAll("receiptId").map((value) => String(value).trim()).filter(Boolean);
     if (!statementMonthId) return err("Statement month is required.");
+    if (!claimNumber) {
+      // Inherit the EC already collecting this card's receipts for this statement month.
+      const { data: statement, error: statementError } = await supabase
+        .from("cc_statement_months")
+        .select("fiscal_year_id, credit_card_id, statement_month")
+        .eq("id", statementMonthId)
+        .maybeSingle();
+      if (statementError) return err(statementError.message);
+      if (!statement) return err("Statement month not found.");
+      const { data: existingClaims, error: existingClaimsError } = await supabase
+        .from("expense_claims")
+        .select("claim_number")
+        .eq("fiscal_year_id", statement.fiscal_year_id as string)
+        .eq("credit_card_id", statement.credit_card_id as string)
+        .eq("claim_type", "monthly_reconciliation")
+        .eq("claim_month", statement.statement_month as string);
+      if (existingClaimsError) return err(existingClaimsError.message);
+      if ((existingClaims ?? []).length === 0) return err("Enter the EC number: no Expense Claim exists yet for this card and month.");
+      if ((existingClaims ?? []).length > 1) return err("More than one Expense Claim exists for this card and month. Enter the EC number to use.");
+      claimNumber = String(existingClaims![0].claim_number ?? "").toUpperCase();
+    }
     if (!/^EC[0-9]{6}$/.test(claimNumber)) return err("Expense Claim number must use EC######.");
     if (receiptIds.length === 0) return err("Select at least one receipt.");
 

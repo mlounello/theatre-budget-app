@@ -206,6 +206,16 @@ export function CcPageClient({
       null,
     [requestedStatementId, statementMonths]
   );
+  const inheritedClaimNumber = useMemo(() => {
+    if (!selectedStatement) return null;
+    const matches = expenseClaims.filter(
+      (claim) =>
+        claim.claimType === "monthly_reconciliation" &&
+        claim.claimMonth?.slice(0, 7) === selectedStatement.statementMonth.slice(0, 7) &&
+        claim.cardLabel === selectedStatement.creditCardName
+    );
+    return matches.length === 1 ? matches[0].claimNumber : null;
+  }, [expenseClaims, selectedStatement]);
   const assignedReceipts = selectedStatement
     ? pendingReceipts.filter((receipt) => receipt.statementMonthId === selectedStatement.id)
     : [];
@@ -348,8 +358,8 @@ export function CcPageClient({
         <form action={finalizeAction} className="requestForm">
           {finalizeState.message ? <p className={finalizeState.ok ? "successNote" : "errorNote"}>{finalizeState.message}</p> : null}
           <input type="hidden" name="statementMonthId" value={selectedStatement?.id ?? ""} />
-          <label>Monthly Expense Claim Number<input name="claimNumber" pattern="EC[0-9]{6}" placeholder="EC######" required /></label>
-          <p className="helperText">This EC is the collection for this card and month. Enter the final EX number assigned to each receipt; repeat an EX number to combine related receipts and refunds.</p>
+          <label>Monthly Expense Claim Number<input key={inheritedClaimNumber ?? "none"} name="claimNumber" pattern="EC[0-9]{6}" placeholder="EC###### (blank = existing EC for this card and month)" defaultValue={inheritedClaimNumber ?? ""} /></label>
+          <p className="helperText">{inheritedClaimNumber ? `These receipts will be added to ${inheritedClaimNumber}, the existing EC for this card and month. ` : "Leave blank to add to the existing EC for this card and month; enter an EC number only for the first receipts of a new month. "}This EC is the collection for this card and month. Enter the final EX number assigned to each receipt; repeat an EX number to combine related receipts and refunds.</p>
           <div className="expenseLinesEditor">
             {selectedReceipts.map((receipt, index) => (
               <fieldset className="expenseLineCard" key={receipt.id}>
