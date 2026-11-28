@@ -33,13 +33,13 @@ begin
   perform pg_temp.expect_error(format('select app_theatre_budget.move_expense_to_claim(%L,%L,%L)', e2,'EC12',u), 'EC######');
   r := app_theatre_budget.move_expense_to_claim(e2,'ec000002',u);
   assert (r->>'created_claim')::boolean and (r->>'moved')::boolean, 'created';
-  select settled_amount into n from app_theatre_budget.expense_claims where claim_number='EC000001'; assert n=100, 'old claim settled '||n;
+  select settled_amount into n from app_theatre_budget.expense_claims where claim_number='EC000001'; assert n=220, 'old claim settled '||n;
   select settled_amount into n from app_theatre_budget.expense_claims where claim_number='EC000002'; assert n=50, 'new claim settled '||n;
   select count(*) into n from app_theatre_budget.expense_claims where claim_number='EC000002' and credit_card_id='00000000-0000-0000-0000-0000000000c1' and claim_month='2026-11-01' and claim_type='monthly_reconciliation'; assert n=1, 'new claim context';
   select reference_number into s from app_theatre_budget.purchases where id=e2; assert s='EC000002', s;
   select note into s from app_theatre_budget.purchase_allocations where purchase_id=e2; assert s='EC000002 / EX000002', s;
   r := app_theatre_budget.move_expense_to_claim(e2,'EC000001',u); assert (r->>'moved')::boolean and not (r->>'created_claim')::boolean, 'move back to existing';
-  select settled_amount into n from app_theatre_budget.expense_claims where claim_number='EC000001'; assert n=150, 'merged settled '||n;
+  select settled_amount into n from app_theatre_budget.expense_claims where claim_number='EC000001'; assert n=270, 'merged settled '||n;
   r := app_theatre_budget.move_expense_to_claim(e2,'EC000001',u); assert not (r->>'moved')::boolean, 'same claim no-op';
   perform pg_temp.expect_error(format('select app_theatre_budget.move_expense_to_claim(%L,%L,%L)', a,'EC000001',u), 'actual');
 
@@ -49,13 +49,20 @@ begin
   assert (r->>'restaged_receipts')::int = 1 and (r->>'discarded_receipts')::int = 0, r::text;
   assert not exists (select 1 from app_theatre_budget.purchases where id=e1), 'expense gone';
   select count(*) into n from app_theatre_budget.purchase_receipts where purchase_id=a and cc_statement_month_id is null and amount_received=100; assert n=1, 'receipt restaged to funding request';
-  select settled_amount into n from app_theatre_budget.expense_claims where claim_number='EC000001'; assert n=50, 'claim settled after delete '||n;
-  select requested_amount into n from app_theatre_budget.purchases where id=a; assert n=250, 'authorization remaining '||n;
-  select settled_amount||'|'||status into s from app_theatre_budget.expense_claims where claim_number='EC000100'; assert s='50.00|approved', 'funding claim '||s;
+  select settled_amount into n from app_theatre_budget.expense_claims where claim_number='EC000001'; assert n=170, 'claim settled after delete '||n;
+  select requested_amount into n from app_theatre_budget.purchases where id=a; assert n=250, 'authorization requested '||n;
+  select pending_cc_amount into n from app_theatre_budget.purchases where id=a; assert n=250, 'authorization pending (hold) '||n;
+  select amount into n from app_theatre_budget.purchase_allocations where purchase_id=a; assert n=250, 'authorization allocation rescaled '||n;
+  select settled_amount||'|'||status into s from app_theatre_budget.expense_claims where claim_number='EC000100'; assert s='170.00|approved', 'funding claim '||s;
   select cc_workflow_status into s from app_theatre_budget.purchases where id=a; assert s='requested', s;
+  -- released authorization: deleting its Expense restores only that Expense's amount to the hold and keeps it released
+  r := app_theatre_budget.delete_expense_restage_receipts('00000000-0000-0000-0000-0000000000e3',u);
+  select requested_amount||'|'||pending_cc_amount||'|'||cc_workflow_status into s from app_theatre_budget.purchases where id='00000000-0000-0000-0000-0000000000bb'; assert s='120.00|120.00|receipts_uploaded', 'released hold '||s;
+  select amount into n from app_theatre_budget.purchase_allocations where purchase_id='00000000-0000-0000-0000-0000000000bb'; assert n=120, 'released allocation '||n;
+  select settled_amount into n from app_theatre_budget.expense_claims where claim_number='EC000100'; assert n=50, 'funding claim settled after second delete '||n;
   assert not exists (select 1 from app_theatre_budget.cc_statement_lines where e1 = any(matched_purchase_ids)), 'statement line cleaned';
   assert exists (select 1 from app_theatre_budget.cc_statement_lines where e2 = any(matched_purchase_ids)), 'other match kept';
-  select count(*) into n from app_theatre_budget.expense_adjustments; assert n=4, 'audit rows '||n;
+  select count(*) into n from app_theatre_budget.expense_adjustments; assert n=5, 'audit rows '||n;
   -- audit of delete survives deletion
   assert exists (select 1 from app_theatre_budget.expense_adjustments where action='delete' and purchase_id=e1 and (details->>'amount')::numeric=100), 'delete audit';
 

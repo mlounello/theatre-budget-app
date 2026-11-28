@@ -96,7 +96,16 @@ as $$
   where claim.id = p_claim_id;
 $$;
 
-create or replace function app_theatre_budget.refresh_card_authorization(p_authorization_id uuid)
+-- Recompute a card funding request's hold after one of its reconciled Expenses is removed.
+-- Mirrors finalize_cc_receipt_batch: the hold lives in BOTH requested_amount and pending_cc_amount.
+--   * If the unused balance was already released ('receipts_uploaded'), the removed Expense's amount is
+--     restored to the hold (what "Reconcile at actual" had left for those receipts), capped by what is unspent.
+--   * Otherwise the hold is the authorization total minus the Expenses that remain.
+-- Budget allocations are rescaled to the new hold and the funding claim's settled total and status refreshed.
+create or replace function app_theatre_budget.refresh_card_authorization(
+  p_authorization_id uuid,
+  p_restored_amount numeric default 0
+)
 returns void
 language plpgsql
 security invoker
@@ -106,9 +115,16 @@ declare
   v_authorization app_theatre_budget.purchases%rowtype;
   v_total numeric(12,2);
   v_reconciled numeric(12,2);
-  v_remaining numeric(12,2);
+  v_unspent numeric(12,2);
+  v_hold numeric(12,2);
   v_claim_total numeric(12,2);
   v_claim_settled numeric(12,2);
+  v_alloc record;
+  v_alloc_total numeric(12,2);
+  v_alloc_count integer;
+  v_index integer := 0;
+  v_applied numeric(12,2) := 0;
+  v_next numeric(12,2);
 begin
   select * into v_authorization
   from app_theatre_budget.purchases
@@ -122,16 +138,40 @@ begin
     into v_reconciled
   from app_theatre_budget.purchases actual
   where actual.authorization_purchase_id = p_authorization_id and actual.status <> 'cancelled';
-  v_remaining := greatest(v_total - v_reconciled, 0);
+  v_unspent := greatest(v_total - v_reconciled, 0);
+
+  if v_authorization.cc_workflow_status = 'receipts_uploaded' then
+    v_hold := least(greatest(coalesce(v_authorization.pending_cc_amount, 0) + coalesce(p_restored_amount, 0), 0), v_unspent);
+  else
+    v_hold := v_unspent;
+  end if;
 
   update app_theatre_budget.purchases
-  set requested_amount = v_remaining,
-      cc_workflow_status = case
-        when v_remaining > 0 and cc_workflow_status = 'receipts_uploaded' then 'requested'
-        else cc_workflow_status
-      end,
+  set requested_amount = v_hold,
+      pending_cc_amount = v_hold,
       updated_at = now()
   where id = p_authorization_id;
+
+  -- Rescale the authorization's budget allocations to the new hold (same method as the app's receipt flows).
+  select coalesce(sum(amount), 0), count(*) into v_alloc_total, v_alloc_count
+  from app_theatre_budget.purchase_allocations where purchase_id = p_authorization_id;
+  if v_alloc_count > 0 then
+    for v_alloc in
+      select id, amount from app_theatre_budget.purchase_allocations
+      where purchase_id = p_authorization_id order by id
+    loop
+      v_index := v_index + 1;
+      if v_index = v_alloc_count then
+        v_next := round(v_hold - v_applied, 2);
+      elsif v_alloc_total > 0 then
+        v_next := round(v_hold * (coalesce(v_alloc.amount, 0) / v_alloc_total), 2);
+      else
+        v_next := round(v_hold / v_alloc_count, 2);
+      end if;
+      v_applied := v_applied + v_next;
+      update app_theatre_budget.purchase_allocations set amount = v_next, updated_at = now() where id = v_alloc.id;
+    end loop;
+  end if;
 
   if v_authorization.expense_claim_id is not null then
     select coalesce(sum(authz.estimated_amount), 0) into v_claim_total
@@ -398,7 +438,10 @@ begin
 
   perform app_theatre_budget.refresh_expense_claim_settled(v_claim.id);
   if v_purchase.authorization_purchase_id is not null then
-    perform app_theatre_budget.refresh_card_authorization(v_purchase.authorization_purchase_id);
+    perform app_theatre_budget.refresh_card_authorization(
+      v_purchase.authorization_purchase_id,
+      v_purchase.pending_cc_amount + v_purchase.posted_amount
+    );
   end if;
 
   return jsonb_build_object(
@@ -412,7 +455,7 @@ $$;
 revoke all on function app_theatre_budget.assert_expense_actor(uuid) from public;
 revoke all on function app_theatre_budget.assert_expense_unlocked(app_theatre_budget.purchases) from public;
 revoke all on function app_theatre_budget.refresh_expense_claim_settled(uuid) from public;
-revoke all on function app_theatre_budget.refresh_card_authorization(uuid) from public;
+revoke all on function app_theatre_budget.refresh_card_authorization(uuid, numeric) from public;
 revoke all on function app_theatre_budget.adjust_expense_details(uuid, text, text, uuid) from public;
 revoke all on function app_theatre_budget.move_expense_to_claim(uuid, text, uuid) from public;
 revoke all on function app_theatre_budget.delete_expense_restage_receipts(uuid, uuid) from public;
@@ -420,7 +463,7 @@ revoke all on function app_theatre_budget.delete_expense_restage_receipts(uuid, 
 grant execute on function app_theatre_budget.assert_expense_actor(uuid) to authenticated;
 grant execute on function app_theatre_budget.assert_expense_unlocked(app_theatre_budget.purchases) to authenticated;
 grant execute on function app_theatre_budget.refresh_expense_claim_settled(uuid) to authenticated;
-grant execute on function app_theatre_budget.refresh_card_authorization(uuid) to authenticated;
+grant execute on function app_theatre_budget.refresh_card_authorization(uuid, numeric) to authenticated;
 grant execute on function app_theatre_budget.adjust_expense_details(uuid, text, text, uuid) to authenticated;
 grant execute on function app_theatre_budget.move_expense_to_claim(uuid, text, uuid) to authenticated;
 grant execute on function app_theatre_budget.delete_expense_restage_receipts(uuid, uuid) to authenticated;

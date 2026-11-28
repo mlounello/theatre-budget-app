@@ -16,6 +16,7 @@ declare
   v_res jsonb;
   v_before_settled numeric; v_after_settled numeric;
   v_before_remaining numeric; v_after_remaining numeric;
+  v_hold_before text; v_hold_after text;
   v_receipts_before int; v_receipts_staged_after int; v_total_receipts_after int;
   v_new_claim uuid;
 begin
@@ -39,6 +40,9 @@ begin
   select count(*) into v_receipts_before from app_theatre_budget.purchase_receipts where purchase_id = v_purchase.id;
   select settled_amount into v_before_settled from app_theatre_budget.expense_claims where id = v_claim.id;
   select requested_amount into v_before_remaining from app_theatre_budget.purchases where id = v_purchase.authorization_purchase_id;
+  select format('requested=%s pending=%s workflow=%s allocation=%s', pr.requested_amount, pr.pending_cc_amount, pr.cc_workflow_status,
+    (select coalesce(sum(a.amount),0) from app_theatre_budget.purchase_allocations a where a.purchase_id = pr.id)) into v_hold_before
+  from app_theatre_budget.purchases pr where pr.id = v_purchase.authorization_purchase_id;
   v_out := v_out || format(E'\nBefore: claim settled=%s, funding request remaining=%s, receipts on expense=%s', v_before_settled, v_before_remaining, v_receipts_before);
 
   -- 1. Edit details
@@ -62,8 +66,12 @@ begin
     where purchase_id = v_purchase.authorization_purchase_id and cc_statement_month_id is null and authorization_purchase_id = v_purchase.authorization_purchase_id;
   select settled_amount into v_after_settled from app_theatre_budget.expense_claims where id = v_new_claim;
   select requested_amount into v_after_remaining from app_theatre_budget.purchases where id = v_purchase.authorization_purchase_id;
+  select format('requested=%s pending=%s workflow=%s allocation=%s', pr.requested_amount, pr.pending_cc_amount, pr.cc_workflow_status,
+    (select coalesce(sum(a.amount),0) from app_theatre_budget.purchase_allocations a where a.purchase_id = pr.id)) into v_hold_after
+  from app_theatre_budget.purchases pr where pr.id = v_purchase.authorization_purchase_id;
   v_out := v_out || format(E'\n3 delete -> %s | expense still exists=%s | staged receipts on funding request now=%s | new claim settled=%s | funding request remaining=%s (was %s)', v_res,
     exists (select 1 from app_theatre_budget.purchases where id = v_purchase.id), v_receipts_staged_after, v_after_settled, v_after_remaining, v_before_remaining);
+  v_out := v_out || format(E'\nFunding request hold before: %s\nFunding request hold after : %s', v_hold_before, v_hold_after);
   v_out := v_out || format(E'\nAudit rows written: %s', (select count(*) from app_theatre_budget.expense_adjustments where purchase_id = v_purchase.id));
   perform set_config('t.out', v_out, true);
 end $$;

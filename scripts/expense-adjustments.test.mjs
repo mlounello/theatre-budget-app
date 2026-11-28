@@ -30,7 +30,11 @@ test("deleting an Expense returns receipts to the staged pool before the cascade
   assert.ok(restage > 0 && remove > restage, "receipts are re-staged before the purchase is deleted");
   assert.match(fn, /array_remove\(matched_purchase_ids, v_purchase\.id\)/);
   assert.match(fn, /refresh_expense_claim_settled\(v_claim\.id\)/);
-  assert.match(fn, /refresh_card_authorization\(v_purchase\.authorization_purchase_id\)/);
+  assert.match(fn, /refresh_card_authorization\(\s*v_purchase\.authorization_purchase_id,\s*v_purchase\.pending_cc_amount \+ v_purchase\.posted_amount/);
+  const refresh = migration.slice(migration.indexOf("function app_theatre_budget.refresh_card_authorization"), migration.indexOf("-- 1. Correct EX number"));
+  assert.match(refresh, /requested_amount = v_hold,\s*pending_cc_amount = v_hold/);
+  assert.match(refresh, /cc_workflow_status = 'receipts_uploaded'/);
+  assert.doesNotMatch(refresh, /cc_workflow_status = case/);
   assert.match(fn, /monthly_reconciliation/);
 });
 
