@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { readDbSources } from "./_db-source.mjs";
 
 function source(path) {
   return readFileSync(new URL(path, import.meta.url), "utf8");
@@ -15,7 +16,7 @@ const procurementPage = source("../app/procurement/page.tsx");
 const paginationControls = source("../components/ui/pagination-controls.tsx");
 const institutionalPage = source("../app/institutional-budget/page.tsx");
 const institutionalLib = source("../lib/institutional-budget.ts");
-const dbSource = source("../lib/db.ts");
+const dbSource = readDbSources();
 
 test("Credit Card writers require explicit fiscal-year scope", () => {
   assert.match(statementForm, /name="fiscalYearId"/);

@@ -51,6 +51,18 @@ test("login page renders without authentication", async () => {
   assert.match(await res.text(), /<html lang="en"/);
 });
 
+test("responses carry security headers and a skip-to-content link", async () => {
+  const res = await get("/login");
+  assert.equal(res.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(res.headers.get("x-frame-options"), "SAMEORIGIN");
+  assert.equal(res.headers.get("referrer-policy"), "strict-origin-when-cross-origin");
+  assert.match(res.headers.get("permissions-policy") ?? "", /camera=\(\)/);
+  assert.match(res.headers.get("strict-transport-security") ?? "", /max-age=\d+/);
+  const html = await res.text();
+  assert.match(html, /href="#main-content"/);
+  assert.match(html, /<main id="main-content"/);
+});
+
 test("secret-protected endpoints reject missing and wrong credentials", async () => {
   assert.equal((await get("/api/cron/check-requests")).status, 401);
   assert.equal((await get("/api/cron/check-requests", { headers: { authorization: "Bearer wrong" } })).status, 401);

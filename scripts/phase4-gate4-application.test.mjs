@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { readDbSources } from "./_db-source.mjs";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("organization options and hierarchy use fiscal-year memberships", () => {
-  const db = read("lib/db.ts");
+  const db = readDbSources();
   assert.match(db, /getOrganizationOptions[\s\S]*getFiscalYearOrganizationOptions\(\)/);
   assert.match(db, /getHierarchyRows[\s\S]*fiscal_year_organizations[\s\S]*membershipSort/);
 });

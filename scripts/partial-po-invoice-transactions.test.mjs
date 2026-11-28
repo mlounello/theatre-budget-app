@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readDbSources } from "./_db-source.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -87,7 +88,7 @@ test("full Banner account exports reconcile line by line to matching unpaid POs"
     read("app/procurement/page.tsx"),
     read("app/procurement/banner-account-reconciliation.tsx"),
     read("app/procurement/actions.ts"),
-    read("lib/db.ts")
+    readDbSources()
   ]);
   assert.match(page, /BannerAccountReconciliation/);
   assert.match(reconciliation, /Reconcile Banner/);
@@ -132,7 +133,7 @@ test("partial-payment and receipt workflows render as distinct pills", async () 
 
 test("rollups count simultaneous YTD and encumbrance instead of choosing one status bucket", async () => {
   const [db, institutional] = await Promise.all([
-    read("lib/db.ts"),
+    readDbSources(),
     read("lib/institutional-budget.ts")
   ]);
   assert.match(db, /totals\.enc \+= asNumber\(purchase\.encumbered_amount/);
@@ -146,7 +147,7 @@ test("Banner adjustments and non-encumbered invoices post to YTD without liquida
     read("supabase/migrations/20261101190000_banner_adjustment_encumbrance.sql"),
     read("app/procurement/invoice-csv-import.tsx"),
     read("app/procurement/actions.ts"),
-    read("lib/db.ts"),
+    readDbSources(),
     read("app/procurement/procurement-table.tsx"),
     read("lib/banner-rule-class.ts")
   ]);

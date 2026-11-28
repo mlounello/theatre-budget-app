@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readDbSources } from "./_db-source.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -219,7 +220,7 @@ test("Finalized monthly Expenses keep their receipts out of the missing-receipt 
 
 test("Monthly card finalization transfers budget impact off the funding authorization", async () => {
   const ccActions = await read("app/cc/actions.ts");
-  const db = await read("lib/db.ts");
+  const db = await readDbSources();
   const migration = await read("supabase/migrations/20261008120000_transfer_card_authorization_budget_impact.sql");
   assert.match(ccActions, /rescalePurchaseAllocations\(\s*supabase,\s*authorization\.id/);
   assert.match(ccActions, /createInstitutionalCommitmentForPurchase\(supabase, authorizationId/);

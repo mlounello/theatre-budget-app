@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { readDbSources } from "./_db-source.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -25,7 +26,7 @@ test("needs-variance focus and direct variance creation remain available", async
 
 test("revenue performance exposes target, received, remaining, and over-target values", async () => {
   const page = await read("app/income/page.tsx");
-  const db = await read("lib/db.ts");
+  const db = await readDbSources();
   assert.match(page, /<h1>Revenue<\/h1>/);
   assert.match(page, /Revenue Performance/);
   assert.match(page, /performanceTotals\.target/);

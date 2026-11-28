@@ -38,8 +38,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <Suspense fallback={null}>
           <ScrollRestore />
         </Suspense>
+        <a className="skipLink" href="#main-content">
+          Skip to main content
+        </a>
         <TopNav />
-        <main className="page">{children}</main>
+        <main id="main-content" tabIndex={-1} className="page">
+          {children}
+        </main>
       </body>
     </html>
   );

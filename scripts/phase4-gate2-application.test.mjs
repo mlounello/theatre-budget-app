@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { readDbSources } from "./_db-source.mjs";
 
 function source(path) {
   return readFileSync(new URL(path, import.meta.url), "utf8");
@@ -14,7 +15,7 @@ const incomeActions = source("../app/income/actions.ts");
 const incomeForm = source("../app/income/add-income-form.tsx");
 const incomeTable = source("../app/income/income-table.tsx");
 const institutionalBudgetPage = source("../app/institutional-budget/page.tsx");
-const dbSource = source("../lib/db.ts");
+const dbSource = readDbSources();
 
 test("new procurement writers require and persist fiscal year", () => {
   assert.match(procurementCreateForm, /name="fiscalYearId"/);
