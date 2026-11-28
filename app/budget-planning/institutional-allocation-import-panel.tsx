@@ -75,7 +75,7 @@ export function InstitutionalAllocationImportPanel({
           <input name="allocationFile" type="file" accept=".xlsx" required />
           <span className="helperText">The workbook should include account codes and monthly allocation columns for the selected fiscal year.</span>
         </label>
-        <button className="buttonPrimary" type="submit">
+        <button className="buttonLink buttonPrimary" type="submit">
           Preview Import
         </button>
         {previewState.message ? (

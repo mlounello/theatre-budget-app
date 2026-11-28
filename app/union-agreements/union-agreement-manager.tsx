@@ -102,14 +102,14 @@ function AgreementForm({ agreement, funds }: { agreement?: UnionAgreementOption;
           const rule = agreement?.funds[index];
           return (
             <div className="inlineEditForm" key={index}>
-              <select name={`fundId_${index}`} defaultValue={rule?.unionFundId ?? ""}>
+              <select name={`fundId_${index}`} aria-label={`Contribution fund ${index + 1}`} defaultValue={rule?.unionFundId ?? ""}>
                 <option value="">Unused row</option>
                 {funds.filter((fund) => fund.active || fund.id === rule?.unionFundId).map((fund) => (
                   <option key={fund.id} value={fund.id}>{fund.name}</option>
                 ))}
               </select>
-              <input name={`percentage_${index}`} type="number" step="0.0001" min="0" max="100" defaultValue={rule?.percentage ?? ""} placeholder="Percent" />
-              <select name={`contributionType_${index}`} defaultValue={rule?.contributionType ?? "employer_paid"}>
+              <input name={`percentage_${index}`} aria-label={`Contribution percentage ${index + 1}`} type="number" step="0.0001" min="0" max="100" defaultValue={rule?.percentage ?? ""} placeholder="Percent" />
+              <select name={`contributionType_${index}`} aria-label={`Contribution type ${index + 1}`} defaultValue={rule?.contributionType ?? "employer_paid"}>
                 <option value="employer_paid">Employer-paid addition</option>
                 <option value="artist_withholding">Artist withholding</option>
               </select>

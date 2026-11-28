@@ -81,7 +81,7 @@ export function DashboardRequisitionTable({ openRequisitions }: DashboardRequisi
                 <td>
                   <form action={formAction} className="inlineEditForm">
                     <input type="hidden" name="purchaseId" value={row.id} />
-                    <select name="procurementStatus" defaultValue={row.procurementStatus}>
+                    <select name="procurementStatus" aria-label={`Status for ${row.title}`} defaultValue={row.procurementStatus}>
                       {REQUISITION_PROCUREMENT_STATUSES.map((status) => (
                         <option key={status.value} value={status.value}>
                           {status.label}

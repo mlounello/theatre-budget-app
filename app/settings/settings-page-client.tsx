@@ -807,7 +807,7 @@ export function SettingsPageClient({
                                     <td>
                                       <form action={addBudgetLineActionForm} className="inlineEditForm">
                                         <input type="hidden" name="projectId" value={project.id} />
-                                        <select name="productionCategoryId" required>
+                                        <select name="productionCategoryId" aria-label={`Category for new allocation line on ${project.name}`} required>
                                           <option value="">Category</option>
                                           {productionCategories.map((category) => (
                                             <option key={category.id} value={category.id}>
@@ -817,6 +817,7 @@ export function SettingsPageClient({
                                         </select>
                                         <input
                                           name="allocatedAmount"
+                                          aria-label={`Allocated amount for new allocation line on ${project.name}`}
                                           type="number"
                                           step="0.01"
                                           min="0"

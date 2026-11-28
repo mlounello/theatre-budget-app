@@ -219,7 +219,7 @@ export default async function BudgetPlanningPage({
             </select>
           </label>
           <div className="varianceActions">
-            <button className="buttonPrimary" type="submit">Apply</button>
+            <button className="buttonLink buttonPrimary" type="submit">Apply</button>
             <a
               className="buttonLink"
               href={`/budget-planning?fiscalYearId=${encodeURIComponent(fiscalYearId)}&organizationId=${encodeURIComponent(
